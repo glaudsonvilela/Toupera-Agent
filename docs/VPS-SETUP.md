@@ -55,6 +55,8 @@ O servidor não contém `.git` nem credenciais para acessar o repositório priva
 
 O M7 acrescenta `--foundry-plan <context.json> <review.json> <source.sol> <private-output-dir>` e `--foundry-run <case-dir> <forge-bin> <solc-bin>`. O primeiro não executa testes; o segundo exige harness local revisado. Os caminhos de `forge` e `solc` instalados estão na tabela acima. Nenhum teste M7 foi executado durante a implementação. Consulte `docs/FOUNDRY-JUDGE.md` antes de usar.
 
+A revisão de código M7 `b945a96` foi sincronizada e compilada em release no VPS sob `toupera` em 2026-10-18. `.deployed-commit` registrou essa revisão antes do complemento documental; nenhum caso Foundry ou análise de alvo foi executado.
+
 ## Companions de engenharia reversa
 
 - Heimdall-rs foi instalado em `/usr/local/bin/heimdall` a partir do asset oficial `heimdall-linux-amd64` da release `0.9.3`. O próprio binário informa `heimdall 0.9.2` em `--version`; registrar **ambos** os identificadores até o upstream esclarecer a divergência. SHA-256 do asset e binário instalado: `8d58c97f56d584d5d0737d0d0895fc8c68b7b8b2b680f2a7842245789f0b4868`.
