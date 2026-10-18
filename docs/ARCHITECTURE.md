@@ -5,8 +5,9 @@
 ```text
 Authorized target
   → Scope validation
-  → Solidity source
-  → AST / Call Graph / State Graph
+  → Solidity source and/or EVM bytecode
+  → Contract reconstruction
+  → Source AST or bytecode CFG / Call Graph / State Graph / Economic IR
   → Rust deterministic analysis
   → Slither
   → Candidate reduction
@@ -24,6 +25,23 @@ Authorized target
 ```
 
 The LLM does not receive the whole repository by default. Deterministic processing reduces the candidate set and assembles only relevant function, call, modifier, storage, arithmetic, external-call, oracle, conversion, comment, and invariant context.
+
+## Rust contract reconstruction engine
+
+The Rust core is planned as both an economic analyzer and a focused reverse-engineering engine. Its job is to reconstruct how an in-scope contract works before ranking possible issues. This remains limited to Solidity/EVM vault, oracle, pricing, and accounting behavior; it is not a general-purpose decompiler or broad blockchain security scanner.
+
+The engine should accept source-backed targets and, in a later stage, bytecode-only targets. It should derive a compact model containing:
+
+- entry points and economic operation candidates;
+- control-flow and internal/external call relationships;
+- storage reads/writes and their data dependencies;
+- oracle inputs, fallback branches, and price-to-share/asset paths;
+- arithmetic, decimal scaling, fees, and rounding behavior;
+- proxy/implementation relationships when evidence is available.
+
+For source-backed targets, solc AST and source locations provide the initial path. For bytecode-only targets, a staged EVM pipeline can disassemble and normalize bytecode, recover basic blocks/control flow and selector dispatch, then infer storage and call relationships. Inferred semantics must carry confidence and provenance (source span or bytecode program counter); ambiguous behavior stays explicitly unresolved and may be checked with local execution. Do not present decompiler guesses as recovered facts.
+
+The compact economic IR should be the shared boundary between reconstruction, deterministic detectors, context slicing, and later Foundry test generation. Build source-first IR and provenance before adding bytecode recovery; bytecode reconstruction is a planned milestone, not part of M0.
 
 ## Stack plan
 

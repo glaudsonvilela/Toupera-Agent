@@ -26,13 +26,13 @@ Initial analysis centers on vault accounting, oracle pricing, shares and assets,
 
 ## Architecture
 
-Authorized target → scope validation → Solidity source → AST/call graph/state graph → deterministic Rust analysis → Slither → candidate reduction → context slicing → LLM reasoning → economic hypothesis → Foundry test generation → local execution/fork → reproduced invariant → evidence package → human review → report.
+Authorized target → scope validation → source and/or EVM bytecode → contract reconstruction → deterministic Rust analysis → Slither → candidate reduction → context slicing → LLM reasoning → economic hypothesis → Foundry test generation → local execution/fork → reproduced invariant → evidence package → human review → report.
 
-The LLM should receive only a small relevant slice of code and state context, never the full repository by default. Foundry is the judge: a hypothesis advances only after reproducible validation.
+The Rust engine is intended to reconstruct the contract's economic model, not only scan code: identify relevant entry points, control and call flows, storage dependencies, oracle paths, and share/asset accounting. It should support source-backed analysis first and bytecode-only reconstruction as a planned capability, recording uncertainty and evidence provenance. The LLM should receive only a small relevant slice of code and state context, never the full repository by default. Foundry is the judge: a hypothesis advances only after reproducible validation.
 
 ## Status
 
-M0 — Repository/Foundation. The Rust `security-engine` crate currently provides foundational IDs, economic operation and finding types; analysis is not implemented yet. See [agente.md](agente.md) for operational state and next steps.
+M0 — Repository/Foundation. The Rust `security-engine` crate currently provides foundational IDs, economic operation and finding types; reconstruction and analysis are not implemented yet. See [agente.md](agente.md) for operational state and next steps.
 
 ## Development
 
