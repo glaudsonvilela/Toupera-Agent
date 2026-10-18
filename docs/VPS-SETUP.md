@@ -63,6 +63,8 @@ O servidor não contém `.git` nem credenciais para acessar o repositório priva
 
 O CLI `--economic-candidates <source.sol> [solc-path] [slither.json]` emite candidatos `UNVERIFIED` da IR source-first e importa opcionalmente sinais do Slither. `scripts/run-economic-candidates.sh <source.sol> <diretório-novo>` executa Slither localmente, guarda uma cópia do source, versões, JSON Slither e `candidates.json`. Defina `TOUPERA_SECURITY_ENGINE=/srv/toupera-agent/target/release/security-engine` quando necessário. O wrapper não foi executado em fixture ou alvo nesta etapa; testes e calibração de falsos positivos ficam para depois da implementação completa, por solicitação do usuário. Leia `docs/ECONOMIC-ANALYSIS.md`.
 
+A revisão de implementação `d2ed831` foi sincronizada e compilada em release em 2026-10-18. O código fica disponível para execução futura, sem resultados de teste de detecção nesta etapa.
+
 ## Operação segura
 
 Use apenas fontes próprias, forks locais ou programas com autorização explícita. Antes de analisar outro alvo, confirme o escopo. Nunca registre chave da API, senha ou chave SSH privada no repositório, nos argumentos de linha de comando ou nos logs. A integração DeepSeek depende de implementação futura e de um mecanismo de segredo no servidor. Não exponha `anvil` na rede pública.
