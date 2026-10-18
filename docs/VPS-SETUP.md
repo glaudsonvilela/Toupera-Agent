@@ -63,6 +63,8 @@ A revisão de código M8 `ea48456` foi sincronizada e compilada em release no VP
 
 O complemento M7 posterior instrumenta `forge coverage` com LCOV, número observado de fuzz runs e contadores de invariant handlers quando houver campanha. Uma reprodução positiva futura exigirá cobertura não nula de `Target.sol`. Nenhum teste ou comando de cobertura foi executado durante a implementação deste complemento.
 
+A revisão de código do complemento M7 `d47a909` foi sincronizada e compilada em release no VPS sob `toupera` em 2026-10-18. `.deployed-commit` registrou essa revisão antes do complemento documental; nenhuma campanha Foundry ou pacote M8 foi executado.
+
 ## Companions de engenharia reversa
 
 - Heimdall-rs foi instalado em `/usr/local/bin/heimdall` a partir do asset oficial `heimdall-linux-amd64` da release `0.9.3`. O próprio binário informa `heimdall 0.9.2` em `--version`; registrar **ambos** os identificadores até o upstream esclarecer a divergência. SHA-256 do asset e binário instalado: `8d58c97f56d584d5d0737d0d0895fc8c68b7b8b2b680f2a7842245789f0b4868`.
