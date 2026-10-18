@@ -82,11 +82,13 @@ O comando `--foundry-plan` cria casos sem executar testes. `--foundry-run` está
 Critérios e prioridade por ferramenta: [Estratégia de ferramentas](TOOLING-STRATEGY.md).
 
 ### M8 — Evidência e entrega
-- [ ] Registrar versão/hash do alvo, configuração e passos para reproduzir.
-- [ ] Separar fatos, inferências, premissas e limitações.
+- [x] Implementar pacote privado com hash do source, configuração, harness, JSON e traces, além de campos obrigatórios de versão e reprodução na revisão humana.
+- [x] Implementar separação explícita de fatos, inferências, premissas e limitações no manifesto e relatório.
 - [ ] Fazer revisão humana de escopo, impacto e duplicidade.
-- [ ] Preparar relatório claro, com evidência mínima suficiente.
-- [ ] Marcar `REPORT_READY` somente após reprodução e revisão.
+- [x] Implementar geração de relatório com evidência mínima e gate de revisão; nenhum relatório real gerado nesta etapa.
+- [x] Implementar gate que só marca `REPORT_READY` após duas execuções positivas, integridade dos artefatos e atestados de revisão humana; gate não acionado nesta etapa.
+
+O M8 está implementado no recorte de um arquivo source-first, com reprodução e revisão reais pendentes. `--evidence-plan` pode criar um pacote `PENDING_REPRODUCTION`; `--evidence-finalize` falha até haver um resultado M7 positivo e revisão humana completa. Ver [Evidência e entrega](EVIDENCE-DELIVERY.md).
 
 ## Ciclo por alvo auditado
 

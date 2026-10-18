@@ -46,6 +46,8 @@ M6 prepares one structured review request per eligible, deduplicated slice. A pr
 
 M7 prepares private Foundry cases from M5/M6 output with exact source digests. Its local judge requires a target-specific, reviewed harness and two consistent runs before proposing `REPRODUCED_PENDING_REVIEW`. The scaffold deliberately fails until completed; no Foundry test was executed during this implementation. See [Foundry Judge](docs/FOUNDRY-JUDGE.md).
 
+M8 snapshots a case into a private evidence bundle. A report can reach `REPORT_READY` only after a positive M7 result, artifact integrity checks and explicit human review of scope, assertions, impact and duplicates. No real report was generated during implementation. See [Evidence Delivery](docs/EVIDENCE-DELIVERY.md).
+
 ## Development
 
 ```sh

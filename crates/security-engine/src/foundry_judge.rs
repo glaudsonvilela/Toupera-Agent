@@ -74,7 +74,7 @@ pub struct FoundryPlan {
     pub case_directories: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FoundryResult {
     pub schema: String,
     pub candidate_key: String,
@@ -87,7 +87,7 @@ pub struct FoundryResult {
     pub caveat: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FoundryRun {
     pub run: u8,
     pub exit_success: bool,

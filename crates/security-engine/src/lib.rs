@@ -9,6 +9,7 @@ mod cfg;
 mod context_package;
 mod dataflow;
 mod economic_analysis;
+mod evidence_package;
 mod foundry_judge;
 mod ir;
 mod llm_review;
@@ -37,6 +38,10 @@ pub use context_package::{
 pub use economic_analysis::{
     EconomicAnalysisMetrics, EconomicAnalysisReport, EconomicCandidate, SlitherSignal,
     analyze_economic_functions,
+};
+pub use evidence_package::{
+    EvidenceFact, EvidenceManifest, EvidenceReady, HumanEvidenceReview, finalize_evidence_bundle,
+    prepare_evidence_bundle,
 };
 pub use foundry_judge::{
     FoundryCase, FoundryPlan, FoundryResult, FoundryRun, HarnessApproval, judge_foundry_case,

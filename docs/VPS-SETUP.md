@@ -57,6 +57,8 @@ O M7 acrescenta `--foundry-plan <context.json> <review.json> <source.sol> <priva
 
 A revisão de código M7 `b945a96` foi sincronizada e compilada em release no VPS sob `toupera` em 2026-10-18. `.deployed-commit` registrou essa revisão antes do complemento documental; nenhum caso Foundry ou análise de alvo foi executado.
 
+O M8 acrescenta `--evidence-plan <case-dir> <private-output-dir>` e `--evidence-finalize <bundle-dir>`. O primeiro prepara um snapshot local privado; o segundo só gera `REPORT_READY` após reprodução M7 e revisão humana documentada. Nenhum pacote, relatório ou teste M8 foi executado durante a implementação. Consulte `docs/EVIDENCE-DELIVERY.md`.
+
 ## Companions de engenharia reversa
 
 - Heimdall-rs foi instalado em `/usr/local/bin/heimdall` a partir do asset oficial `heimdall-linux-amd64` da release `0.9.3`. O próprio binário informa `heimdall 0.9.2` em `--version`; registrar **ambos** os identificadores até o upstream esclarecer a divergência. SHA-256 do asset e binário instalado: `8d58c97f56d584d5d0737d0d0895fc8c68b7b8b2b680f2a7842245789f0b4868`.

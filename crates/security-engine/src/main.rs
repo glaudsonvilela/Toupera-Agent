@@ -5,19 +5,53 @@ use std::process::ExitCode;
 
 use security_engine::{
     CachingProvider, CompanionAnalysis, DeepSeekProvider, RateCard, analyze_economic_functions,
-    compare_with_solc_contract, import_gigahorse_tac, import_heimdall_abi, judge_foundry_case,
-    load_or_build_context_package, prepare_foundry_cases, prepare_review_plan,
-    reconstruct_bytecode_hex, reconstruct_source_file, run_review,
+    compare_with_solc_contract, finalize_evidence_bundle, import_gigahorse_tac,
+    import_heimdall_abi, judge_foundry_case, load_or_build_context_package,
+    prepare_evidence_bundle, prepare_foundry_cases, prepare_review_plan, reconstruct_bytecode_hex,
+    reconstruct_source_file, run_review,
 };
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
+            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
         );
         return ExitCode::FAILURE;
     };
+    if source == "--evidence-plan" || source == "--evidence-finalize" {
+        let arguments: Vec<_> = args.collect();
+        let result = if source == "--evidence-plan" {
+            if arguments.len() != 2 {
+                eprintln!("usage: security-engine --evidence-plan <case-dir> <private-output-dir>");
+                return ExitCode::FAILURE;
+            }
+            prepare_evidence_bundle(Path::new(&arguments[0]), Path::new(&arguments[1])).and_then(
+                |manifest| serde_json::to_value(manifest).map_err(|error| error.to_string()),
+            )
+        } else {
+            if arguments.len() != 1 {
+                eprintln!("usage: security-engine --evidence-finalize <bundle-dir>");
+                return ExitCode::FAILURE;
+            }
+            finalize_evidence_bundle(Path::new(&arguments[0]))
+                .and_then(|ready| serde_json::to_value(ready).map_err(|error| error.to_string()))
+        };
+        return match result {
+            Ok(value) => {
+                if let Err(error) = serde_json::to_writer(std::io::stdout(), &value) {
+                    eprintln!("cannot write evidence output: {error}");
+                    return ExitCode::FAILURE;
+                }
+                println!();
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if source == "--foundry-plan" || source == "--foundry-run" {
         let arguments: Vec<_> = args.collect();
         let result = if source == "--foundry-plan" {
