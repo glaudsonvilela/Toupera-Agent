@@ -11,6 +11,7 @@ Authorized target
   → Rust deterministic analysis
   → Slither
   → Candidate reduction
+  → Local invariants when a harness exists
   → Context slicing
   → LLM reasoning
   → Economic hypothesis
@@ -24,7 +25,7 @@ Authorized target
   → Bug bounty report
 ```
 
-The LLM does not receive the whole repository by default. Deterministic processing reduces the candidate set and assembles only relevant function, call, modifier, storage, arithmetic, external-call, oracle, conversion, comment, and invariant context.
+The LLM does not receive the whole repository by default. Deterministic processing and available local property checks reduce the candidate set and assemble only relevant function, call, modifier, storage, arithmetic, external-call, oracle, conversion, comment, and invariant context. A targeted Foundry test still gates any later hypothesis before reporting.
 
 ## Rust contract reconstruction engine
 
@@ -49,8 +50,9 @@ The current M2 source-backed extractor and its limits are described in [Source R
 
 - **Core:** Rust; Alloy for EVM-facing components when needed.
 - **Solidity:** solc AST.
-- **Static analysis:** Slither.
-- **Validation:** Foundry; Foundry fuzzing first, Echidna later if justified.
+- **Static analysis:** Rust economic IR and Slither as complementary evidence producers.
+- **Validation:** Foundry fuzz and invariant tests first; Echidna or Medusa only if coverage and unique findings justify another campaign.
+- **Symbolic/formal:** Halmos for focused Foundry-style properties; Kontrol or Certora for selected high-impact proofs. Mythril is a selective bytecode experiment after M3; Securify2 and archived Manticore are not default dependencies.
 - **Orchestration:** small Python layer.
 - **LLM:** provider-agnostic interface, initially prepared for DeepSeek API.
 - **Storage:** simple local storage for MVP; PostgreSQL later if needed.
@@ -60,7 +62,7 @@ No LangChain or heavyweight framework is planned without a demonstrated need.
 
 ## Token-efficient reduction
 
-Target shape: 10,000 functions → AST/Rust/Slither → about 500 candidates → sliced context → LLM hypotheses → Foundry reproduction attempts. Never one LLM call per function.
+The intended funnel is functions → AST/Rust/Slither → deduplicated candidates → local property checks → sliced context for unresolved economic questions → LLM hypotheses → Foundry reproduction attempts. Never one LLM call per function. Measure candidate reduction and token usage on fixtures; no reduction percentage has been established yet. See [Tooling Strategy](TOOLING-STRATEGY.md).
 
 ## Intermediate representation
 

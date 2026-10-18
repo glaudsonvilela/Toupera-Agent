@@ -37,6 +37,7 @@ O recorte M2 cobre um arquivo Solidity sem imports. O grafo estrutural source-le
 - [ ] Codificar conservação de assets/shares e simetria de preço.
 - [ ] Detectar mismatch de decimals, rounding, preview/execução e accounting.
 - [ ] Detectar share inflation, donation manipulation, fee bypass e problemas de oracle.
+- [ ] Integrar Slither como produtor complementar de evidências e deduplicar seus sinais com a IR Rust.
 - [ ] Emitir candidatos com evidências, nunca veredictos automáticos.
 - [ ] Medir redução de candidatos e falsos positivos em fixtures.
 
@@ -51,6 +52,7 @@ O recorte M2 cobre um arquivo Solidity sem imports. O grafo estrutural source-le
 - [ ] Enviar somente contexto reduzido e estruturado.
 - [ ] Exigir hipótese, premissas, caminhos relevantes e teste sugerido.
 - [ ] Manter o achado como `UNVERIFIED`; LLM não confirma vulnerabilidade.
+- [ ] Medir chamadas/tokens e acionar IA apenas para candidatos deduplicados que ainda exigem interpretação.
 
 ### M7 — Juiz Foundry
 - [ ] Gerar teste local reproduzível para cada hipótese priorizada.
@@ -58,6 +60,10 @@ O recorte M2 cobre um arquivo Solidity sem imports. O grafo estrutural source-le
 - [ ] Aplicar fuzzing de Foundry a limites, fees e arredondamentos.
 - [ ] Rejeitar hipóteses que não reproduzem o comportamento alegado.
 - [ ] Reexecutar resultados positivos e guardar traces relevantes.
+- [ ] Medir cobertura, chamadas válidas e reverts; avaliar Echidna ou Medusa apenas quando acrescentarem alcance ou achados únicos.
+- [ ] Piloto Halmos para propriedades curtas; avaliar Kontrol ou Certora somente para provas críticas com premissas explícitas.
+
+Critérios e prioridade por ferramenta: [Estratégia de ferramentas](TOOLING-STRATEGY.md).
 
 ### M8 — Evidência e entrega
 - [ ] Registrar versão/hash do alvo, configuração e passos para reproduzir.

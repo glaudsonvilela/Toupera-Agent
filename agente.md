@@ -40,5 +40,12 @@ Sem suporte a imports, herança em outros arquivos, CFG completo, resolução de
 ## Próximo passo
 Iniciar M3: recuperação conservadora de bytecode EVM, sem misturar inferência de bytecode com fatos de source.
 
+## Decisão de ferramentas após M2 (2026-10-18)
+- Avaliação documentada em `docs/TOOLING-STRATEGY.md`. Nenhum scanner, fuzzer ou provador adicional foi instalado ou integrado nesta etapa.
+- Prioridade: Rust + Slither para triagem; Foundry para invariantes e reprodução; Halmos em propriedades curtas. Echidna **ou** Medusa apenas se houver lacuna de cobertura ou achados únicos. Mythril pode apoiar M3 seletivamente; Securify2 não é prioridade e Manticore está arquivado.
+- Certora e Kontrol são opções para provas de alto impacto. O CLI padrão de Certora envia jobs aos servidores do fornecedor; alvo privado exige autorização específica antes de qualquer envio.
+- Redução de uso de IA depende de gates e deduplicação; medir tokens, candidatos e bugs reproduzidos. Não afirmar ganho numérico sem benchmark. IA recebe apenas slices de candidatos ainda ambíguos.
+- Esta etapa alterou documentação e memórias; não alterou código nem executou ferramentas de auditoria em alvos.
+
 ## Pendências
 M3 bytecode, detectores econômicos, deduplicação, LLM e Foundry permanecem planejados. Nunca armazenar secrets ou executar exploração em produção.
