@@ -18,6 +18,6 @@
 ## Estado após M2 — grafo source-level parcial
 
 - Leia `docs/ROADMAP-CHECKLIST.md`, `docs/ECONOMIC-IR.md` e `docs/SOURCE-RECONSTRUCTION.md`.
-- `source.rs` extrai IR de solc AST para um arquivo sem imports e resolve corpos de modifiers locais em `applied_modifiers`, com bindings sintáticos de argumento/parâmetro. `cfg.rs` intercala modifiers com um `_` ao grafo da função e preserva pós-trechos após `return`. Testes cobrem cinco fixtures e a CLI foi executada com solc local 0.8.37.
-- Próxima etapa: resolver herança, dataflow entre funções e proxy. `try`, assembly, ternários múltiplos e modifiers com zero/múltiplos `_` ainda não têm fluxo completo. Não afirme que CFG completo ou engenharia reversa de bytecode já funcionam.
+- `source.rs` extrai IR de solc AST para um arquivo sem imports e resolve modifiers locais. `cfg.rs` intercala modifiers com um `_`. `callgraph.rs` produz `ReachabilityPath` até storage, oracle e conversões no mesmo contrato, com spans por chamada. Testes cobrem seis fixtures e a CLI foi executada com solc local 0.8.37.
+- Próxima etapa: propagar valores locais/entre funções, resolver herança e proxy. Alcance entre funções não prova fluxo de valor. `try`, assembly, ternários múltiplos e modifiers com zero/múltiplos `_` ainda não têm fluxo completo. Não afirme que CFG completo ou engenharia reversa de bytecode já funcionam.
 - Atualize este arquivo e `/agente.md` ao final de cada etapa, como solicitado pelo usuário.

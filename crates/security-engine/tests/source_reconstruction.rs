@@ -1,6 +1,6 @@
 use security_engine::{
     Confidence, ControlEdge, ControlEdgeKind, EconomicOperation, Evidence, EvidenceLocation,
-    reconstruct_from_ast_json,
+    ReachabilityTerminal, reconstruct_from_ast_json,
 };
 
 const VAULT_SOURCE: &str = include_str!("../../../tests/fixtures/VaultWithOracle.sol");
@@ -13,6 +13,8 @@ const LOOP_SOURCE: &str = include_str!("../../../tests/fixtures/VaultLoopFixture
 const LOOP_AST: &str = include_str!("../../../tests/fixtures/VaultLoopFixture.ast.json");
 const MODIFIER_SOURCE: &str = include_str!("../../../tests/fixtures/ModifierFlowFixture.sol");
 const MODIFIER_AST: &str = include_str!("../../../tests/fixtures/ModifierFlowFixture.ast.json");
+const CALL_SOURCE: &str = include_str!("../../../tests/fixtures/VaultCallFlowFixture.sol");
+const CALL_AST: &str = include_str!("../../../tests/fixtures/VaultCallFlowFixture.ast.json");
 
 fn source_text<'a, T>(evidence: &Evidence<T>, source: &'a str, file: &str) -> &'a str {
     let EvidenceLocation::Source(span) = &evidence.location else {
@@ -346,6 +348,36 @@ fn multiple_modifiers_wrap_function_in_source_order() {
         "totalSupply += 3"
     );
     assert_eq!(outer_postlude.to.0, "exit");
+}
+
+#[test]
+fn internal_call_paths_reach_oracle_conversion_and_storage() {
+    let records =
+        reconstruct_from_ast_json(CALL_AST, "VaultCallFlowFixture.sol", CALL_SOURCE).unwrap();
+    let deposit = records
+        .iter()
+        .find(|item| item.function.0 == "deposit(uint256)")
+        .unwrap();
+    assert!(deposit.unresolved.is_empty());
+    assert!(deposit.reachability_paths.iter().any(|path| {
+        path.calls.len() == 2 && path.calls[0].value.0 == "readPrice()" && path.calls[1].value.0 == "rawPrice()"
+            && source_text(&path.calls[0], CALL_SOURCE, "VaultCallFlowFixture.sol") == "readPrice()"
+            && matches!(&path.terminal, ReachabilityTerminal::OracleCall(call)
+                if call.value.0 == "oracle.latestPrice"
+                    && source_text(call, CALL_SOURCE, "VaultCallFlowFixture.sol") == "oracle.latestPrice()")
+    }));
+    assert!(deposit.reachability_paths.iter().any(|path| {
+        path.calls.len() == 1
+            && path.calls[0].value.0 == "convertToShares(uint256)"
+            && matches!(&path.terminal, ReachabilityTerminal::Conversion(operation)
+                if operation.value == EconomicOperation::ConvertToShares)
+    }));
+    assert!(deposit.reachability_paths.iter().any(|path| {
+        path.calls.len() == 1
+            && path.calls[0].value.0 == "convertToShares(uint256)"
+            && matches!(&path.terminal, ReachabilityTerminal::StorageRead(read)
+                if read.value.0 == "totalAssets")
+    }));
 }
 
 #[test]

@@ -124,6 +124,22 @@ pub struct ModifierArgumentBinding {
     pub argument: Evidence<String>,
 }
 
+/// A dependency observed at the end of a source-level internal call path.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub enum ReachabilityTerminal {
+    StorageRead(Evidence<StorageId>),
+    StorageWrite(Evidence<StorageId>),
+    OracleCall(Evidence<CallTarget>),
+    Conversion(Evidence<EconomicOperation>),
+}
+
+/// Syntactic call reachability; this alone does not prove value propagation.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ReachabilityPath {
+    pub calls: Vec<Evidence<FunctionId>>,
+    pub terminal: ReachabilityTerminal,
+}
+
 /// Direct syntax observed in a locally resolved modifier applied to a function.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct AppliedModifier {
@@ -158,6 +174,7 @@ pub struct EconomicFunction {
     pub modifiers: Vec<Evidence<String>>,
     pub applied_modifiers: Vec<AppliedModifier>,
     pub related_functions: Vec<Evidence<FunctionId>>,
+    pub reachability_paths: Vec<ReachabilityPath>,
     pub unresolved: Vec<Uncertainty>,
 }
 
@@ -182,6 +199,7 @@ impl EconomicFunction {
             modifiers: Vec::new(),
             applied_modifiers: Vec::new(),
             related_functions: Vec::new(),
+            reachability_paths: Vec::new(),
             unresolved: Vec::new(),
         }
     }

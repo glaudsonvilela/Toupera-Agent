@@ -8,6 +8,7 @@ use std::process::{Command, Stdio};
 
 use serde_json::{Map, Value, json};
 
+use crate::callgraph::populate_reachability;
 use crate::cfg::{build_source_flow, build_source_flow_with_modifiers};
 use crate::{
     AppliedModifier, ArithmeticExpression, CallTarget, Confidence, ContractId, EconomicFunction,
@@ -233,6 +234,7 @@ pub fn reconstruct_from_ast_json(
             functions.push(ir);
         }
     }
+    populate_reachability(&mut functions);
     Ok(functions)
 }
 
