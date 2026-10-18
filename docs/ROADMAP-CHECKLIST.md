@@ -27,11 +27,13 @@ Esta lista acompanha a construção do Toupera Agent e o ciclo completo de anál
 O recorte M2 cobre um arquivo Solidity sem imports. O grafo estrutural source-level liga `if`, retornos, `require`/`assert`, ternários simples, laços e modifiers com um `_`, inclusive herdados no mesmo arquivo. Chamadas internas preservam o contrato declarante; caminhos e fluxo de valor conservador chegam a storage, oracle e conversões com proveniência. `delegatecall` com implementação `immutable` criada localmente no construtor é ligado ao contrato alvo; endereços externos continuam candidatos incertos. Laços e chamadas desconhecidas mantêm incertezas. `try`, assembly, múltiplos ternários, imports e bytecode permanecem fora deste recorte; M3 cobre bytecode.
 
 ### M3 — Engenharia reversa de bytecode EVM
-- [ ] Normalizar bytecode e remover metadados quando possível.
+- [x] Normalizar runtime hex legado e remover metadados CBOR Solidity apenas quando reconhecidos.
 - [ ] Recuperar selector dispatch, blocos básicos e fluxo de controle.
 - [ ] Inferir chamadas externas, acessos a storage e caminhos econômicos.
-- [ ] Registrar cada inferência com PC, confiança e incertezas.
+- [x] Registrar observações e inferências recuperadas com PC, confiança e incertezas.
 - [ ] Manter comportamento ambíguo como desconhecido; comparar com source quando disponível.
+
+Primeira etapa M3: `docs/BYTECODE-RECONSTRUCTION.md` descreve o decoder legado, saltos literais, selectors diretos, efeitos de opcode e comparação opcional com `solc` Standard JSON. Dispatch, CFG e source matching são parciais; stack, memória e caminhos econômicos de bytecode ainda não foram reconstruídos. Não tratar o M3 como concluído.
 
 ### M4 — Análise econômica determinística
 - [ ] Codificar conservação de assets/shares e simetria de preço.

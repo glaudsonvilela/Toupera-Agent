@@ -7,7 +7,7 @@ Construir um auditor de segurança econômica Solidity/EVM para vaults, oracles,
 Alvo autorizado → source/bytecode → reconstrução Rust com proveniência e incertezas → filtros determinísticos/Slither → context slicing → LLM → hipótese → teste local Foundry → evidência → revisão humana → relatório. Source é a entrada atual; bytecode virá depois. Nenhuma hipótese vira vulnerabilidade sem reprodução.
 
 ## Fase atual
-M0, M1 e M2 concluídos no recorte source-first de um arquivo sem imports: extração source/AST, grafo estrutural parcial, composição de modifiers locais e herdados, alcance interno entre contratos da mesma fonte e fluxo de valor conservador implementados para um arquivo Solidity por vez.
+M0, M1 e M2 concluídos no recorte source-first de um arquivo sem imports: extração source/AST, grafo estrutural parcial, composição de modifiers locais e herdados, alcance interno entre contratos da mesma fonte e fluxo de valor conservador implementados para um arquivo Solidity por vez. M3 iniciado com decoder conservador de runtime legado e análise separada da IR source; caminhos econômicos de bytecode ainda estão pendentes.
 
 ## Decisões técnicas
 - Core Rust em workspace Cargo; `serde`/`serde_json` apenas para AST e IR JSON.
@@ -38,7 +38,13 @@ M2 liga base e derivado pelo AST, conserva identidade das chamadas herdadas e di
 Sem suporte a imports, herança em outros arquivos, CFG completo, resolução de endereço de proxy fornecido na implantação ou bytecode. Loops têm aproximação de uma iteração com incerteza; chamadas desconhecidas não têm retorno presumido. Fluxo de valor não prova factibilidade de caminho. Modifiers ausentes da fonte ou com zero/múltiplos `_` ficam sem composição. `try`, assembly e ternários múltiplos/aninhados não têm fluxo completo.
 
 ## Próximo passo
-Iniciar M3: recuperação conservadora de bytecode EVM, sem misturar inferência de bytecode com fatos de source.
+Continuar M3: propagar stack de modo conservador para resolver mais saltos e dependências de valor; ligar efeitos de bytecode aos caminhos econômicos sem misturar inferências com fatos de source.
+
+## Etapa M3 inicial (2026-10-18)
+- `crates/security-engine/src/bytecode.rs` analisa runtime EVM legado em hex. Remove metadados CBOR Solidity somente com estrutura completa e chave reconhecida; decodifica `PUSH` sem confundir dados imediatos com opcodes, cria blocos, resolve apenas saltos literais a `JUMPDEST`, reconhece candidatos de dispatch direto `PUSH4/EQ/PUSH/JUMPI` (`Inferred` só com `DUP1` anterior e alcance conhecido) e observa storage/transient storage/chamadas/criação/autodestruição por PC.
+- `entry_summaries` reúne efeitos alcançados por cada selector recuperado. Blocos não alcançados pelo CFG conhecido mantêm confiança `Tentative`; saltos dinâmicos, `PUSH` truncado, opcodes desconhecidos e disponibilidade dependente de hard fork ficam em `unresolved`. Um slot constante só é ligado a `SLOAD`/`SSTORE`/`TLOAD`/`TSTORE` quando vem de `PUSH` imediatamente anterior, com confiança `Inferred`.
+- CLI: `--bytecode <runtime.hex>` e `--compare-bytecode <runtime.hex> <solc.json> <source> <contrato>`. A comparação opcional usa runtime normalizado e `methodIdentifiers` de saída local do solc; selector isolado não comprova identidade do source. EOF, creation code, saltos calculados, stack/memória e fluxo econômico não são recuperados neste recorte.
+- Documentação: `docs/BYTECODE-RECONSTRUCTION.md`, roadmap, IR e README atualizados. `cargo fmt --all`, `cargo check -p security-engine --offline` e `git diff --check` executados; nenhum teste automatizado foi executado nesta etapa.
 
 ## Decisão de ferramentas após M2 (2026-10-18)
 - Avaliação documentada em `docs/TOOLING-STRATEGY.md`. Na etapa original de avaliação, nenhum scanner, fuzzer ou provador adicional havia sido instalado ou integrado; a instalação posterior no VPS está registrada abaixo.
@@ -64,4 +70,4 @@ Iniciar M3: recuperação conservadora de bytecode EVM, sem misturar inferência
 - O CLI Certora não tem `CERTORAKEY`; instalação não habilita provas remotas. As ferramentas ainda não estão ligadas à IR Rust ou ao pipeline do projeto.
 
 ## Pendências
-M3 bytecode, detectores econômicos, deduplicação, LLM e Foundry permanecem planejados. Nunca armazenar secrets ou executar exploração em produção.
+Concluir M3 com stack e caminhos econômicos; detectores econômicos, deduplicação, LLM e juiz Foundry permanecem planejados. Nunca armazenar secrets ou executar exploração em produção.
