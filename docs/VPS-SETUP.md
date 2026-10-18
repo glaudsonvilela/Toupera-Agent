@@ -9,6 +9,7 @@ Estado verificado em 2026-10-18 para `srv2074743.hstgr.cloud` (Hostinger KVM 4).
 - Usuário `toupera`, sem sudo, dono de `/srv/toupera-agent`. O acesso administrativo existente por `root` não foi removido; a autenticação por senha do SSH também permanece habilitada.
 - UFW ativo com política de entrada `deny` e somente OpenSSH permitido. Fail2ban ativo para `sshd` (5 falhas em 10 minutos, bloqueio por 1 hora).
 - Atualizações automáticas de segurança já estavam ativas; `apt-daily-upgrade.timer` estava habilitado. Pacotes do sistema foram atualizados em 2026-10-18.
+- O VPS foi reiniciado após as atualizações; SSH, Fail2ban, UFW, swap e as ferramentas foram verificados novamente. O marcador `reboot-required` desapareceu.
 - Swap de 4 GB em `/swapfile`, persistido em `/etc/fstab`.
 
 ## Ferramentas instaladas

@@ -51,6 +51,7 @@ Iniciar M3: recuperação conservadora de bytecode EVM, sem misturar inferência
 - VPS Hostinger KVM 4 `srv2074743.hstgr.cloud`, Ubuntu 26.04.1 LTS, 4 vCPU, 16 GiB RAM e 200 GB de disco; acesso SSH root verificado com a chave pública ED25519 autorizada pelo usuário.
 - DeepSeek será usado por API. Inferência não será hospedada no VPS; enviar apenas slices mínimos e nunca credenciais ou o repositório inteiro por padrão.
 - Pacotes Ubuntu atualizados. Usuário de execução `toupera` sem sudo, UFW restrito a OpenSSH, Fail2ban SSH e swap de 4 GB ativos. Atualizações automáticas de segurança já estavam ativas.
+- Reinicialização pós-atualização concluída; SSH, Fail2ban, UFW, swap, `solc`, Rust, Slither, Foundry e binário Rust verificados de novo. Nenhuma reinicialização pendente.
 - Rust/Cargo 1.93.1, solc 0.8.37 com SHA-256 conferido, Slither 0.11.6 e Foundry 1.8.5 instalados. Fonte privada enviada por `git archive` a `/srv/toupera-agent`, sem token GitHub; CLI Rust compilado em release com `--locked`.
 - Smoke operacional: CLI produziu 4 registros de IR em `VaultCallFlowFixture.sol`; Slither analisou a fixture com 102 detectores e 3 alertas (`success=true`); `forge --version` funcionou. Não foram executados testes automatizados nesta etapa de infraestrutura.
 - Nenhum serviço web, API, integração DeepSeek ou secret foi implantado. O SSH por senha/root existente permaneceu habilitado; hardening adicional de autenticação exige coordenação para evitar perda de acesso. Ver `docs/VPS-SETUP.md`.
