@@ -75,6 +75,8 @@ A revisão de código M5 `acd4d48` foi sincronizada e compilada em release no VP
 
 `--llm-plan <context.json>` monta o plano de perguntas sem rede. `--llm-review <context.json> --provider deepseek --allow-external --review-cache <diretório-privado>` pode enviar slices à API DeepSeek quando a chave `TOUPERA_DEEPSEEK_API_KEY` estiver no ambiente e o escopo permitir processamento externo. O cache de respostas exige `0700`/`0600`. Nenhuma chave foi instalada e nenhuma chamada DeepSeek foi executada nesta etapa. O CLI não roda como serviço. Leia `docs/LLM-REVIEW.md` antes de usar o modo externo.
 
+A revisão de código M6 `6ff127a` foi sincronizada e compilada em release no VPS sob `toupera` em 2026-10-18. O marcador `.deployed-commit` registrou essa revisão antes do complemento documental final; nenhum plano M6, chamada DeepSeek ou fixture foi executado no VPS.
+
 ## Operação segura
 
 Use apenas fontes próprias, forks locais ou programas com autorização explícita. Antes de analisar outro alvo, confirme o escopo. Nunca registre chave da API, senha ou chave SSH privada no repositório, nos argumentos de linha de comando ou nos logs. A chave DeepSeek deverá ser injetada no ambiente apenas quando o uso externo for autorizado; ela não foi instalada. Não exponha `anvil` na rede pública.
