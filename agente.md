@@ -19,13 +19,14 @@ M0 — Repository/Foundation concluído.
 ## Arquivos alterados/criados
 - `README.md`, `agente.md`, `.gitignore`, `Cargo.toml`, `Cargo.lock`
 - `codex/agent.md`
-- `docs/ARCHITECTURE.md`, `docs/ECONOMIC-SCOPE.md`, `docs/SECURITY-SCOPE.md`
+- `docs/ARCHITECTURE.md`, `docs/ECONOMIC-SCOPE.md`, `docs/SECURITY-SCOPE.md`, `docs/ROADMAP-CHECKLIST.md`
 - `assets/toupera-agent.png`
 - `crates/security-engine/Cargo.toml`, `crates/security-engine/src/lib.rs`
 
 ## Testes executados
 `cargo test -p security-engine` (18/10/2026): 2 testes unitários passaram; doc-tests: 0 testes, sem falhas.
 Esta atualização mudou apenas documentação; `git diff --check` passou. Os testes Rust não foram reexecutados.
+Checklist de construção e auditoria adicionada em `docs/ROADMAP-CHECKLIST.md`; testes não reexecutados nesta etapa documental.
 
 ## Resultados
 `cargo test -p security-engine` (18/10/2026): 2 testes unitários passaram; doc-tests: 0 testes, sem falhas.
