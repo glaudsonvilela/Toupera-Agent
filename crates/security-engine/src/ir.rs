@@ -147,6 +147,14 @@ pub struct ResolvedFunction {
     pub function: FunctionId,
 }
 
+/// Source evidence that a delegatecall uses a fixed, locally created implementation.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProxyRelation {
+    pub implementation: Evidence<ContractId>,
+    pub binding: Evidence<String>,
+    pub delegatecall: Evidence<CallTarget>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum ValueOrigin {
     Parameter(String),
@@ -185,6 +193,7 @@ pub struct AppliedModifier {
     pub arithmetic: Vec<Evidence<ArithmeticExpression>>,
     pub control_conditions: Vec<Evidence<String>>,
     pub delegatecall_targets: Vec<Evidence<CallTarget>>,
+    pub proxy_relations: Vec<ProxyRelation>,
     pub related_functions: Vec<Evidence<FunctionId>>,
     pub resolved_calls: Vec<Evidence<ResolvedFunction>>,
     pub unresolved: Vec<Uncertainty>,
@@ -204,6 +213,7 @@ pub struct EconomicFunction {
     pub control_conditions: Vec<Evidence<String>>,
     pub control_edges: Vec<ControlEdge>,
     pub delegatecall_targets: Vec<Evidence<CallTarget>>,
+    pub proxy_relations: Vec<ProxyRelation>,
     pub modifiers: Vec<Evidence<String>>,
     pub applied_modifiers: Vec<AppliedModifier>,
     pub related_functions: Vec<Evidence<FunctionId>>,
@@ -231,6 +241,7 @@ impl EconomicFunction {
             control_conditions: Vec::new(),
             control_edges: Vec::new(),
             delegatecall_targets: Vec::new(),
+            proxy_relations: Vec::new(),
             modifiers: Vec::new(),
             applied_modifiers: Vec::new(),
             related_functions: Vec::new(),

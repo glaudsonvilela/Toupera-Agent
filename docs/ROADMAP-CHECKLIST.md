@@ -16,14 +16,15 @@ Esta lista acompanha a construção do Toupera Agent e o ciclo completo de anál
 - [x] Marcar confiança, semântica incerta e dados ausentes explicitamente.
 - [x] Validar a IR com fixtures pequenas de vaults Solidity.
 
-### M2 — Reconstrução source-first (em andamento)
+### M2 — Reconstrução source-first (concluído no recorte de um arquivo)
+
 - [x] Ingerir um arquivo Solidity explícito e obter AST do solc local.
-- [ ] Construir fluxos de controle, chamadas e dependências de estado.
-- [ ] Mapear operações econômicas, caminhos de oracle e conversões shares/assets.
-- [ ] Identificar proxies/implementações quando houver evidência.
+- [x] Construir fluxos de controle, chamadas e dependências de estado.
+- [x] Mapear operações econômicas, caminhos de oracle e conversões shares/assets.
+- [x] Identificar proxies/implementações quando houver evidência.
 - [x] Comparar a IR com fixtures e resultados locais conhecidos.
 
-O recorte atual captura condições de desvio, chamadas internas, acessos diretos a storage e candidatos de oracle/proxy. O grafo estrutural source-level liga `if`, retornos, `require`/`assert`, ternários simples, laços e modifiers locais com um `_`. Caminhos internos de chamadas e fluxo de valor conservador chegam a storage, oracle e conversões com proveniência. Laços e chamadas desconhecidas mantêm incertezas. Faltam herança e resolução mais forte de proxy para fechar as caixas restantes; `try`/assembly continuam fora da cobertura completa.
+O recorte M2 cobre um arquivo Solidity sem imports. O grafo estrutural source-level liga `if`, retornos, `require`/`assert`, ternários simples, laços e modifiers com um `_`, inclusive herdados no mesmo arquivo. Chamadas internas preservam o contrato declarante; caminhos e fluxo de valor conservador chegam a storage, oracle e conversões com proveniência. `delegatecall` com implementação `immutable` criada localmente no construtor é ligado ao contrato alvo; endereços externos continuam candidatos incertos. Laços e chamadas desconhecidas mantêm incertezas. `try`, assembly, múltiplos ternários, imports e bytecode permanecem fora deste recorte; M3 cobre bytecode.
 
 ### M3 — Engenharia reversa de bytecode EVM
 - [ ] Normalizar bytecode e remover metadados quando possível.

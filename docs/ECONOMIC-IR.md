@@ -13,6 +13,7 @@ The Rust `EconomicFunction` record is a compact description of one vault or orac
 - **Local modifiers:** `AppliedModifier` keeps the invocation and definition spans, parameter-to-argument bindings, and direct reads, writes, calls, arithmetic, and conditions observed in the modifier body. These observations are also included in the function-level dependency lists.
 - **Internal call reachability:** `ReachabilityPath` records each call-site span and a terminal storage read/write, oracle call, or conversion. It is call reachability, not proof that a value propagates through the chain.
 - **Value dependence:** `ValueFlow` links a parameter, storage read, oracle call, or external call to a guard, return, storage write, or conversion argument. It retains source spans, contributing call sites, and `Inferred` confidence. A path is a conservative static inference, not a vulnerability verdict.
+- **Proxy relation:** `ProxyRelation` records a locally created fixed implementation, its constructor binding, and the delegatecall receiver. Unknown targets remain tentative in `delegatecall_targets`.
 
 `SourceSpan` uses UTF-8 byte offsets with an exclusive end and a path relative to the analyzed source root. Its `slice` method checks bounds and character boundaries against the supplied source text. A bytecode location identifies an artifact and program counter; bytecode ingestion itself is not implemented.
 
@@ -20,4 +21,4 @@ The Rust `EconomicFunction` record is a compact description of one vault or orac
 
 ## Milestone state
 
-M1 established this data model with a manually assembled vault fixture. The M2 extractor now fills it from solc AST for a single source file, adds a partial source control graph, and attaches same-file modifier effects, including inherited definitions; see [Source Reconstruction](SOURCE-RECONSTRUCTION.md). Local modifiers with exactly one `_` are composed into the function graph. Others remain explicitly unresolved. It does not recover bytecode or detect vulnerabilities.
+M1 established this data model with a manually assembled vault fixture. The completed M2 source slice fills it from solc AST for a single source file, adds a partial source control graph, preserves declaring contracts across inheritance, and attaches same-file modifier effects, including inherited definitions; see [Source Reconstruction](SOURCE-RECONSTRUCTION.md). Local modifiers with exactly one `_` are composed into the function graph. Others remain explicitly unresolved. It does not recover bytecode or detect vulnerabilities.

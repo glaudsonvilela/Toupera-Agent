@@ -17,6 +17,10 @@ const CALL_SOURCE: &str = include_str!("../../../tests/fixtures/VaultCallFlowFix
 const CALL_AST: &str = include_str!("../../../tests/fixtures/VaultCallFlowFixture.ast.json");
 const INHERITED_SOURCE: &str = include_str!("../../../tests/fixtures/InheritedVaultFixture.sol");
 const INHERITED_AST: &str = include_str!("../../../tests/fixtures/InheritedVaultFixture.ast.json");
+const RESOLVED_PROXY_SOURCE: &str =
+    include_str!("../../../tests/fixtures/ResolvedProxyFixture.sol");
+const RESOLVED_PROXY_AST: &str =
+    include_str!("../../../tests/fixtures/ResolvedProxyFixture.ast.json");
 
 fn source_text<'a, T>(evidence: &Evidence<T>, source: &'a str, file: &str) -> &'a str {
     let EvidenceLocation::Source(span) = &evidence.location else {
@@ -125,6 +129,83 @@ fn records_delegatecall_as_a_tentative_proxy_relation() {
         "implementation"
     );
     assert_eq!(fallback.unresolved.len(), 1);
+    assert!(fallback.proxy_relations.is_empty());
+}
+
+#[test]
+fn immutable_local_implementation_resolves_proxy_relation() {
+    let records = reconstruct_from_ast_json(
+        RESOLVED_PROXY_AST,
+        "ResolvedProxyFixture.sol",
+        RESOLVED_PROXY_SOURCE,
+    )
+    .unwrap();
+    let fallback = records
+        .iter()
+        .find(|item| item.contract.0 == "ResolvedProxyFixture" && item.function.0 == "fallback()")
+        .unwrap();
+    assert_eq!(fallback.proxy_relations.len(), 1);
+    let relation = &fallback.proxy_relations[0];
+    assert_eq!(relation.implementation.value.0, "FixedVaultLogic");
+    assert_eq!(relation.implementation.confidence, Confidence::Inferred);
+    assert_eq!(
+        source_text(
+            &relation.implementation,
+            RESOLVED_PROXY_SOURCE,
+            "ResolvedProxyFixture.sol"
+        ),
+        "FixedVaultLogic"
+    );
+    assert_eq!(
+        source_text(
+            &relation.binding,
+            RESOLVED_PROXY_SOURCE,
+            "ResolvedProxyFixture.sol"
+        ),
+        "implementation = address(new FixedVaultLogic())"
+    );
+    assert_eq!(
+        source_text(
+            &relation.delegatecall,
+            RESOLVED_PROXY_SOURCE,
+            "ResolvedProxyFixture.sol"
+        ),
+        "implementation"
+    );
+    assert!(fallback.unresolved.is_empty(), "{:?}", fallback.unresolved);
+}
+
+#[test]
+fn mutable_implementation_does_not_gain_a_fixed_proxy_relation() {
+    let mut ast: serde_json::Value = serde_json::from_str(RESOLVED_PROXY_AST).unwrap();
+    let contract = ast["sources"]["ResolvedProxyFixture.sol"]["ast"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["name"] == "ResolvedProxyFixture")
+        .unwrap();
+    let state = contract["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["name"] == "implementation")
+        .unwrap();
+    state["mutability"] = serde_json::json!("mutable");
+    let records = reconstruct_from_ast_json(
+        &ast.to_string(),
+        "ResolvedProxyFixture.sol",
+        RESOLVED_PROXY_SOURCE,
+    )
+    .unwrap();
+    let fallback = records
+        .iter()
+        .find(|item| item.function.0 == "fallback()")
+        .unwrap();
+    assert!(fallback.proxy_relations.is_empty());
+    assert_eq!(
+        fallback.delegatecall_targets[0].confidence,
+        Confidence::Tentative
+    );
 }
 
 #[test]

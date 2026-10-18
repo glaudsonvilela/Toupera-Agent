@@ -14,7 +14,7 @@ use crate::dataflow::populate_value_flows;
 use crate::{
     AppliedModifier, ArithmeticExpression, CallTarget, Confidence, ContractId, EconomicFunction,
     EconomicOperation, Evidence, EvidenceLocation, FunctionId, ModifierArgumentBinding,
-    ResolvedFunction, SourceSpan, StorageId, Uncertainty, UncertaintyKind,
+    ProxyRelation, ResolvedFunction, SourceSpan, StorageId, Uncertainty, UncertaintyKind,
 };
 
 /// Compiles one explicitly supplied Solidity source file locally, then reconstructs its IR.
@@ -171,6 +171,8 @@ pub fn reconstruct_from_ast_json(
             .filter(|node| node_type(node) == Some("ModifierDefinition"))
             .filter_map(|node| Some((node.get("id")?.as_i64()?, node)))
             .collect();
+        let proxy_bindings =
+            resolve_proxy_bindings(members, &contracts, source_name, source, source_id);
 
         let first_function = functions.len();
         for function in members
@@ -219,6 +221,7 @@ pub fn reconstruct_from_ast_json(
                 &state,
                 &function_ids,
                 &declaring_contracts,
+                &proxy_bindings,
                 source_name,
                 source,
                 source_id,
@@ -231,6 +234,7 @@ pub fn reconstruct_from_ast_json(
                 state: &state,
                 function_ids: &function_ids,
                 declaring_contracts: &declaring_contracts,
+                proxy_bindings: &proxy_bindings,
                 ir: &mut ir,
             };
             walker.visit(body, Access::Read, false);
@@ -275,6 +279,120 @@ pub fn reconstruct_from_ast_json(
     Ok(functions)
 }
 
+#[derive(Clone)]
+struct ProxyBinding {
+    implementation: Evidence<ContractId>,
+    assignment: Evidence<String>,
+}
+
+fn resolve_proxy_bindings(
+    members: &[Value],
+    contracts: &HashMap<i64, &Value>,
+    file: &str,
+    source: &str,
+    source_id: i64,
+) -> HashMap<i64, ProxyBinding> {
+    let immutable: std::collections::HashSet<i64> = members
+        .iter()
+        .filter(|member| node_type(member) == Some("VariableDeclaration"))
+        .filter(|member| member["stateVariable"].as_bool() == Some(true))
+        .filter(|member| member["mutability"].as_str() == Some("immutable"))
+        .filter_map(|member| member["id"].as_i64())
+        .collect();
+    let mut bindings = HashMap::new();
+    let mut seen_assignments = std::collections::HashSet::new();
+    for constructor in members.iter().filter(|member| {
+        node_type(member) == Some("FunctionDefinition")
+            && member["kind"].as_str() == Some("constructor")
+    }) {
+        let Some(statements) = constructor["body"]["statements"].as_array() else {
+            continue;
+        };
+        for statement in statements {
+            if node_type(statement) != Some("ExpressionStatement") {
+                continue;
+            }
+            let assignment = &statement["expression"];
+            if node_type(assignment) != Some("Assignment")
+                || assignment["operator"].as_str() != Some("=")
+            {
+                continue;
+            }
+            let Some(state_id) = assignment["leftHandSide"]["referencedDeclaration"].as_i64()
+            else {
+                continue;
+            };
+            if !immutable.contains(&state_id) {
+                continue;
+            }
+            if !seen_assignments.insert(state_id) {
+                bindings.remove(&state_id);
+                continue;
+            }
+            let conversion = &assignment["rightHandSide"];
+            if node_type(conversion) != Some("FunctionCall")
+                || conversion["kind"].as_str() != Some("typeConversion")
+                || conversion["expression"]["typeName"]["name"].as_str() != Some("address")
+            {
+                continue;
+            }
+            let Some(created) = conversion["arguments"]
+                .as_array()
+                .and_then(|items| items.first())
+            else {
+                continue;
+            };
+            if node_type(created) != Some("FunctionCall")
+                || node_type(&created["expression"]) != Some("NewExpression")
+            {
+                continue;
+            }
+            let type_name = &created["expression"]["typeName"];
+            let Some(contract_id) = type_name["referencedDeclaration"].as_i64() else {
+                continue;
+            };
+            let Some(contract) = contracts.get(&contract_id) else {
+                continue;
+            };
+            if contract["contractKind"].as_str() != Some("contract") {
+                continue;
+            }
+            let Some(implementation) = evidence_for_node(
+                type_name,
+                file,
+                source,
+                source_id,
+                ContractId(contract["name"].as_str().unwrap_or("").to_owned()),
+                Confidence::Inferred,
+            ) else {
+                continue;
+            };
+            let Some(text) = source_fragment(assignment, file, source, source_id) else {
+                continue;
+            };
+            let Some(assignment) = evidence_for_node(
+                assignment,
+                file,
+                source,
+                source_id,
+                text.to_owned(),
+                Confidence::Direct,
+            ) else {
+                continue;
+            };
+            // Duplicate assignments would require path-sensitive constructor analysis.
+            bindings.insert(
+                state_id,
+                ProxyBinding {
+                    implementation,
+                    assignment,
+                },
+            );
+        }
+    }
+    bindings
+}
+
 fn composable_modifier_bodies<'a>(
     function: &Value,
     local_modifiers: &HashMap<i64, &'a Value>,
@@ -302,6 +420,7 @@ fn resolve_local_modifiers(
     state: &HashMap<i64, String>,
     function_ids: &HashMap<i64, FunctionId>,
     declaring_contracts: &HashMap<i64, ContractId>,
+    proxy_bindings: &HashMap<i64, ProxyBinding>,
     source_name: &str,
     source: &str,
     source_id: i64,
@@ -388,6 +507,7 @@ fn resolve_local_modifiers(
             state,
             function_ids,
             declaring_contracts,
+            proxy_bindings,
             ir: &mut observed,
         }
         .visit(body, Access::Read, false);
@@ -425,6 +545,8 @@ fn resolve_local_modifiers(
             .extend(observed.control_conditions.iter().cloned());
         ir.delegatecall_targets
             .extend(observed.delegatecall_targets.iter().cloned());
+        ir.proxy_relations
+            .extend(observed.proxy_relations.iter().cloned());
         ir.related_functions
             .extend(observed.related_functions.iter().cloned());
         ir.resolved_calls
@@ -441,6 +563,7 @@ fn resolve_local_modifiers(
             arithmetic: observed.arithmetic,
             control_conditions: observed.control_conditions,
             delegatecall_targets: observed.delegatecall_targets,
+            proxy_relations: observed.proxy_relations,
             related_functions: observed.related_functions,
             resolved_calls: observed.resolved_calls,
             unresolved,
@@ -626,6 +749,7 @@ struct Walker<'a> {
     state: &'a HashMap<i64, String>,
     function_ids: &'a HashMap<i64, FunctionId>,
     declaring_contracts: &'a HashMap<i64, ContractId>,
+    proxy_bindings: &'a HashMap<i64, ProxyBinding>,
     ir: &'a mut EconomicFunction,
 }
 
@@ -857,15 +981,32 @@ impl Walker<'_> {
             self.ir.oracle_dependencies.push(oracle);
         }
         if member == "delegatecall" {
-            if let Some(implementation) =
-                self.evidence(receiver, CallTarget(receiver_text), Confidence::Tentative)
-            {
-                self.ir.delegatecall_targets.push(implementation);
-                self.ir.unresolved.push(Uncertainty {
-                    kind: UncertaintyKind::AmbiguousSemantics,
-                    detail: "delegatecall target may be a proxy implementation; resolve before asserting".into(),
-                    location: self.evidence(node, (), Confidence::Direct).map(|e| e.location),
-                });
+            let binding = receiver["referencedDeclaration"]
+                .as_i64()
+                .and_then(|id| self.proxy_bindings.get(&id));
+            if let Some(implementation) = self.evidence(
+                receiver,
+                CallTarget(receiver_text),
+                if binding.is_some() {
+                    Confidence::Inferred
+                } else {
+                    Confidence::Tentative
+                },
+            ) {
+                self.ir.delegatecall_targets.push(implementation.clone());
+                if let Some(binding) = binding {
+                    self.ir.proxy_relations.push(ProxyRelation {
+                        implementation: binding.implementation.clone(),
+                        binding: binding.assignment.clone(),
+                        delegatecall: implementation,
+                    });
+                } else {
+                    self.ir.unresolved.push(Uncertainty {
+                        kind: UncertaintyKind::AmbiguousSemantics,
+                        detail: "delegatecall target may be a proxy implementation; resolve before asserting".into(),
+                        location: self.evidence(node, (), Confidence::Direct).map(|e| e.location),
+                    });
+                }
             }
         }
     }
