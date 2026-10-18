@@ -1,0 +1,66 @@
+# Architecture
+
+## Analysis pipeline
+
+```text
+Authorized target
+  → Scope validation
+  → Solidity source
+  → AST / Call Graph / State Graph
+  → Rust deterministic analysis
+  → Slither
+  → Candidate reduction
+  → Context slicing
+  → LLM reasoning
+  → Economic hypothesis
+  → Foundry test generation
+  → Local execution / fork
+  → Invariant reproduced?
+      No  → discard or store as unverified
+      Yes → validate again
+  → Evidence package
+  → Human review
+  → Bug bounty report
+```
+
+The LLM does not receive the whole repository by default. Deterministic processing reduces the candidate set and assembles only relevant function, call, modifier, storage, arithmetic, external-call, oracle, conversion, comment, and invariant context.
+
+## Stack plan
+
+- **Core:** Rust; Alloy for EVM-facing components when needed.
+- **Solidity:** solc AST.
+- **Static analysis:** Slither.
+- **Validation:** Foundry; Foundry fuzzing first, Echidna later if justified.
+- **Orchestration:** small Python layer.
+- **LLM:** provider-agnostic interface, initially prepared for DeepSeek API.
+- **Storage:** simple local storage for MVP; PostgreSQL later if needed.
+- **Sandbox:** Docker when needed.
+
+No LangChain or heavyweight framework is planned without a demonstrated need.
+
+## Token-efficient reduction
+
+Target shape: 10,000 functions → AST/Rust/Slither → about 500 candidates → sliced context → LLM hypotheses → Foundry reproduction attempts. Never one LLM call per function.
+
+## Intermediate representation
+
+A compact per-function record should describe contract and function identity, storage reads/writes, external calls, and economic operation. Example:
+
+```json
+{
+  "contract": "Vault",
+  "function": "redeem",
+  "reads": ["totalAssets", "totalSupply"],
+  "writes": ["balances"],
+  "external_calls": ["oracle.latestPrice"],
+  "economic_operation": "shares_to_assets"
+}
+```
+
+## Deduplication and clones
+
+Plan source, bytecode, AST, and function hashes to avoid repeat work. Known dependencies (for example OpenZeppelin, Chainlink interfaces, ERC20 base code, and SafeERC20) should be recognized and not repeatedly sent to an LLM. Later, compare forks/clones against their origin and prioritize changed code. This is a future capability, not part of M0.
+
+## Finding lifecycle
+
+`UNVERIFIED → REJECTED | REPRODUCED → CONFIRMED → REPORT_READY`. An LLM hypothesis is not a vulnerability verdict. Foundry/local fork reproduction and human review gate progression.

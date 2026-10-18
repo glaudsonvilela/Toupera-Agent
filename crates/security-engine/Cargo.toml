@@ -1,0 +1,8 @@
+[package]
+name = "security-engine"
+version = "0.1.0"
+edition = "2024"
+license = "UNLICENSED"
+description = "Foundational types for Toupera Agent's EVM economic security engine"
+
+[dependencies]
