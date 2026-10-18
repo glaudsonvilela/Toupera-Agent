@@ -8,8 +8,8 @@ use serde::Serialize;
 
 pub use ir::{
     AppliedModifier, ArithmeticExpression, BasicBlockId, BytecodePc, CallTarget, Confidence,
-    ControlEdge, ControlEdgeKind, EconomicFunction, Evidence, EvidenceLocation, SourceSpan,
-    StorageId, Uncertainty, UncertaintyKind,
+    ControlEdge, ControlEdgeKind, EconomicFunction, Evidence, EvidenceLocation,
+    ModifierArgumentBinding, SourceSpan, StorageId, Uncertainty, UncertaintyKind,
 };
 pub use source::{reconstruct_from_ast_json, reconstruct_source_file};
 

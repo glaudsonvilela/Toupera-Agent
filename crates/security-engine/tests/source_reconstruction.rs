@@ -171,11 +171,14 @@ fn links_internal_calls_modifiers_and_branch_conditions() {
             .iter()
             .any(|item| item.value == "totalAssets > 0")
     );
+    assert!(preview.unresolved.is_empty());
     assert!(
         preview
-            .unresolved
+            .control_edges
             .iter()
-            .any(|item| item.detail.contains("modifier body"))
+            .any(|edge| edge.kind == ControlEdgeKind::False
+                && edge.to.0 == "exit"
+                && edge_text(edge, FLOW_SOURCE, "VaultFlowFixture.sol") == "totalAssets > 0")
     );
     assert_eq!(preview.related_functions.len(), 1);
     assert_eq!(
@@ -249,17 +252,48 @@ fn local_modifier_effects_keep_their_own_provenance_and_uncertainty() {
             .iter()
             .any(|item| item.value == "totalSupply < 1000")
     );
-    assert!(
-        effect
-            .unresolved
-            .iter()
-            .any(|item| item.detail.contains("not bound"))
+    assert!(effect.unresolved.is_empty());
+    assert!(deposit.unresolved.is_empty());
+    assert_eq!(effect.bindings.len(), 1);
+    assert_eq!(effect.bindings[0].parameter.value, "minAssets");
+    assert_eq!(effect.bindings[0].argument.value, "assets");
+    assert_eq!(
+        source_text(
+            &effect.bindings[0].parameter,
+            MODIFIER_SOURCE,
+            "ModifierFlowFixture.sol"
+        ),
+        "uint256 minAssets"
+    );
+    assert_eq!(
+        source_text(
+            &effect.bindings[0].argument,
+            MODIFIER_SOURCE,
+            "ModifierFlowFixture.sol"
+        ),
+        "assets"
     );
     assert!(
-        deposit
+        !deposit
             .unresolved
             .iter()
             .any(|item| item.detail.contains("not spliced"))
+    );
+    let return_to_postlude = deposit
+        .control_edges
+        .iter()
+        .find(|edge| {
+            edge.kind == ControlEdgeKind::Next
+                && edge_text(edge, MODIFIER_SOURCE, "ModifierFlowFixture.sol")
+                    .starts_with("return assets")
+        })
+        .expect("function return must enter modifier postlude");
+    assert_ne!(return_to_postlude.to.0, "exit");
+    assert!(
+        deposit
+            .control_edges
+            .iter()
+            .any(|edge| edge.from == return_to_postlude.to && edge.to.0 == "exit")
     );
     assert!(
         deposit
@@ -273,6 +307,45 @@ fn local_modifier_effects_keep_their_own_provenance_and_uncertainty() {
             .iter()
             .any(|item| item.value.0 == "totalAssets" && !effect.writes.contains(item))
     );
+}
+
+#[test]
+fn multiple_modifiers_wrap_function_in_source_order() {
+    let records =
+        reconstruct_from_ast_json(MODIFIER_AST, "ModifierFlowFixture.sol", MODIFIER_SOURCE)
+            .unwrap();
+    let mint = records
+        .iter()
+        .find(|item| item.function.0 == "mint(uint256)")
+        .unwrap();
+    assert_eq!(
+        mint.applied_modifiers
+            .iter()
+            .map(|item| item.definition.value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["charged", "checkedAndAccounted"]
+    );
+    assert!(mint.unresolved.is_empty());
+    let edges = &mint.control_edges;
+    let returned = edges
+        .iter()
+        .find(|edge| edge_text(edge, MODIFIER_SOURCE, "ModifierFlowFixture.sol") == "return assets")
+        .unwrap();
+    assert_eq!(returned.kind, ControlEdgeKind::Next);
+    let inner_postlude = edges.iter().find(|edge| edge.from == returned.to).unwrap();
+    assert_eq!(
+        edge_text(inner_postlude, MODIFIER_SOURCE, "ModifierFlowFixture.sol"),
+        "totalSupply += 1"
+    );
+    let outer_postlude = edges
+        .iter()
+        .find(|edge| edge.from == inner_postlude.to)
+        .unwrap();
+    assert_eq!(
+        edge_text(outer_postlude, MODIFIER_SOURCE, "ModifierFlowFixture.sol"),
+        "totalSupply += 3"
+    );
+    assert_eq!(outer_postlude.to.0, "exit");
 }
 
 #[test]

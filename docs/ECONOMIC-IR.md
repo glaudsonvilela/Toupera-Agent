@@ -10,7 +10,7 @@ The Rust `EconomicFunction` record is a compact description of one vault or orac
 - **Evidence:** each observation has a `SourceSpan` or a `BytecodePc` and a confidence level.
 - **Unresolved:** `Uncertainty` records ambiguous semantics or missing input, optionally tied to a location.
 - **Control flow:** `ControlEdge` links source graph nodes with `Next`, `True`, `False`, `LoopBack`, or `Exit` and a source location.
-- **Local modifiers:** `AppliedModifier` keeps the invocation and definition spans plus direct reads, writes, calls, arithmetic, and conditions observed in the modifier body. These observations are also included in the function-level dependency lists.
+- **Local modifiers:** `AppliedModifier` keeps the invocation and definition spans, parameter-to-argument bindings, and direct reads, writes, calls, arithmetic, and conditions observed in the modifier body. These observations are also included in the function-level dependency lists.
 
 `SourceSpan` uses UTF-8 byte offsets with an exclusive end and a path relative to the analyzed source root. Its `slice` method checks bounds and character boundaries against the supplied source text. A bytecode location identifies an artifact and program counter; bytecode ingestion itself is not implemented.
 
@@ -18,4 +18,4 @@ The Rust `EconomicFunction` record is a compact description of one vault or orac
 
 ## Milestone state
 
-M1 established this data model with a manually assembled vault fixture. The M2 extractor now fills it from solc AST for a single source file, adds a partial source control graph, and attaches locally resolved modifier effects; see [Source Reconstruction](SOURCE-RECONSTRUCTION.md). Modifier effects describe observed syntax, while function execution order remains unresolved until modifier placeholders are spliced into the graph. It does not recover bytecode or detect vulnerabilities.
+M1 established this data model with a manually assembled vault fixture. The M2 extractor now fills it from solc AST for a single source file, adds a partial source control graph, and attaches locally resolved modifier effects; see [Source Reconstruction](SOURCE-RECONSTRUCTION.md). Local modifiers with exactly one `_` are composed into the function graph. Others remain explicitly unresolved. It does not recover bytecode or detect vulnerabilities.

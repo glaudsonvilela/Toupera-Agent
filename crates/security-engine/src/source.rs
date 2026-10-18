@@ -8,11 +8,11 @@ use std::process::{Command, Stdio};
 
 use serde_json::{Map, Value, json};
 
-use crate::cfg::build_source_flow;
+use crate::cfg::{build_source_flow, build_source_flow_with_modifiers};
 use crate::{
     AppliedModifier, ArithmeticExpression, CallTarget, Confidence, ContractId, EconomicFunction,
-    EconomicOperation, Evidence, EvidenceLocation, FunctionId, SourceSpan, StorageId, Uncertainty,
-    UncertaintyKind,
+    EconomicOperation, Evidence, EvidenceLocation, FunctionId, ModifierArgumentBinding, SourceSpan,
+    StorageId, Uncertainty, UncertaintyKind,
 };
 
 /// Compiles one explicitly supplied Solidity source file locally, then reconstructs its IR.
@@ -210,13 +210,50 @@ pub fn reconstruct_from_ast_json(
                     walker.visit(&modifier["arguments"], Access::Read, false);
                 }
             }
-            let (edges, uncertainties) = build_source_flow(body, source_name, source, source_id);
+            let modifier_bodies = composable_modifier_bodies(function, &local_modifiers);
+            let (edges, uncertainties) = if let Some(modifier_bodies) = modifier_bodies {
+                build_source_flow_with_modifiers(
+                    body,
+                    &modifier_bodies,
+                    source_name,
+                    source,
+                    source_id,
+                )
+            } else {
+                ir.unresolved.push(Uncertainty {
+                    kind: UncertaintyKind::AmbiguousSemantics,
+                    detail: "modifier body control flow is not spliced into the function graph"
+                        .into(),
+                    location: None,
+                });
+                build_source_flow(body, source_name, source, source_id)
+            };
             ir.control_edges = edges;
             ir.unresolved.extend(uncertainties);
             functions.push(ir);
         }
     }
     Ok(functions)
+}
+
+fn composable_modifier_bodies<'a>(
+    function: &Value,
+    local_modifiers: &HashMap<i64, &'a Value>,
+) -> Option<Vec<&'a Value>> {
+    function
+        .get("modifiers")
+        .and_then(Value::as_array)
+        .map(|invocations| {
+            invocations
+                .iter()
+                .map(|invocation| {
+                    let id = invocation["modifierName"]["referencedDeclaration"].as_i64()?;
+                    let body = local_modifiers.get(&id)?.get("body")?;
+                    (placeholder_count(body) == 1).then_some(body)
+                })
+                .collect()
+        })
+        .unwrap_or_else(|| Some(Vec::new()))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -322,18 +359,20 @@ fn resolve_local_modifiers(
                 location: Some(definition_evidence.location.clone()),
             });
         }
-        if invocation
-            .get("arguments")
-            .and_then(Value::as_array)
-            .is_some_and(|arguments| !arguments.is_empty())
-        {
-            unresolved.push(Uncertainty {
-                kind: UncertaintyKind::AmbiguousSemantics,
-                detail: "modifier arguments are observed but not bound to definition parameters"
-                    .into(),
-                location: Some(invocation_evidence.location.clone()),
-            });
-        }
+        let bindings = match bind_modifier_arguments(
+            invocation,
+            definition,
+            source_name,
+            source,
+            source_id,
+            &invocation_evidence,
+        ) {
+            Ok(bindings) => bindings,
+            Err(uncertainty) => {
+                unresolved.push(uncertainty);
+                Vec::new()
+            }
+        };
         ir.reads.extend(observed.reads.iter().cloned());
         ir.writes.extend(observed.writes.iter().cloned());
         ir.external_calls
@@ -348,14 +387,10 @@ fn resolve_local_modifiers(
         ir.related_functions
             .extend(observed.related_functions.iter().cloned());
         ir.unresolved.extend(unresolved.iter().cloned());
-        ir.unresolved.push(Uncertainty {
-            kind: UncertaintyKind::AmbiguousSemantics,
-            detail: "modifier body control flow is not spliced into the function graph".into(),
-            location: Some(invocation_evidence.location.clone()),
-        });
         ir.applied_modifiers.push(AppliedModifier {
             invocation: invocation_evidence,
             definition: definition_evidence,
+            bindings,
             reads: observed.reads,
             writes: observed.writes,
             external_calls: observed.external_calls,
@@ -367,6 +402,62 @@ fn resolve_local_modifiers(
             unresolved,
         });
     }
+}
+
+fn bind_modifier_arguments(
+    invocation: &Value,
+    definition: &Value,
+    source_name: &str,
+    source: &str,
+    source_id: i64,
+    invocation_evidence: &Evidence<String>,
+) -> Result<Vec<ModifierArgumentBinding>, Uncertainty> {
+    let failure = |detail: &str| Uncertainty {
+        kind: UncertaintyKind::MissingInput,
+        detail: detail.into(),
+        location: Some(invocation_evidence.location.clone()),
+    };
+    let parameters = definition["parameters"]["parameters"]
+        .as_array()
+        .ok_or_else(|| failure("modifier definition has no parameter list"))?;
+    let arguments = invocation.get("arguments").and_then(Value::as_array);
+    if parameters.len() != arguments.map_or(0, Vec::len) {
+        return Err(failure(
+            "modifier argument count does not match its definition",
+        ));
+    }
+    parameters
+        .iter()
+        .zip(arguments.into_iter().flatten())
+        .map(|(parameter, argument)| {
+            let name = parameter["name"].as_str().unwrap_or("").to_owned();
+            let parameter = evidence_for_node(
+                parameter,
+                source_name,
+                source,
+                source_id,
+                name,
+                Confidence::Direct,
+            )
+            .ok_or_else(|| failure("modifier parameter has no valid source span"))?;
+            let text = source_fragment(argument, source_name, source, source_id)
+                .ok_or_else(|| failure("modifier argument has no valid source span"))?
+                .to_owned();
+            let argument = evidence_for_node(
+                argument,
+                source_name,
+                source,
+                source_id,
+                text,
+                Confidence::Direct,
+            )
+            .ok_or_else(|| failure("modifier argument has no valid source span"))?;
+            Ok(ModifierArgumentBinding {
+                parameter,
+                argument,
+            })
+        })
+        .collect()
 }
 
 fn placeholder_count(node: &Value) -> usize {

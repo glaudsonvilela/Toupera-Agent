@@ -13,7 +13,19 @@ contract ModifierFlowFixture {
         totalSupply += 1;
     }
 
+    modifier charged() {
+        totalSupply += 2;
+        _;
+        totalSupply += 3;
+    }
+
     function deposit(uint256 assets) external checkedAndAccounted(assets) returns (uint256 shares) {
+        totalAssets += assets;
+        return assets;
+    }
+
+
+    function mint(uint256 assets) external charged checkedAndAccounted(assets) returns (uint256 shares) {
         totalAssets += assets;
         return assets;
     }

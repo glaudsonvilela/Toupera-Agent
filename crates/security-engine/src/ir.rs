@@ -117,11 +117,19 @@ pub struct Uncertainty {
     pub location: Option<EvidenceLocation>,
 }
 
+/// One compiler-resolved modifier parameter and its invocation expression.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ModifierArgumentBinding {
+    pub parameter: Evidence<String>,
+    pub argument: Evidence<String>,
+}
+
 /// Direct syntax observed in a locally resolved modifier applied to a function.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct AppliedModifier {
     pub invocation: Evidence<String>,
     pub definition: Evidence<String>,
+    pub bindings: Vec<ModifierArgumentBinding>,
     pub reads: Vec<Evidence<StorageId>>,
     pub writes: Vec<Evidence<StorageId>>,
     pub external_calls: Vec<Evidence<CallTarget>>,

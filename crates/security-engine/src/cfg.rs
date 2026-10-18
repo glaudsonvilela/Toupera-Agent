@@ -26,6 +26,17 @@ pub(crate) fn build_source_flow(
     source: &str,
     source_id: i64,
 ) -> (Vec<ControlEdge>, Vec<Uncertainty>) {
+    build_source_flow_with_modifiers(body, &[], file, source, source_id)
+}
+
+/// Builds a composed graph for local modifiers with one placeholder each.
+pub(crate) fn build_source_flow_with_modifiers<'a>(
+    body: &'a Value,
+    modifiers: &[&'a Value],
+    file: &'a str,
+    source: &'a str,
+    source_id: i64,
+) -> (Vec<ControlEdge>, Vec<Uncertainty>) {
     let mut builder = Builder {
         file,
         source,
@@ -33,13 +44,21 @@ pub(crate) fn build_source_flow(
         edges: Vec::new(),
         unresolved: Vec::new(),
         loops: Vec::new(),
+        function_body: body,
+        modifiers: modifiers.to_vec(),
+        active_modifier: None,
+        return_frames: Vec::new(),
     };
     let entry = Pending {
         from: BasicBlockId("entry".into()),
         kind: ControlEdgeKind::Next,
-        location: builder.location(body),
+        location: builder.location(modifiers.first().copied().unwrap_or(body)),
     };
-    let pending = builder.process(body, vec![entry]);
+    let pending = if modifiers.is_empty() {
+        builder.process(body, vec![entry])
+    } else {
+        builder.process_layer(Some(0), vec![entry])
+    };
     builder.connect(pending, BasicBlockId("exit".into()), body);
     (builder.edges, builder.unresolved)
 }
@@ -51,9 +70,26 @@ struct Builder<'a> {
     edges: Vec<ControlEdge>,
     unresolved: Vec<Uncertainty>,
     loops: Vec<LoopFrame>,
+    function_body: &'a Value,
+    modifiers: Vec<&'a Value>,
+    active_modifier: Option<usize>,
+    return_frames: Vec<Vec<Pending>>,
 }
 
-impl Builder<'_> {
+impl<'a> Builder<'a> {
+    fn process_layer(&mut self, layer: Option<usize>, incoming: Vec<Pending>) -> Vec<Pending> {
+        let previous = self.active_modifier;
+        self.active_modifier = layer;
+        self.return_frames.push(Vec::new());
+        let body = layer
+            .map(|index| self.modifiers[index])
+            .unwrap_or(self.function_body);
+        let mut exits = self.process(body, incoming);
+        exits.extend(self.return_frames.pop().expect("return frame was pushed"));
+        self.active_modifier = previous;
+        exits
+    }
+
     fn location(&self, node: &Value) -> Option<EvidenceLocation> {
         parse_span(
             node.get("src")?.as_str()?,
@@ -184,6 +220,23 @@ impl Builder<'_> {
                 if let Some(id) = self.id(node) {
                     self.connect(incoming, id, node);
                 }
+                Vec::new()
+            }
+            Some("PlaceholderStatement") if self.active_modifier.is_some() => {
+                let Some(id) = self.id(node) else {
+                    return incoming;
+                };
+                self.connect(incoming, id.clone(), node);
+                let next = self.active_modifier.expect("active modifier was checked") + 1;
+                let layer = (next < self.modifiers.len()).then_some(next);
+                self.process_layer(layer, self.outgoing(id, ControlEdgeKind::Next, node))
+            }
+            Some("Return") if !self.return_frames.is_empty() => {
+                let exits = self.plain(node, incoming, false);
+                self.return_frames
+                    .last_mut()
+                    .expect("return frame was checked")
+                    .extend(exits);
                 Vec::new()
             }
             Some("Return" | "RevertStatement") => self.plain(node, incoming, true),
