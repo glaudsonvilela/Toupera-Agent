@@ -28,6 +28,7 @@
 - Leia `docs/BYTECODE-RECONSTRUCTION.md`. O módulo `bytecode.rs` produz `BytecodeAnalysis` separado da IR source, com normalização hex/CBOR, disassembly, blocos, saltos literais, dispatch direto, efeitos por PC, resumo por selector e incertezas explícitas. O CLI oferece `--bytecode` e `--compare-bytecode` com saída local do solc.
 - Limites: EOF, creation code, saltos dinâmicos, stack/memória, alvos de chamada e caminhos de valor econômico não estão resolvidos. Selector match sem igualdade de runtime é `Tentative`; não confunda observação de opcode com vulnerabilidade.
 - `cargo fmt --all`, `cargo check -p security-engine --offline` e `git diff --check` foram executados. Nenhum teste automatizado foi executado nesta etapa. Próximo passo: propagação conservadora de stack e dependências econômicas para continuar M3.
+- A revisão `3d2a9a6` também foi enviada ao VPS e compilada em release com Rust 1.93.1. A documentação operacional em `docs/VPS-SETUP.md` foi atualizada para os novos modos do CLI.
 
 ## Estratégia de ferramentas após M2
 
