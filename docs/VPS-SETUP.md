@@ -69,6 +69,8 @@ A revisão de implementação `d2ed831` foi sincronizada e compilada em release 
 
 `--context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>]` gera slices source-backed e guarda o pacote reduzido em cache local privado. Use `umask 077` antes de redirecionar stdout para um arquivo: a saída pode conter trechos de source privado. O diretório de cache deve ter modo `0700`; entradas usam `0600`. O CLI não chama DeepSeek nem outro serviço externo. Leia `docs/CONTEXT-PACKAGE.md`. Nenhuma fixture foi executada para este modo antes da validação geral solicitada pelo usuário.
 
+A revisão de código M5 `acd4d48` foi sincronizada e compilada em release no VPS sob `toupera` em 2026-10-18. O marcador `.deployed-commit` registrou essa revisão antes do complemento documental final; nenhum pacote de contexto foi gerado em fixture ou alvo.
+
 ## Operação segura
 
 Use apenas fontes próprias, forks locais ou programas com autorização explícita. Antes de analisar outro alvo, confirme o escopo. Nunca registre chave da API, senha ou chave SSH privada no repositório, nos argumentos de linha de comando ou nos logs. A integração DeepSeek depende de implementação futura e de um mecanismo de segredo no servidor. Não exponha `anvil` na rede pública.
