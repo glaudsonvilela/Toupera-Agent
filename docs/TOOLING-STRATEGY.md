@@ -1,6 +1,6 @@
 # Ferramentas de análise para o recorte econômico
 
-Avaliação em 2026-10-18. Esta é uma decisão de arquitetura, não um resultado de benchmark nem uma integração já executada. O M2 atual reconstrói um arquivo Solidity sem imports; Slither, Foundry e os demais executores ainda não estão integrados ao Toupera Agent.
+Avaliação em 2026-10-18. Esta é uma decisão de arquitetura, não um resultado de benchmark nem uma integração já executada. O M2 atual reconstrói um arquivo Solidity sem imports. Os CLIs e contêineres foram instalados posteriormente no VPS (inventário em `VPS-SETUP.md`), mas ainda não estão integrados ao Toupera Agent.
 
 ## Decisão
 
