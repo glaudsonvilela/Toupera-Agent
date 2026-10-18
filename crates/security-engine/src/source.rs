@@ -10,8 +10,9 @@ use serde_json::{Map, Value, json};
 
 use crate::cfg::build_source_flow;
 use crate::{
-    ArithmeticExpression, CallTarget, Confidence, ContractId, EconomicFunction, EconomicOperation,
-    Evidence, EvidenceLocation, FunctionId, SourceSpan, StorageId, Uncertainty, UncertaintyKind,
+    AppliedModifier, ArithmeticExpression, CallTarget, Confidence, ContractId, EconomicFunction,
+    EconomicOperation, Evidence, EvidenceLocation, FunctionId, SourceSpan, StorageId, Uncertainty,
+    UncertaintyKind,
 };
 
 /// Compiles one explicitly supplied Solidity source file locally, then reconstructs its IR.
@@ -135,6 +136,11 @@ pub fn reconstruct_from_ast_json(
             .filter(|node| node_type(node) == Some("FunctionDefinition"))
             .filter_map(|node| Some((node.get("id")?.as_i64()?, function_id(node)?)))
             .collect();
+        let local_modifiers: HashMap<i64, &Value> = members
+            .iter()
+            .filter(|node| node_type(node) == Some("ModifierDefinition"))
+            .filter_map(|node| Some((node.get("id")?.as_i64()?, node)))
+            .collect();
 
         for function in members
             .iter()
@@ -180,30 +186,16 @@ pub fn reconstruct_from_ast_json(
                     location: None,
                 });
             }
-            if let Some(modifiers) = function.get("modifiers").and_then(Value::as_array) {
-                for modifier in modifiers {
-                    if let Some(evidence) = evidence_for_node(
-                        modifier,
-                        source_name,
-                        source,
-                        source_id,
-                        source_fragment(modifier, source_name, source, source_id)
-                            .unwrap_or_default()
-                            .to_owned(),
-                        Confidence::Direct,
-                    ) {
-                        ir.modifiers.push(evidence);
-                    }
-                }
-                if !modifiers.is_empty() {
-                    ir.unresolved.push(Uncertainty {
-                        kind: UncertaintyKind::AmbiguousSemantics,
-                        detail: "modifier body is not expanded into this function's dependencies"
-                            .into(),
-                        location: None,
-                    });
-                }
-            }
+            resolve_local_modifiers(
+                function,
+                &local_modifiers,
+                &state,
+                &function_ids,
+                source_name,
+                source,
+                source_id,
+                &mut ir,
+            );
             let mut walker = Walker {
                 source_name,
                 source,
@@ -213,6 +205,11 @@ pub fn reconstruct_from_ast_json(
                 ir: &mut ir,
             };
             walker.visit(body, Access::Read, false);
+            if let Some(modifiers) = function.get("modifiers").and_then(Value::as_array) {
+                for modifier in modifiers {
+                    walker.visit(&modifier["arguments"], Access::Read, false);
+                }
+            }
             let (edges, uncertainties) = build_source_flow(body, source_name, source, source_id);
             ir.control_edges = edges;
             ir.unresolved.extend(uncertainties);
@@ -220,6 +217,171 @@ pub fn reconstruct_from_ast_json(
         }
     }
     Ok(functions)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_local_modifiers(
+    function: &Value,
+    local_modifiers: &HashMap<i64, &Value>,
+    state: &HashMap<i64, String>,
+    function_ids: &HashMap<i64, FunctionId>,
+    source_name: &str,
+    source: &str,
+    source_id: i64,
+    ir: &mut EconomicFunction,
+) {
+    let Some(invocations) = function.get("modifiers").and_then(Value::as_array) else {
+        return;
+    };
+    for invocation in invocations {
+        let invocation_evidence = evidence_for_node(
+            invocation,
+            source_name,
+            source,
+            source_id,
+            source_fragment(invocation, source_name, source, source_id)
+                .unwrap_or_default()
+                .to_owned(),
+            Confidence::Direct,
+        );
+        if let Some(evidence) = &invocation_evidence {
+            ir.modifiers.push(evidence.clone());
+        }
+        let definition = invocation["modifierName"]
+            .get("referencedDeclaration")
+            .and_then(Value::as_i64)
+            .and_then(|id| local_modifiers.get(&id).copied());
+        let Some(definition) = definition else {
+            ir.unresolved.push(Uncertainty {
+                kind: UncertaintyKind::MissingInput,
+                detail: "modifier definition is not local to this contract".into(),
+                location: invocation_evidence.map(|evidence| evidence.location),
+            });
+            continue;
+        };
+        let Some(body) = definition.get("body").filter(|body| !body.is_null()) else {
+            ir.unresolved.push(Uncertainty {
+                kind: UncertaintyKind::MissingInput,
+                detail: "local modifier has no body".into(),
+                location: invocation_evidence.map(|evidence| evidence.location),
+            });
+            continue;
+        };
+        let definition_name = definition.get("name").and_then(Value::as_str).unwrap_or("");
+        let definition_span = definition
+            .get("nameLocation")
+            .and_then(Value::as_str)
+            .and_then(|span| parse_span(span, source_name, source, source_id));
+        let (Some(invocation_evidence), Some(definition_span)) =
+            (invocation_evidence, definition_span)
+        else {
+            ir.unresolved.push(Uncertainty {
+                kind: UncertaintyKind::MissingInput,
+                detail: "modifier invocation or definition has no valid source span".into(),
+                location: None,
+            });
+            continue;
+        };
+        if definition_span.slice(source) != Some(definition_name) {
+            ir.unresolved.push(Uncertainty {
+                kind: UncertaintyKind::MissingInput,
+                detail: "modifier definition name does not match its source span".into(),
+                location: Some(EvidenceLocation::Source(definition_span)),
+            });
+            continue;
+        }
+        let definition_evidence = Evidence {
+            value: definition_name.to_owned(),
+            location: EvidenceLocation::Source(definition_span.clone()),
+            confidence: Confidence::Direct,
+        };
+        let mut observed = EconomicFunction::new(
+            ir.contract.clone(),
+            FunctionId(format!("modifier:{definition_name}")),
+            Evidence {
+                value: EconomicOperation::Other,
+                location: EvidenceLocation::Source(definition_span),
+                confidence: Confidence::Direct,
+            },
+        );
+        Walker {
+            source_name,
+            source,
+            source_id,
+            state,
+            function_ids,
+            ir: &mut observed,
+        }
+        .visit(body, Access::Read, false);
+
+        let mut unresolved = observed.unresolved.clone();
+        if placeholder_count(body) != 1 {
+            unresolved.push(Uncertainty {
+                kind: UncertaintyKind::AmbiguousSemantics,
+                detail: "modifier does not have exactly one function-body placeholder".into(),
+                location: Some(definition_evidence.location.clone()),
+            });
+        }
+        if invocation
+            .get("arguments")
+            .and_then(Value::as_array)
+            .is_some_and(|arguments| !arguments.is_empty())
+        {
+            unresolved.push(Uncertainty {
+                kind: UncertaintyKind::AmbiguousSemantics,
+                detail: "modifier arguments are observed but not bound to definition parameters"
+                    .into(),
+                location: Some(invocation_evidence.location.clone()),
+            });
+        }
+        ir.reads.extend(observed.reads.iter().cloned());
+        ir.writes.extend(observed.writes.iter().cloned());
+        ir.external_calls
+            .extend(observed.external_calls.iter().cloned());
+        ir.oracle_dependencies
+            .extend(observed.oracle_dependencies.iter().cloned());
+        ir.arithmetic.extend(observed.arithmetic.iter().cloned());
+        ir.control_conditions
+            .extend(observed.control_conditions.iter().cloned());
+        ir.delegatecall_targets
+            .extend(observed.delegatecall_targets.iter().cloned());
+        ir.related_functions
+            .extend(observed.related_functions.iter().cloned());
+        ir.unresolved.extend(unresolved.iter().cloned());
+        ir.unresolved.push(Uncertainty {
+            kind: UncertaintyKind::AmbiguousSemantics,
+            detail: "modifier body control flow is not spliced into the function graph".into(),
+            location: Some(invocation_evidence.location.clone()),
+        });
+        ir.applied_modifiers.push(AppliedModifier {
+            invocation: invocation_evidence,
+            definition: definition_evidence,
+            reads: observed.reads,
+            writes: observed.writes,
+            external_calls: observed.external_calls,
+            oracle_dependencies: observed.oracle_dependencies,
+            arithmetic: observed.arithmetic,
+            control_conditions: observed.control_conditions,
+            delegatecall_targets: observed.delegatecall_targets,
+            related_functions: observed.related_functions,
+            unresolved,
+        });
+    }
+}
+
+fn placeholder_count(node: &Value) -> usize {
+    match node {
+        Value::Array(items) => items.iter().map(placeholder_count).sum(),
+        Value::Object(fields) => {
+            usize::from(node_type(node) == Some("PlaceholderStatement"))
+                + fields
+                    .iter()
+                    .filter(|(key, _)| *key != "typeDescriptions" && *key != "documentation")
+                    .map(|(_, value)| placeholder_count(value))
+                    .sum::<usize>()
+        }
+        _ => 0,
+    }
 }
 
 fn function_id(node: &Value) -> Option<FunctionId> {
@@ -495,7 +657,10 @@ impl Walker<'_> {
             }
         }
         if node_type(expression) == Some("Identifier")
-            && expression.get("name").and_then(Value::as_str) == Some("require")
+            && matches!(
+                expression.get("name").and_then(Value::as_str),
+                Some("require" | "assert")
+            )
         {
             if let Some(condition) = node
                 .get("arguments")

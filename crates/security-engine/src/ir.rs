@@ -117,6 +117,22 @@ pub struct Uncertainty {
     pub location: Option<EvidenceLocation>,
 }
 
+/// Direct syntax observed in a locally resolved modifier applied to a function.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct AppliedModifier {
+    pub invocation: Evidence<String>,
+    pub definition: Evidence<String>,
+    pub reads: Vec<Evidence<StorageId>>,
+    pub writes: Vec<Evidence<StorageId>>,
+    pub external_calls: Vec<Evidence<CallTarget>>,
+    pub oracle_dependencies: Vec<Evidence<CallTarget>>,
+    pub arithmetic: Vec<Evidence<ArithmeticExpression>>,
+    pub control_conditions: Vec<Evidence<String>>,
+    pub delegatecall_targets: Vec<Evidence<CallTarget>>,
+    pub related_functions: Vec<Evidence<FunctionId>>,
+    pub unresolved: Vec<Uncertainty>,
+}
+
 /// Minimal per-function economic IR shared by future reconstruction and detectors.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct EconomicFunction {
@@ -132,6 +148,7 @@ pub struct EconomicFunction {
     pub control_edges: Vec<ControlEdge>,
     pub delegatecall_targets: Vec<Evidence<CallTarget>>,
     pub modifiers: Vec<Evidence<String>>,
+    pub applied_modifiers: Vec<AppliedModifier>,
     pub related_functions: Vec<Evidence<FunctionId>>,
     pub unresolved: Vec<Uncertainty>,
 }
@@ -155,6 +172,7 @@ impl EconomicFunction {
             control_edges: Vec::new(),
             delegatecall_targets: Vec::new(),
             modifiers: Vec::new(),
+            applied_modifiers: Vec::new(),
             related_functions: Vec::new(),
             unresolved: Vec::new(),
         }

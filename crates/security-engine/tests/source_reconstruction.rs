@@ -11,6 +11,8 @@ const FLOW_SOURCE: &str = include_str!("../../../tests/fixtures/VaultFlowFixture
 const FLOW_AST: &str = include_str!("../../../tests/fixtures/VaultFlowFixture.ast.json");
 const LOOP_SOURCE: &str = include_str!("../../../tests/fixtures/VaultLoopFixture.sol");
 const LOOP_AST: &str = include_str!("../../../tests/fixtures/VaultLoopFixture.ast.json");
+const MODIFIER_SOURCE: &str = include_str!("../../../tests/fixtures/ModifierFlowFixture.sol");
+const MODIFIER_AST: &str = include_str!("../../../tests/fixtures/ModifierFlowFixture.ast.json");
 
 fn source_text<'a, T>(evidence: &Evidence<T>, source: &'a str, file: &str) -> &'a str {
     let EvidenceLocation::Source(span) = &evidence.location else {
@@ -149,6 +151,26 @@ fn links_internal_calls_modifiers_and_branch_conditions() {
     assert_eq!(preview.operation.value, EconomicOperation::PreviewDeposit);
     assert_eq!(preview.modifiers.len(), 1);
     assert_eq!(preview.modifiers[0].value, "active");
+    assert_eq!(preview.applied_modifiers.len(), 1);
+    assert_eq!(preview.applied_modifiers[0].definition.value, "active");
+    assert!(
+        preview.applied_modifiers[0]
+            .reads
+            .iter()
+            .any(|item| item.value.0 == "totalAssets")
+    );
+    assert!(
+        preview
+            .reads
+            .iter()
+            .any(|item| item.value.0 == "totalAssets")
+    );
+    assert!(
+        preview
+            .control_conditions
+            .iter()
+            .any(|item| item.value == "totalAssets > 0")
+    );
     assert!(
         preview
             .unresolved
@@ -167,6 +189,158 @@ fn links_internal_calls_modifiers_and_branch_conditions() {
             "VaultFlowFixture.sol"
         ),
         "convertToShares(assets)"
+    );
+}
+
+#[test]
+fn local_modifier_effects_keep_their_own_provenance_and_uncertainty() {
+    let records =
+        reconstruct_from_ast_json(MODIFIER_AST, "ModifierFlowFixture.sol", MODIFIER_SOURCE)
+            .expect("modifier fixture AST must be accepted");
+    let deposit = records
+        .iter()
+        .find(|item| item.function.0 == "deposit(uint256)")
+        .unwrap();
+    assert_eq!(deposit.applied_modifiers.len(), 1);
+    let effect = &deposit.applied_modifiers[0];
+    assert_eq!(
+        source_text(
+            &effect.invocation,
+            MODIFIER_SOURCE,
+            "ModifierFlowFixture.sol"
+        ),
+        "checkedAndAccounted(assets)"
+    );
+    assert_eq!(
+        source_text(
+            &effect.definition,
+            MODIFIER_SOURCE,
+            "ModifierFlowFixture.sol"
+        ),
+        "checkedAndAccounted"
+    );
+    assert!(
+        effect
+            .reads
+            .iter()
+            .any(|item| item.value.0 == "totalAssets")
+    );
+    assert!(
+        effect
+            .reads
+            .iter()
+            .any(|item| item.value.0 == "totalSupply")
+    );
+    assert!(
+        effect
+            .writes
+            .iter()
+            .any(|item| item.value.0 == "totalSupply")
+    );
+    assert!(
+        effect
+            .control_conditions
+            .iter()
+            .any(|item| item.value == "totalAssets >= minAssets")
+    );
+    assert!(
+        effect
+            .control_conditions
+            .iter()
+            .any(|item| item.value == "totalSupply < 1000")
+    );
+    assert!(
+        effect
+            .unresolved
+            .iter()
+            .any(|item| item.detail.contains("not bound"))
+    );
+    assert!(
+        deposit
+            .unresolved
+            .iter()
+            .any(|item| item.detail.contains("not spliced"))
+    );
+    assert!(
+        deposit
+            .writes
+            .iter()
+            .any(|item| item.value.0 == "totalSupply" && effect.writes.contains(item))
+    );
+    assert!(
+        deposit
+            .writes
+            .iter()
+            .any(|item| item.value.0 == "totalAssets" && !effect.writes.contains(item))
+    );
+}
+
+#[test]
+fn unresolved_modifier_links_and_missing_placeholders_stay_explicit() {
+    let mut missing_definition: serde_json::Value = serde_json::from_str(FLOW_AST).unwrap();
+    let contract = missing_definition["sources"]["VaultFlowFixture.sol"]["ast"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["nodeType"] == "ContractDefinition")
+        .unwrap();
+    let preview = contract["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["name"] == "previewDeposit")
+        .unwrap();
+    preview["modifiers"][0]["modifierName"]["referencedDeclaration"] = serde_json::json!(999999);
+    let records = reconstruct_from_ast_json(
+        &missing_definition.to_string(),
+        "VaultFlowFixture.sol",
+        FLOW_SOURCE,
+    )
+    .unwrap();
+    let preview = records
+        .iter()
+        .find(|item| item.function.0 == "previewDeposit(uint256)")
+        .unwrap();
+    assert!(preview.applied_modifiers.is_empty());
+    assert!(
+        preview
+            .unresolved
+            .iter()
+            .any(|item| item.detail.contains("not local"))
+    );
+
+    let mut missing_placeholder: serde_json::Value = serde_json::from_str(FLOW_AST).unwrap();
+    let contract = missing_placeholder["sources"]["VaultFlowFixture.sol"]["ast"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["nodeType"] == "ContractDefinition")
+        .unwrap();
+    let modifier = contract["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["nodeType"] == "ModifierDefinition")
+        .unwrap();
+    modifier["body"]["statements"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|statement| statement["nodeType"] != "PlaceholderStatement");
+    let records = reconstruct_from_ast_json(
+        &missing_placeholder.to_string(),
+        "VaultFlowFixture.sol",
+        FLOW_SOURCE,
+    )
+    .unwrap();
+    let preview = records
+        .iter()
+        .find(|item| item.function.0 == "previewDeposit(uint256)")
+        .unwrap();
+    assert!(
+        preview.applied_modifiers[0]
+            .unresolved
+            .iter()
+            .any(|item| item.detail.contains("exactly one"))
     );
 }
 

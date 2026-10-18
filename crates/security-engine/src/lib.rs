@@ -7,9 +7,9 @@ mod source;
 use serde::Serialize;
 
 pub use ir::{
-    ArithmeticExpression, BasicBlockId, BytecodePc, CallTarget, Confidence, ControlEdge,
-    ControlEdgeKind, EconomicFunction, Evidence, EvidenceLocation, SourceSpan, StorageId,
-    Uncertainty, UncertaintyKind,
+    AppliedModifier, ArithmeticExpression, BasicBlockId, BytecodePc, CallTarget, Confidence,
+    ControlEdge, ControlEdgeKind, EconomicFunction, Evidence, EvidenceLocation, SourceSpan,
+    StorageId, Uncertainty, UncertaintyKind,
 };
 pub use source::{reconstruct_from_ast_json, reconstruct_source_file};
 
