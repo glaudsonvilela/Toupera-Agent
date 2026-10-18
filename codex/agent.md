@@ -28,3 +28,8 @@
 - Leia `docs/TOOLING-STRATEGY.md` antes de integrar scanner, fuzzer ou provador. A análise comparativa foi documentada, sem instalação ou execução dessas ferramentas em alvos.
 - Comece por Slither + IR Rust e invariantes Foundry. Use Echidna ou Medusa somente com ganho medido; Halmos é o primeiro piloto simbólico. Mythril é seletivo após M3. Manticore foi arquivado e Securify2 não compõe o fluxo principal.
 - Não envie source privado a Certora ou outro serviço externo sem autorização específica; o CLI padrão de Certora submete jobs ao servidor. Registre resultados, versões, premissas, cobertura, contraexemplos e custo de IA, sem inventar percentuais de economia.
+
+## Infraestrutura informada
+
+- O usuário contratou um VPS de 4 vCPU e 16 GB de RAM e pretende usar DeepSeek por API. Ainda não há dados verificados de sistema operacional, disco, rede ou acesso; não afirme que o VPS foi configurado ou que o projeto foi implantado.
+- Manter fuzzing com paralelismo limitado até medir consumo. Não armazenar chaves SSH nem chaves da API no repositório.

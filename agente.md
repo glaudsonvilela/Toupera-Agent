@@ -47,5 +47,10 @@ Iniciar M3: recuperação conservadora de bytecode EVM, sem misturar inferência
 - Redução de uso de IA depende de gates e deduplicação; medir tokens, candidatos e bugs reproduzidos. Não afirmar ganho numérico sem benchmark. IA recebe apenas slices de candidatos ainda ambíguos.
 - Esta etapa alterou documentação e memórias; não alterou código nem executou ferramentas de auditoria em alvos.
 
+## Infraestrutura informada pelo usuário
+- VPS contratado com 4 vCPU e 16 GB de RAM; provedor, sistema operacional, disco e acesso SSH ainda não foram informados ou verificados.
+- DeepSeek será usado por API. Inferência não será hospedada no VPS; enviar apenas slices mínimos e nunca credenciais ou o repositório inteiro por padrão.
+- Planejar Rust, Slither e Foundry como cargas iniciais. Limitar paralelismo de fuzzing e escalonar provas simbólicas mais pesadas conforme métricas reais de CPU, memória e disco. Nenhum deploy foi realizado nesta etapa.
+
 ## Pendências
 M3 bytecode, detectores econômicos, deduplicação, LLM e Foundry permanecem planejados. Nunca armazenar secrets ou executar exploração em produção.
