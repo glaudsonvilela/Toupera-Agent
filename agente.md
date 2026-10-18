@@ -7,7 +7,7 @@ Construir um auditor de segurança econômica Solidity/EVM para vaults, oracles,
 Alvo autorizado → source/bytecode → reconstrução Rust com proveniência e incertezas → filtros determinísticos/Slither → context slicing → LLM → hipótese → teste local Foundry → evidência → revisão humana → relatório. Source e runtime EVM legado explícito já têm recortes de reconstrução separados. Nenhuma hipótese vira vulnerabilidade sem reprodução.
 
 ## Fase atual
-M0, M1 e M2 concluídos no recorte source-first de um arquivo sem imports. M3 concluído no recorte conservador de runtime EVM legado explícito, com CFG de destinos constantes, fluxo abstrato de stack/memória por palavras, dependências genéricas de valor e comparação opcional com runtime compilado local. EVMole 0.9.4 fornece uma segunda leitura local de selectors, ABI, storage e CFG em relatório separado. O motor não atribui identidade de oracle/assets/shares apenas pelo bytecode.
+M0–M3 concluídos nos recortes documentados. M4 implementa triagem econômica source-backed, com calibração em fixtures adiada a pedido do usuário. M5 produz slices locais limitados e cache por conteúdo. O próximo marco é M6, integração desacoplada com LLM; ainda não existe envio a DeepSeek. O motor não atribui identidade de oracle/assets/shares apenas pelo bytecode.
 
 ## Decisões técnicas
 - Core Rust em workspace Cargo; `serde`/`serde_json` apenas para AST e IR JSON.
@@ -38,7 +38,7 @@ M2 liga base e derivado pelo AST, conserva identidade das chamadas herdadas e di
 Sem suporte a imports, herança em outros arquivos, CFG completo ou resolução de endereço de proxy fornecido na implantação. O suporte a bytecode é somente runtime legado conservador, não EOF/creation code nem decompilação completa. Loops de source têm aproximação de uma iteração com incerteza; chamadas desconhecidas não têm retorno presumido. Fluxo de valor não prova factibilidade de caminho. Modifiers ausentes da fonte ou com zero/múltiplos `_` ficam sem composição. `try`, assembly e ternários múltiplos/aninhados não têm fluxo completo.
 
 ## Próximo passo
-Próximo marco M4: detectores econômicos determinísticos sobre as IRs existentes; medir sinais em fixtures antes de associar qualquer hipótese a vulnerabilidade.
+Implementar M6 sobre os slices M5, mantendo `UNVERIFIED` e sem enviar source privado a serviços externos até existir mecanismo de segredos e escopo explícito. Testes, fixtures e benchmark permanecem adiados a pedido do usuário até a implementação geral estar completa.
 
 ## Etapa M3 inicial (2026-10-18)
 - `crates/security-engine/src/bytecode.rs` analisa runtime EVM legado em hex. Remove metadados CBOR Solidity somente com estrutura completa e chave reconhecida; decodifica `PUSH` sem confundir dados imediatos com opcodes, cria blocos, resolve apenas saltos literais a `JUMPDEST`, reconhece candidatos de dispatch direto `PUSH4/EQ/PUSH/JUMPI` (`Inferred` só com `DUP1` anterior e alcance conhecido) e observa storage/transient storage/chamadas/criação/autodestruição por PC.
@@ -99,3 +99,8 @@ Detectores econômicos M4, deduplicação, LLM e juiz Foundry permanecem planeja
 - `metrics` registra sinais brutos, mapeamentos e candidatos fundidos. `false_positives_reviewed` fica `null` até calibração posterior, conforme pedido do usuário para testar só após implementação completa. O M4 está implementado nesse recorte source-backed, com medição de falsos positivos/cobertura ainda pendente. Leia `docs/ECONOMIC-ANALYSIS.md` e `docs/ROADMAP-CHECKLIST.md`.
 - `cargo fmt --all`, `cargo check --locked --offline -p security-engine`, `bash -n` do wrapper e `git diff --check` usados para formatação/compilação/sintaxe; nenhum teste automatizado nem análise de fixture foi executado nesta etapa.
 - A revisão de implementação M4 `d2ed831` foi enviada ao GitHub privado, sincronizada no VPS e compilada com `cargo build --release --locked -p security-engine` sob `toupera`; `.deployed-commit` registrou a revisão. Nenhum candidato foi avaliado em fixture nesta etapa.
+
+## M5 — cache e contexto mínimo (2026-10-18)
+- `context_package.rs` calcula SHA-256 de source, AST, função, compilador e binário do motor; runtime legado normalizado e JSON Slither entram quando fornecidos. A chave de cache inclui versão do formato e todas as entradas. Em acerto, pula compilação, IR, triagem M4 e montagem de slices. O cache local exige diretório `0700` e arquivos regulares `0600`; não armazena source integral nem outputs brutos das ferramentas.
+- `--context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>]` devolve JSON local com candidato `UNVERIFIED`, função e trechos relacionados limitados, evidências, storage, aritmética, oracle, chamadas, perguntas de invariantes, incertezas e `truncated`. O hash opcional de runtime não liga bytecode a source. Não há chamada à IA nem envio de repositório.
+- Documentação em `docs/CONTEXT-PACKAGE.md`; roadmap, README, documentação M4/VPS e `codex/agent.md` atualizados. `cargo fmt --all` e `cargo check --locked --offline -p security-engine` executados; nenhuma fixture, teste automatizado ou benchmark executado, conforme pedido do usuário. O estado de publicação/deploy deve ser registrado após a sincronização.

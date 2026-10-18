@@ -1906,8 +1906,10 @@ name = "security-engine"
 version = "0.1.0"
 dependencies = [
  "evmole",
+ "hex",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

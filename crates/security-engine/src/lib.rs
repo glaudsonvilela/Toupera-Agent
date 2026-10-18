@@ -6,6 +6,7 @@ mod bytecode_evmole;
 mod bytecode_flow;
 mod callgraph;
 mod cfg;
+mod context_package;
 mod dataflow;
 mod economic_analysis;
 mod ir;
@@ -17,7 +18,8 @@ pub use bytecode::{
     BytecodeAnalysis, BytecodeBlock, BytecodeEffect, BytecodeEffectKind, BytecodeEntrySummary,
     BytecodeInstruction, BytecodeMetadata, BytecodeMethodMatch, BytecodeSelector,
     BytecodeSourceComparison, BytecodeValueFlow, BytecodeValueOrigin, BytecodeValueOriginKind,
-    BytecodeValueSinkKind, compare_with_solc_contract, reconstruct_bytecode_hex,
+    BytecodeValueSinkKind, compare_with_solc_contract, normalized_runtime_hex,
+    reconstruct_bytecode_hex,
 };
 pub use bytecode_companions::{
     CompanionAnalysis, GigahorseBlock, GigahorseReport, HeimdallFunction, HeimdallReport,
@@ -25,6 +27,10 @@ pub use bytecode_companions::{
 };
 pub use bytecode_evmole::{
     EvmoleControlEdgeEvidence, EvmoleReport, EvmoleSelectorEvidence, EvmoleStorageEvidence,
+};
+pub use context_package::{
+    ArtifactDigests, CachedContextPackage, ContextPackage, ContextSlice, EvidenceExcerpt,
+    FunctionDigest, FunctionExcerpt, build_context_package, load_or_build_context_package,
 };
 pub use economic_analysis::{
     EconomicAnalysisMetrics, EconomicAnalysisReport, EconomicCandidate, SlitherSignal,
@@ -37,7 +43,10 @@ pub use ir::{
     ResolvedFunction, SourceSpan, StorageId, Uncertainty, UncertaintyKind, ValueFlow, ValueOrigin,
     ValueSink,
 };
-pub use source::{reconstruct_from_ast_json, reconstruct_source_file};
+pub use source::{
+    compile_source_ast_file, compile_source_ast_text, reconstruct_from_ast_json,
+    reconstruct_source_file,
+};
 
 /// Stable identity of a contract in an analysis target.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]

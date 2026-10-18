@@ -40,6 +40,8 @@ M2 and M3 are complete within documented slices. M2 reconstructs one Solidity fi
 
 M4 now emits source-backed economic risk candidates for accounting, previews, rounding, fees, decimals, first-share donation sensitivity, and oracle paths. Local Slither JSON can add mapped signals; candidates remain `UNVERIFIED` and are deduplicated before later AI review. Fixture calibration is deferred until implementation is complete. See [Economic Analysis](docs/ECONOMIC-ANALYSIS.md).
 
+M5 builds bounded, local context slices for those candidates. SHA-256 fingerprints of source, AST, functions, compiler, engine, and optional normalized runtime/Slither input drive a private content cache, so unchanged inputs skip repeated analysis. The CLI does not send code to an LLM. See [Context Package](docs/CONTEXT-PACKAGE.md).
+
 ## Development
 
 ```sh

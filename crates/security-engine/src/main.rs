@@ -5,14 +5,15 @@ use std::process::ExitCode;
 
 use security_engine::{
     CompanionAnalysis, analyze_economic_functions, compare_with_solc_contract,
-    import_gigahorse_tac, import_heimdall_abi, reconstruct_bytecode_hex, reconstruct_source_file,
+    import_gigahorse_tac, import_heimdall_abi, load_or_build_context_package,
+    reconstruct_bytecode_hex, reconstruct_source_file,
 };
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
+            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
         );
         return ExitCode::FAILURE;
     };
@@ -117,6 +118,63 @@ fn main() -> ExitCode {
             Ok(report) => {
                 if let Err(error) = serde_json::to_writer(std::io::stdout(), &report) {
                     eprintln!("cannot write economic candidates: {error}");
+                    return ExitCode::FAILURE;
+                }
+                println!();
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if source == "--context-package" {
+        let arguments: Vec<_> = args.collect();
+        if arguments.len() < 3 || (arguments.len() - 3) % 2 != 0 {
+            eprintln!(
+                "usage: security-engine --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>]"
+            );
+            return ExitCode::FAILURE;
+        }
+        let mut slither_path = None;
+        let mut runtime_path = None;
+        for pair in arguments[3..].chunks_exact(2) {
+            match pair[0].as_str() {
+                "--slither" if slither_path.is_none() => slither_path = Some(&pair[1]),
+                "--bytecode" if runtime_path.is_none() => runtime_path = Some(&pair[1]),
+                _ => {
+                    eprintln!("unknown or repeated context option: {}", pair[0]);
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        let result = slither_path
+            .map(|path| {
+                fs::read_to_string(path).map_err(|error| format!("cannot read {path}: {error}"))
+            })
+            .transpose()
+            .and_then(|slither| {
+                runtime_path
+                    .map(|path| {
+                        fs::read_to_string(path)
+                            .map_err(|error| format!("cannot read {path}: {error}"))
+                    })
+                    .transpose()
+                    .and_then(|runtime| {
+                        load_or_build_context_package(
+                            Path::new(&arguments[0]),
+                            Path::new(&arguments[2]),
+                            Path::new(&arguments[1]),
+                            slither.as_deref(),
+                            runtime.as_deref(),
+                        )
+                    })
+            });
+        return match result {
+            Ok(package) => {
+                if let Err(error) = serde_json::to_writer(std::io::stdout(), &package) {
+                    eprintln!("cannot write context package: {error}");
                     return ExitCode::FAILURE;
                 }
                 println!();

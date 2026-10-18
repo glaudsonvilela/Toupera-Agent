@@ -23,6 +23,16 @@ pub fn reconstruct_source_file(
     source_path: &Path,
     solc_path: &Path,
 ) -> Result<Vec<EconomicFunction>, String> {
+    let (source_name, source, json) = compile_source_ast_file(source_path, solc_path)?;
+    reconstruct_from_ast_json(&json, &source_name, &source)
+}
+
+/// Returns the source name, exact source bytes and local solc Standard JSON.
+/// M5 consumes this to fingerprint the AST without compiling a second time.
+pub fn compile_source_ast_file(
+    source_path: &Path,
+    solc_path: &Path,
+) -> Result<(String, String, String), String> {
     let source = fs::read_to_string(source_path)
         .map_err(|error| format!("cannot read {}: {error}", source_path.display()))?;
     let source_name = source_path
@@ -30,6 +40,17 @@ pub fn reconstruct_source_file(
         .and_then(|name| name.to_str())
         .ok_or_else(|| "source path has no UTF-8 file name".to_owned())?;
 
+    let json = compile_source_ast_text(source_name, &source, solc_path)?;
+    Ok((source_name.to_owned(), source, json))
+}
+
+/// Compile exactly these source bytes, avoiding a second file read after M5
+/// has calculated its content-addressed cache key.
+pub fn compile_source_ast_text(
+    source_name: &str,
+    source: &str,
+    solc_path: &Path,
+) -> Result<String, String> {
     let mut sources = Map::new();
     sources.insert(source_name.to_owned(), json!({ "content": source }));
     let input = json!({
@@ -60,9 +81,9 @@ pub fn reconstruct_source_file(
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    let json = std::str::from_utf8(&output.stdout)
+    let json = String::from_utf8(output.stdout)
         .map_err(|error| format!("solc output is not UTF-8: {error}"))?;
-    reconstruct_from_ast_json(json, source_name, &source)
+    Ok(json)
 }
 
 /// Reads solc Standard JSON output for a single source whose content is supplied separately.
@@ -642,7 +663,7 @@ pub(crate) fn placeholder_count(node: &Value) -> usize {
     }
 }
 
-fn function_id(node: &Value) -> Option<FunctionId> {
+pub(crate) fn function_id(node: &Value) -> Option<FunctionId> {
     let kind = node.get("kind")?.as_str()?;
     if kind == "constructor" {
         return None;

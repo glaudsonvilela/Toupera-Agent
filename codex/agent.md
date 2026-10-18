@@ -5,7 +5,7 @@
 3. Não faça grandes refactors sem necessidade.
 4. Não generalize o escopo: priorize Solidity/EVM, Vaults e Oracles.
 5. Trate o motor Rust como analisador econômico e motor de reconstrução do contrato; source e runtime legado já têm recortes implementados, mas toda inferência incerta deve permanecer explicitamente incerta.
-6. Execute os testes relevantes após cada mudança.
+6. Execute os testes relevantes após cada mudança, exceto enquanto vigorar o pedido do usuário de adiar testes e fixtures até a implementação geral estar completa; nesse período use apenas compilação, formatação e verificações estáticas de sintaxe.
 7. Atualize `/agente.md` depois de cada etapa importante.
 8. Nunca armazene API keys, tokens, passwords, secrets, private keys ou seed phrases.
 9. Não modifique outros projetos no SSD Sherlock.
@@ -69,3 +69,10 @@
 - Deduplicação usa contrato, função e categoria. JSON Slither precisa de `success=true`; detectores sem mapeamento, função inequívoca ou span válido não viram candidato. Nunca trate `impact`/`confidence` do Slither ou uma regra Rust como confirmação econômica.
 - A pedido do usuário, não executar testes ou análise de fixtures até a implementação geral estar completa. Compilação, formatação e sintaxe do shell foram conferidas; calibração de falsos positivos, cobertura e economia de IA permanece pendente. Atualize `agente.md` e este arquivo após etapas futuras.
 - A revisão de implementação M4 `d2ed831` foi publicada e compilada em release no VPS. O marcador `.deployed-commit` deve acompanhar o HEAD sincronizado. Não afirmar que o wrapper Slither ou os detectores foram executados em fixture.
+
+## M5 — deduplicação e contexto mínimo
+
+- `context_package.rs` usa SHA-256 de source, AST, função, compiler, engine e entradas opcionais Slither/runtime normalizado. `--context-package` emite JSON local e usa cache privado `0700`/`0600`; acertos pulam solc, reconstrução e M4. O runtime opcional é fingerprint apenas, sem atribuição de identidade ao source.
+- Cada slice contém trechos limitados de função, relações e evidências, storage, aritmética, oracles, chamadas e perguntas de invariantes; `truncated` sinaliza corte. O pacote conserva `UNVERIFIED` e incertezas. Leia `docs/CONTEXT-PACKAGE.md` antes de M6.
+- M6 deve consumir apenas slices necessários; não envie repositório inteiro nem source privado a um serviço externo automaticamente. Não há integração DeepSeek ou segredo implantado. A calibração, fixtures e benchmarks seguem adiados por instrução do usuário até implementação completa.
+- `cargo fmt --all` e `cargo check --locked --offline -p security-engine` foram usados durante M5. Nenhum teste ou fixture foi executado. Atualize este arquivo e `agente.md` após cada etapa.

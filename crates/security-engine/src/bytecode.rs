@@ -215,6 +215,14 @@ pub fn reconstruct_bytecode_hex(artifact: &str, input: &str) -> Result<BytecodeA
     })
 }
 
+/// Canonical legacy runtime bytes as lowercase hex, with recognized Solidity
+/// metadata removed. This avoids running full reconstruction for M5 hashing.
+pub fn normalized_runtime_hex(input: &str) -> Result<String, String> {
+    let (raw, metadata) = decode_runtime_hex(input)?;
+    let code_size = metadata.as_ref().map_or(raw.len(), |item| item.start_pc);
+    Ok(encode_hex(&raw[..code_size]))
+}
+
 fn decode_runtime_hex(input: &str) -> Result<(Vec<u8>, Option<BytecodeMetadata>), String> {
     let compact: String = input.chars().filter(|c| !c.is_ascii_whitespace()).collect();
     let hex = compact

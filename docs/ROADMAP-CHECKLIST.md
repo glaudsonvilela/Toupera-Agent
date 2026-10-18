@@ -50,10 +50,12 @@ Complemento adicional: Heimdall ABI e Gigahorse TAC podem ser importados com `--
 O M4 usa a IR source-first de um arquivo sem imports. Regras sintáticas não provam conservação de quantidades, round trips ERC-4626, possibilidade de doação ou qualidade de oracle. O bytecode M3 permanece evidência estrutural separada. A saída e os limites estão em [Análise Econômica](ECONOMIC-ANALYSIS.md).
 
 ### M5 — Deduplicação e contexto mínimo
-- [ ] Calcular hashes de source, bytecode, AST e função.
-- [ ] Evitar reanálise de código conhecido.
-- [ ] Montar slices com função, chamadas, storage, aritmética, oracle e invariantes relevantes.
-- [ ] Não enviar o repositório inteiro ao LLM por padrão.
+- [x] Calcular hashes de source, runtime opcional normalizado, AST e função, além de compiler e motor.
+- [x] Evitar reanálise de entradas idênticas com cache local por conteúdo.
+- [x] Montar slices limitados com função, chamadas, storage, aritmética, oracle e invariantes relevantes.
+- [x] Manter saída local sem envio ao LLM ou do repositório inteiro por padrão.
+
+O M5 opera no recorte source-backed do M2/M4, um arquivo sem imports. Runtime opcional é só fingerprint; não é ligado ao source sem comparação exata. O cache privado guarda o pacote reduzido e invalida ao mudar entrada, compilador ou motor. Os limites e o formato estão em [Pacote de Contexto](CONTEXT-PACKAGE.md). Economia de tokens e taxa de acertos permanecem sem benchmark até a validação solicitada após a implementação completa.
 
 ### M6 — Hipóteses do LLM
 - [ ] Definir interface desacoplada do fornecedor.
