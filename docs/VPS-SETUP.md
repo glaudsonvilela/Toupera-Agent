@@ -53,6 +53,12 @@ A execução local dessa fixture produziu 4 registros de IR. Slither analisou a 
 
 O servidor não contém `.git` nem credenciais para acessar o repositório privado. Atualizações do projeto devem ser enviadas novamente a partir de um checkout autorizado e recompiladas. O recorte M3 de runtime legado, incluindo fluxo abstrato de stack/memória, segunda leitura local com EVMole 0.9.4 e comparação opcional com source, foi sincronizado e compilado em release; a revisão implantada fica em `.deployed-commit`. Não existem serviço `systemd`, endpoint HTTP, banco de dados ou chave da API DeepSeek configurados. O CLI aceita um arquivo Solidity sem imports e um caminho opcional para `solc`, ou `--bytecode <runtime.hex>`; a comparação com saída local do compilador usa `--compare-bytecode`. Ele não recebe tarefas de rede nem chama IA.
 
+## Companions de engenharia reversa
+
+- Heimdall-rs foi instalado em `/usr/local/bin/heimdall` a partir do asset oficial `heimdall-linux-amd64` da release `0.9.3`. O próprio binário informa `heimdall 0.9.2` em `--version`; registrar **ambos** os identificadores até o upstream esclarecer a divergência. SHA-256 do asset e binário instalado: `8d58c97f56d584d5d0737d0d0895fc8c68b7b8b2b680f2a7842245789f0b4868`.
+- A imagem oficial `ghcr.io/nevillegrech/gigahorse-toolchain` está no Podman rootless de `toupera`, digest `sha256:f676ca8aaf88acd47be27ed1967acddc9c99acdd041b34e79472cfb028910743`. O wrapper usa esse digest por padrão, com `--network none`, montagem apenas do bytecode local, diretório de saída e cache. `podman run ... --help` abriu; nenhum contrato foi decompilado nesta instalação.
+- O CLI Rust oferece `--bytecode-companions` para importar ABI Heimdall e TAC Gigahorse; `scripts/run-bytecode-companions.sh <runtime.hex> <diretório-novo>` executa os dois e salva `analysis.json` com artefatos intermediários. Defina `TOUPERA_SECURITY_ENGINE=/srv/toupera-agent/target/release/security-engine` se o binário não estiver no `PATH`. Leia `docs/BYTECODE-RECONSTRUCTION.md`. Isso acrescenta evidência tentativa; não ativa serviço web nem IA.
+
 ## Operação segura
 
 Use apenas fontes próprias, forks locais ou programas com autorização explícita. Antes de analisar outro alvo, confirme o escopo. Nunca registre chave da API, senha ou chave SSH privada no repositório, nos argumentos de linha de comando ou nos logs. A integração DeepSeek depende de implementação futura e de um mecanismo de segredo no servidor. Não exponha `anvil` na rede pública.

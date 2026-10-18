@@ -52,5 +52,12 @@
 
 - `bytecode_evmole.rs` chama EVMole 0.9.4 localmente sobre runtime normalizado e mantém `BytecodeAnalysis.evmole` separado dos fatos nativos. Relatório contém candidatos de selectors/ABI, storage e CFG com PCs quando a ferramenta os fornece, `Tentative` e divergências. Não promova seus resultados automaticamente a `ControlEdge` ou `ValueFlow` nativos.
 - A comparação local com solc aceita selector ABI exclusivo do EVMole, mas `BytecodeMethodMatch.recovered_by` expõe a origem e sua confiança permanece `Tentative`. Rótulos econômicos por nome exigem runtime compilado idêntico. Layout de storage sem PC confirmado continua candidato.
-- O companion é omitido acima de 24.576 bytes e preserva resultado nativo se falhar. Heimdall/Gigahorse ainda não estão integrados; Mythril instalado continua sem orquestração pelo Rust. Leia `docs/BYTECODE-RECONSTRUCTION.md` para o contrato de saída.
+- O companion é omitido acima de 24.576 bytes e preserva resultado nativo se falhar. Mythril instalado continua sem orquestração pelo Rust. Leia `docs/BYTECODE-RECONSTRUCTION.md` para o contrato de saída.
 - Compilação local com `cargo check -p security-engine --offline`; nenhum teste automatizado foi executado nesta etapa. Atualize `agente.md` e este arquivo depois de cada etapa importante, conforme pedido do usuário.
+
+## Heimdall e Gigahorse após M3
+
+- `bytecode_companions.rs` importa ABI Heimdall e TAC Gigahorse em relatório separado. `--bytecode-companions` exige runtime, `abi.json` e `contract.tac`; o wrapper `scripts/run-bytecode-companions.sh` executa os dois CLIs localmente e conserva os outputs. Heimdall usa `--skip-resolving`; Gigahorse usa Podman sem rede.
+- Assinaturas/ABI e CFG propostos são `Tentative`. Correlacione selectors e PCs com o decoder nativo/EVMole; não incorpore automaticamente arestas TAC ou expressões ao `ValueFlow` nativo. Importação não confirma vulnerabilidade. Consulte `docs/BYTECODE-RECONSTRUCTION.md`.
+- Após esta etapa, `cargo fmt --all`, `cargo check --locked --offline -p security-engine` e `git diff --check` passaram; testes automatizados não foram adicionados ou executados.
+- No VPS, Heimdall está em `/usr/local/bin/heimdall` (asset release 0.9.3; `--version` informa 0.9.2) e Gigahorse está em imagem Podman fixada por digest; veja `docs/VPS-SETUP.md`. Não afirmar que decompilação de contrato foi executada só porque as ferramentas foram instaladas.

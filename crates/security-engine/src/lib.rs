@@ -1,6 +1,7 @@
 //! Foundational types for focused Solidity/EVM economic security analysis.
 
 mod bytecode;
+mod bytecode_companions;
 mod bytecode_evmole;
 mod bytecode_flow;
 mod callgraph;
@@ -16,6 +17,10 @@ pub use bytecode::{
     BytecodeInstruction, BytecodeMetadata, BytecodeMethodMatch, BytecodeSelector,
     BytecodeSourceComparison, BytecodeValueFlow, BytecodeValueOrigin, BytecodeValueOriginKind,
     BytecodeValueSinkKind, compare_with_solc_contract, reconstruct_bytecode_hex,
+};
+pub use bytecode_companions::{
+    CompanionAnalysis, GigahorseBlock, GigahorseReport, HeimdallFunction, HeimdallReport,
+    import_gigahorse_tac, import_heimdall_abi,
 };
 pub use bytecode_evmole::{
     EvmoleControlEdgeEvidence, EvmoleReport, EvmoleSelectorEvidence, EvmoleStorageEvidence,

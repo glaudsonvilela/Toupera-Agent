@@ -14,6 +14,25 @@ O mesmo comando também executa [EVMole 0.9.4](https://github.com/cdump/evmole) 
 
 `matches_native` mostra acordo entre analisadores. Divergência de destino ou selector exclusivo de um deles fica explícita em `evmole.unresolved`. O EVMole nunca altera automaticamente o CFG, os efeitos ou o fluxo de valor nativos; seus tipos, storage e arestas continuam `Tentative`. Selector candidato só entra no relatório se apontar para `JUMPDEST` decodificado. Para limitar custo, o companion é omitido acima de 24.576 bytes e registra o motivo; um erro interno do EVMole também preserva a análise nativa.
 
+## Leituras opcionais com Heimdall e Gigahorse
+
+O comando `--bytecode-companions` importa dois artefatos **locais** produzidos pelas ferramentas abertas [Heimdall-rs](https://github.com/Jon-Becker/heimdall-rs) e [Gigahorse](https://github.com/nevillegrech/gigahorse-toolchain):
+
+```sh
+security-engine --bytecode-companions runtime.hex heimdall/abi.json gigahorse/out/contract.tac > combined.json
+```
+
+`native` contém a análise Rust/EVMole existente. `heimdall.functions` preserva selector, tipos de entrada sugeridos, mutabilidade e PCs de entrada corroborados pelo decoder nativo e/ou EVMole. A ABI padrão do Heimdall 0.9.x não inclui um campo `selector`; o importador recupera o seletor do nome sintético `Unresolved_0x...` gerado com `--skip-resolving`. Um campo `selector` explícito também é aceito em formatos futuros. Assinatura, tipos e mutabilidade são sempre `Tentative`; `--skip-resolving` evita consulta de assinaturas a um serviço externo. Funções sem selector válido são omitidas com incerteza. `gigahorse.blocks` importa labels de bloco e sucessores do TAC textual, aceita apenas PCs de instrução já decodificados e indica se o início coincide com um bloco nativo. Essas arestas também são `Tentative`; expressões TAC não viram fluxos de valor nativos. Saídas inválidas geram erro de importação ou incerteza explícita.
+
+Em uma máquina com Heimdall, Podman e a imagem oficial do Gigahorse instalados, o wrapper local executa as duas ferramentas e guarda os artefatos:
+
+```sh
+TOUPERA_SECURITY_ENGINE=/srv/toupera-agent/target/release/security-engine \
+  scripts/run-bytecode-companions.sh runtime.hex /tmp/contract-companions
+```
+
+O diretório de saída deve ser novo. Ele contém `runtime.hex`, `heimdall/abi.json`, `gigahorse-temp/runtime/out/contract.tac`, `analysis.json`, a versão do Heimdall e o digest da imagem Gigahorse. O wrapper passa apenas bytecode em arquivo, desliga a rede do contêiner Gigahorse, usa `--skip-resolving` no Heimdall e não ativa pós-processamento por LLM. Há limites de 5 minutos para Heimdall, 20 minutos para Gigahorse e 16 MiB para importação do TAC. A execução é opcional; `--bytecode` continua funcionando sem as ferramentas. O wrapper falha explicitamente se algum artefato esperado faltar. A imagem Gigahorse padrão é fixada por digest; `TOUPERA_GIGAHORSE_IMAGE` permite substituir por outra versão instalada.
+
 ## Recuperação estrutural
 
 - Hex aceita `0x` e espaços ASCII. Entradas inválidas são rejeitadas; `PUSH` truncado é registrado como incerteza.

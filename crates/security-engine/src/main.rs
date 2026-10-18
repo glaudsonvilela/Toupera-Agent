@@ -4,14 +4,15 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use security_engine::{
-    compare_with_solc_contract, reconstruct_bytecode_hex, reconstruct_source_file,
+    CompanionAnalysis, compare_with_solc_contract, import_gigahorse_tac, import_heimdall_abi,
+    reconstruct_bytecode_hex, reconstruct_source_file,
 };
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --bytecode <runtime.hex> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
+            "usage: security-engine <source.sol> [solc-path] | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
         );
         return ExitCode::FAILURE;
     };
@@ -31,6 +32,45 @@ fn main() -> ExitCode {
             Ok(analysis) => {
                 if let Err(error) = serde_json::to_writer(std::io::stdout(), &analysis) {
                     eprintln!("cannot write bytecode IR: {error}");
+                    return ExitCode::FAILURE;
+                }
+                println!();
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if source == "--bytecode-companions" {
+        let arguments: Vec<_> = args.collect();
+        if arguments.len() != 3 {
+            eprintln!(
+                "usage: security-engine --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac>"
+            );
+            return ExitCode::FAILURE;
+        }
+        let result = fs::read_to_string(&arguments[0])
+            .map_err(|error| format!("cannot read {}: {error}", arguments[0]))
+            .and_then(|hex| reconstruct_bytecode_hex(&arguments[0], &hex))
+            .and_then(|native| {
+                let abi = fs::read_to_string(&arguments[1])
+                    .map_err(|error| format!("cannot read {}: {error}", arguments[1]))?;
+                let tac = fs::read_to_string(&arguments[2])
+                    .map_err(|error| format!("cannot read {}: {error}", arguments[2]))?;
+                let heimdall = import_heimdall_abi(&native, &arguments[1], &abi)?;
+                let gigahorse = import_gigahorse_tac(&native, &arguments[2], &tac)?;
+                Ok(CompanionAnalysis {
+                    native,
+                    heimdall,
+                    gigahorse,
+                })
+            });
+        return match result {
+            Ok(analysis) => {
+                if let Err(error) = serde_json::to_writer(std::io::stdout(), &analysis) {
+                    eprintln!("cannot write companion analysis: {error}");
                     return ExitCode::FAILURE;
                 }
                 println!();

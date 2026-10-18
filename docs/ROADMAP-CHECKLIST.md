@@ -37,6 +37,8 @@ O fechamento M3 cobre somente runtime EVM legado fornecido explicitamente: inter
 
 Complemento após M3: EVMole 0.9.4 fornece uma segunda leitura local de selectors, argumentos, mutabilidade, storage e CFG. Suas propostas permanecem separadas e tentativas; divergências são registradas, não incorporadas automaticamente ao grafo nativo. A comparação com source pode aproveitar selector ABI exclusivo do EVMole, ainda com confiança `Tentative`.
 
+Complemento adicional: Heimdall ABI e Gigahorse TAC podem ser importados com `--bytecode-companions` ou gerados pelo wrapper local. Selectors são correlacionados com PCs nativos/EVMole; blocos e sucessores TAC são correlacionados com PCs decodificados. Nenhuma dessas propostas entra automaticamente em fluxo econômico ou achado de vulnerabilidade.
+
 ### M4 — Análise econômica determinística
 - [ ] Codificar conservação de assets/shares e simetria de preço.
 - [ ] Detectar mismatch de decimals, rounding, preview/execução e accounting.
