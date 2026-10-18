@@ -22,3 +22,5 @@ The Rust `EconomicFunction` record is a compact description of one vault or orac
 ## Milestone state
 
 M1 established this data model with a manually assembled vault fixture. The completed M2 source slice fills it from solc AST for a single source file, adds a partial source control graph, preserves declaring contracts across inheritance, and attaches same-file modifier effects, including inherited definitions; see [Source Reconstruction](SOURCE-RECONSTRUCTION.md). Local modifiers with exactly one `_` are composed into the function graph. Others remain explicitly unresolved. The [bounded M3 bytecode slice](BYTECODE-RECONSTRUCTION.md) adds conservative legacy runtime decoding, CFG, generic data dependencies, and PC evidence separately. Neither slice detects vulnerabilities.
+
+The [M4 deterministic analysis](ECONOMIC-ANALYSIS.md) consumes this source IR and emits separate `EconomicCandidate` records. It does not change the reconstructed function facts or promote a candidate to a finding.

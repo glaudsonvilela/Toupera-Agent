@@ -4,15 +4,15 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use security_engine::{
-    CompanionAnalysis, compare_with_solc_contract, import_gigahorse_tac, import_heimdall_abi,
-    reconstruct_bytecode_hex, reconstruct_source_file,
+    CompanionAnalysis, analyze_economic_functions, compare_with_solc_contract,
+    import_gigahorse_tac, import_heimdall_abi, reconstruct_bytecode_hex, reconstruct_source_file,
 };
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
+            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
         );
         return ExitCode::FAILURE;
     };
@@ -71,6 +71,52 @@ fn main() -> ExitCode {
             Ok(analysis) => {
                 if let Err(error) = serde_json::to_writer(std::io::stdout(), &analysis) {
                     eprintln!("cannot write companion analysis: {error}");
+                    return ExitCode::FAILURE;
+                }
+                println!();
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if source == "--economic-candidates" {
+        let arguments: Vec<_> = args.collect();
+        if arguments.is_empty() || arguments.len() > 3 {
+            eprintln!(
+                "usage: security-engine --economic-candidates <source.sol> [solc-path] [slither.json]"
+            );
+            return ExitCode::FAILURE;
+        }
+        let compiler = arguments
+            .get(1)
+            .cloned()
+            .or_else(|| env::var("SOLC_BIN").ok())
+            .unwrap_or_else(|| "solc".to_owned());
+        let result = fs::read_to_string(&arguments[0])
+            .map_err(|error| format!("cannot read {}: {error}", arguments[0]))
+            .and_then(|text| {
+                let functions =
+                    reconstruct_source_file(Path::new(&arguments[0]), Path::new(&compiler))?;
+                let source_name = Path::new(&arguments[0])
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .ok_or("source path has no UTF-8 file name")?;
+                let slither = arguments
+                    .get(2)
+                    .map(|path| {
+                        fs::read_to_string(path)
+                            .map_err(|error| format!("cannot read {path}: {error}"))
+                    })
+                    .transpose()?;
+                analyze_economic_functions(&functions, source_name, &text, slither.as_deref())
+            });
+        return match result {
+            Ok(report) => {
+                if let Err(error) = serde_json::to_writer(std::io::stdout(), &report) {
+                    eprintln!("cannot write economic candidates: {error}");
                     return ExitCode::FAILURE;
                 }
                 println!();

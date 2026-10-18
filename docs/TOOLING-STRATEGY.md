@@ -1,6 +1,6 @@
 # Ferramentas de análise para o recorte econômico
 
-Avaliação iniciada em 2026-10-18. Não há benchmark de redução de IA ou detecção de bugs. O M2 reconstrói um arquivo Solidity sem imports; o M3 reconstrói runtime EVM legado. EVMole foi integrado como biblioteca local; Heimdall e Gigahorse têm importadores locais de evidências e wrapper de execução opcional. Os scanners, fuzzers e provadores do inventário em `VPS-SETUP.md` ainda não estão orquestrados pelo Toupera Agent.
+Avaliação iniciada em 2026-10-18. Não há benchmark de redução de IA ou detecção de bugs. O M2 reconstrói um arquivo Solidity sem imports; o M3 reconstrói runtime EVM legado. EVMole foi integrado como biblioteca local; Heimdall e Gigahorse têm importadores locais de evidências e wrapper de execução opcional. O M4 importa JSON local do Slither para candidatos econômicos selecionados. Os outros scanners, fuzzers e provadores do inventário em `VPS-SETUP.md` ainda não estão orquestrados pelo Toupera Agent.
 
 ## Decisão
 
@@ -11,7 +11,7 @@ Manter a IR econômica Rust como índice de funções, evidências e incertezas.
 | [EVMole](https://github.com/cdump/evmole) | Amplia candidatos de selectors, ABI, storage e CFG no bytecode sem source. | Integrado como companion Rust M3, versão fixada | Evidência `Tentative` separada; comparar com PCs e resultados nativos antes de usar em análise econômica. |
 | [Heimdall-rs](https://github.com/Jon-Becker/heimdall-rs) | Recupera ABI candidata de runtime sem source. | Importação local de `abi.json` | Correlacionar selectors com entradas nativas/EVMole; assinatura e mutabilidade seguem `Tentative`. |
 | [Gigahorse](https://github.com/nevillegrech/gigahorse-toolchain) | Levanta bytecode em IR de três endereços e CFG. | Importação local de `contract.tac` | Correlacionar blocos e sucessores com PCs nativos; TAC não altera fluxo econômico automaticamente. |
-| [Slither](https://github.com/crytic/slither) | Alta para estrutura, herança, chamadas, dependência de dados e detectores customizados; não substitui invariantes econômicas. | Primeira integração | Triagem source e enriquecimento da IR, com resultados deduplicados por localização e categoria. |
+| [Slither](https://github.com/crytic/slither) | Alta para estrutura, herança, chamadas, dependência de dados e detectores customizados; não substitui invariantes econômicas. | JSON local importado no M4 | Sinais relevantes viram candidatos apenas com função e span inequívocos; deduplicação por contrato, função e categoria. |
 | [Mythril](https://github.com/ConsenSysDiligence/mythril) | Complementar para problemas EVM genéricos e caminhos de bytecode; menor precisão para lógica econômica específica. | Piloto seletivo após M3 | Examinar candidatos de bytecode ou caminhos que o source não esclareceu, com limite de tempo. |
 | [Securify2](https://github.com/eth-sri/securify2) | Sobreposição com scanners existentes; a documentação limita a entrada a contratos sem imports e o Docker fixa `solc` 0.5.12 por padrão. | Não integrar ao fluxo principal | Comparação experimental somente se fixtures modernas e custo de manutenção justificarem. |
 | [Manticore](https://github.com/trailofbits/manticore) | Exploração simbólica potencialmente útil, mas o projeto foi arquivado pelo mantenedor em 2026. | Não adotar | Manter fora da base do produto. |

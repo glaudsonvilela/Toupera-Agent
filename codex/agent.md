@@ -62,3 +62,9 @@
 - Após esta etapa, `cargo fmt --all`, `cargo check --locked --offline -p security-engine` e `git diff --check` passaram; testes automatizados não foram adicionados ou executados.
 - No VPS, Heimdall está em `/usr/local/bin/heimdall` (asset release 0.9.3; `--version` informa 0.9.2) e Gigahorse está em imagem Podman fixada por digest; veja `docs/VPS-SETUP.md`. Não afirmar que decompilação de contrato foi executada só porque as ferramentas foram instaladas.
 - A revisão de implementação `a3b4d6f` foi publicada e compilada em release no VPS; `.deployed-commit` deve acompanhar a revisão corrente. O fluxo completo Heimdall→Gigahorse→importação ainda não foi executado em fixture ou alvo.
+
+## M4 — análise econômica source-backed
+
+- `economic_analysis.rs` produz candidatos `UNVERIFIED` com evidência por source span, regras e premissas. `--economic-candidates <source.sol> [solc] [slither.json]` expõe o relatório. O wrapper `scripts/run-economic-candidates.sh` roda Slither localmente e conserva JSON e versões. Leia `docs/ECONOMIC-ANALYSIS.md` antes de alterar regras.
+- Deduplicação usa contrato, função e categoria. JSON Slither precisa de `success=true`; detectores sem mapeamento, função inequívoca ou span válido não viram candidato. Nunca trate `impact`/`confidence` do Slither ou uma regra Rust como confirmação econômica.
+- A pedido do usuário, não executar testes ou análise de fixtures até a implementação geral estar completa. Compilação, formatação e sintaxe do shell foram conferidas; calibração de falsos positivos, cobertura e economia de IA permanece pendente. Atualize `agente.md` e este arquivo após etapas futuras.

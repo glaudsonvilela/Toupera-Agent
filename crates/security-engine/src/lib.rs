@@ -7,6 +7,7 @@ mod bytecode_flow;
 mod callgraph;
 mod cfg;
 mod dataflow;
+mod economic_analysis;
 mod ir;
 mod source;
 
@@ -24,6 +25,10 @@ pub use bytecode_companions::{
 };
 pub use bytecode_evmole::{
     EvmoleControlEdgeEvidence, EvmoleReport, EvmoleSelectorEvidence, EvmoleStorageEvidence,
+};
+pub use economic_analysis::{
+    EconomicAnalysisMetrics, EconomicAnalysisReport, EconomicCandidate, SlitherSignal,
+    analyze_economic_functions,
 };
 pub use ir::{
     AppliedModifier, ArithmeticExpression, BasicBlockId, BytecodePc, CallTarget, Confidence,
@@ -62,7 +67,7 @@ pub enum EconomicOperation {
 }
 
 /// Initial finding categories in the M0 scope.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize)]
 pub enum FindingKind {
     PriceSourceAsymmetry,
     DecimalMismatch,

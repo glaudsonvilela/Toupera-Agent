@@ -39,13 +39,15 @@ Complemento após M3: EVMole 0.9.4 fornece uma segunda leitura local de selector
 
 Complemento adicional: Heimdall ABI e Gigahorse TAC podem ser importados com `--bytecode-companions` ou gerados pelo wrapper local. Selectors são correlacionados com PCs nativos/EVMole; blocos e sucessores TAC são correlacionados com PCs decodificados. Nenhuma dessas propostas entra automaticamente em fluxo econômico ou achado de vulnerabilidade.
 
-### M4 — Análise econômica determinística
-- [ ] Codificar conservação de assets/shares e simetria de preço.
-- [ ] Detectar mismatch de decimals, rounding, preview/execução e accounting.
-- [ ] Detectar share inflation, donation manipulation, fee bypass e problemas de oracle.
-- [ ] Integrar Slither como produtor complementar de evidências e deduplicar seus sinais com a IR Rust.
-- [ ] Emitir candidatos com evidências, nunca veredictos automáticos.
-- [ ] Medir redução de candidatos e falsos positivos em fixtures.
+### M4 — Análise econômica determinística (implementação source-backed; calibração pendente)
+- [x] Codificar triagem estrutural de conservação assets/shares e assimetria de preço, sem alegar prova numérica.
+- [x] Emitir candidatos para escalas decimais, arredondamento, preview/execução e accounting com evidências observadas.
+- [x] Emitir candidatos para sensibilidade de primeira emissão/doação, fee e caminhos de oracle sob premissas explícitas.
+- [x] Importar JSON local do Slither como evidência complementar e deduplicar por contrato, função e categoria na IR Rust.
+- [x] Emitir apenas candidatos `UNVERIFIED` com spans, regras, premissas e confiança tentativa.
+- [ ] Medir redução de candidatos, falsos positivos e cobertura em fixtures: adiado a pedido do usuário até a implementação completa.
+
+O M4 usa a IR source-first de um arquivo sem imports. Regras sintáticas não provam conservação de quantidades, round trips ERC-4626, possibilidade de doação ou qualidade de oracle. O bytecode M3 permanece evidência estrutural separada. A saída e os limites estão em [Análise Econômica](ECONOMIC-ANALYSIS.md).
 
 ### M5 — Deduplicação e contexto mínimo
 - [ ] Calcular hashes de source, bytecode, AST e função.

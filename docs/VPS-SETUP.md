@@ -59,6 +59,10 @@ O servidor não contém `.git` nem credenciais para acessar o repositório priva
 - A imagem oficial `ghcr.io/nevillegrech/gigahorse-toolchain` está no Podman rootless de `toupera`, digest `sha256:f676ca8aaf88acd47be27ed1967acddc9c99acdd041b34e79472cfb028910743`. O wrapper usa esse digest por padrão, com `--network none`, montagem apenas do bytecode local, diretório de saída e cache. `podman run ... --help` abriu; nenhum contrato foi decompilado nesta instalação.
 - O CLI Rust oferece `--bytecode-companions` para importar ABI Heimdall e TAC Gigahorse; `scripts/run-bytecode-companions.sh <runtime.hex> <diretório-novo>` executa os dois e salva `analysis.json` com artefatos intermediários. Defina `TOUPERA_SECURITY_ENGINE=/srv/toupera-agent/target/release/security-engine` se o binário não estiver no `PATH`. Leia `docs/BYTECODE-RECONSTRUCTION.md`. Isso acrescenta evidência tentativa; não ativa serviço web nem IA.
 
+## Análise econômica M4
+
+O CLI `--economic-candidates <source.sol> [solc-path] [slither.json]` emite candidatos `UNVERIFIED` da IR source-first e importa opcionalmente sinais do Slither. `scripts/run-economic-candidates.sh <source.sol> <diretório-novo>` executa Slither localmente, guarda uma cópia do source, versões, JSON Slither e `candidates.json`. Defina `TOUPERA_SECURITY_ENGINE=/srv/toupera-agent/target/release/security-engine` quando necessário. O wrapper não foi executado em fixture ou alvo nesta etapa; testes e calibração de falsos positivos ficam para depois da implementação completa, por solicitação do usuário. Leia `docs/ECONOMIC-ANALYSIS.md`.
+
 ## Operação segura
 
 Use apenas fontes próprias, forks locais ou programas com autorização explícita. Antes de analisar outro alvo, confirme o escopo. Nunca registre chave da API, senha ou chave SSH privada no repositório, nos argumentos de linha de comando ou nos logs. A integração DeepSeek depende de implementação futura e de um mecanismo de segredo no servidor. Não exponha `anvil` na rede pública.

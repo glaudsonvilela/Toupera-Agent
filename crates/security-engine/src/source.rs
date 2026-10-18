@@ -906,6 +906,23 @@ impl Walker<'_> {
 
     fn visit_call(&mut self, node: &Value) {
         let expression = &node["expression"];
+        let called_name = expression
+            .get("memberName")
+            .or_else(|| expression.get("name"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if matches!(
+            called_name,
+            "mulDiv" | "mulDivUp" | "mulDivDown" | "ceilDiv"
+        ) {
+            if let Some(text) = self.fragment(node).map(str::to_owned) {
+                if let Some(evidence) =
+                    self.evidence(node, ArithmeticExpression(text), Confidence::Direct)
+                {
+                    self.ir.arithmetic.push(evidence);
+                }
+            }
+        }
         if let Some(id) = expression
             .get("referencedDeclaration")
             .and_then(Value::as_i64)
