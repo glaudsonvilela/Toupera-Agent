@@ -69,15 +69,16 @@ O M6 foi implementado no recorte de candidatos source-backed do M4/M5. Preparaç
 ### M7 — Juiz Foundry
 - [x] Preparar caso privado por hipótese priorizada, com snapshot do alvo e scaffold Foundry explicitamente pendente de implementação humana.
 - [x] Implementar executor local com seed fixa, duas execuções, limites de tempo e gates de harness revisado; execução adiada a pedido do usuário.
+- [x] Instrumentar contagem real de fuzz, LCOV do alvo e contadores de chamadas/reverts de invariantes quando houver campanha; nenhuma medição real executada.
 - [ ] Implementar harness específico e obter teste reproduzível para cada hipótese real.
 - [ ] Executar apenas em unit tests, Anvil ou fork local autorizado após a implementação geral.
 - [ ] Aplicar fuzzing de Foundry a limites, fees e arredondamentos.
 - [ ] Rejeitar hipóteses que não reproduzem o comportamento alegado.
 - [ ] Reexecutar resultados positivos e guardar traces relevantes.
-- [ ] Medir cobertura, chamadas válidas e reverts; avaliar Echidna ou Medusa apenas quando acrescentarem alcance ou achados únicos.
+- [ ] Medir cobertura, chamadas econômicas válidas e reverts em casos reais; avaliar Echidna ou Medusa apenas quando acrescentarem alcance ou achados únicos.
 - [ ] Piloto Halmos para propriedades curtas; avaliar Kontrol ou Certora somente para provas críticas com premissas explícitas.
 
-O comando `--foundry-plan` cria casos sem executar testes. `--foundry-run` está implementado, mas não foi acionado nesta etapa. Uma aprovação declarada em `harness.json` é condição de entrada, não prova de qualidade do teste. O motor não converte texto da IA em Solidity, não rejeita hipótese automaticamente com uma execução falha e não confirma achado por um teste verde. Ver [Juiz Foundry](FOUNDRY-JUDGE.md).
+O comando `--foundry-plan` cria casos sem executar testes. `--foundry-run` e a coleta de cobertura estão implementados, mas não foram acionados nesta etapa. Uma aprovação declarada em `harness.json` é condição de entrada, não prova de qualidade do teste. Contadores de invariant handlers não provam chamadas válidas ao alvo. O motor não converte texto da IA em Solidity, não rejeita hipótese automaticamente com uma execução falha e não confirma achado por um teste verde. Ver [Juiz Foundry](FOUNDRY-JUDGE.md).
 
 Critérios e prioridade por ferramenta: [Estratégia de ferramentas](TOOLING-STRATEGY.md).
 

@@ -96,3 +96,9 @@
 - `--evidence-finalize` valida hashes, identidade do caso, status diretamente nos JSON Foundry e revisão humana preenchida sobre escopo, asserções, impacto, duplicidade, ambiente e passos. Só então grava `report.md`/`ready.json` em `REPORT_READY`; não envia automaticamente o relatório. Os campos humanos são atestados que precisam ser conferidos de verdade. Leia `docs/EVIDENCE-DELIVERY.md`.
 - Testes, fixtures, métricas e relatórios reais permanecem adiados por instrução do usuário até implementação geral completa. Continuar recursos de instrumentação M7 antes da validação. Atualizar ambos os arquivos de agente após a próxima etapa. Preservar `web/` não rastreado.
 - A revisão M8 `ea48456` foi publicada no GitHub privado, sincronizada e compilada em release no VPS sob `toupera`; `.deployed-commit` registrou a revisão antes do complemento documental. Nenhum pacote M8, relatório, fixture ou teste Foundry foi executado.
+
+## Complemento M7 — contadores e cobertura
+
+- `foundry_judge.rs` usa os campos `kind.Fuzz.runs` e, quando existem invariantes, `kind.Invariant.calls/reverts` do JSON Foundry 1.8.5. O primeiro é gate de 256 entradas em cada uma das duas rodadas; os últimos contam chamadas de handlers e não devem ser descritos como chamadas econômicas válidas ao alvo.
+- Após testes positivos, executa `forge coverage --report lcov` com a mesma seed e exige ao menos uma linha de `src/Target.sol` atingida. M8 copia LCOV/log e reconfere cobertura e fuzz diretamente dos arquivos antes de `PENDING_HUMAN_REVIEW` ou `REPORT_READY`. Inconclusivos permanecem pendentes; nenhuma hipótese é rejeitada automaticamente.
+- Nenhum teste, fixture, comando de cobertura ou benchmark foi executado nesta etapa, conforme pedido do usuário. Apenas formatação, compilação Rust 1.93 e diff estático. Leia `docs/FOUNDRY-JUDGE.md`; atualizar ambos os arquivos de agente após próximas etapas. Preservar `web/` não rastreado.

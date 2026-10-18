@@ -84,6 +84,8 @@ pub struct FoundryResult {
     pub fuzz_seed: String,
     pub fuzz_runs: u32,
     pub runs: Vec<FoundryRun>,
+    #[serde(default)]
+    pub coverage: Option<FoundryCoverage>,
     pub caveat: String,
 }
 
@@ -92,8 +94,26 @@ pub struct FoundryRun {
     pub run: u8,
     pub exit_success: bool,
     pub test_statuses: BTreeMap<String, String>,
+    #[serde(default)]
+    pub fuzz_runs_observed: Option<u64>,
+    #[serde(default)]
+    pub invariant_calls: Option<u64>,
+    #[serde(default)]
+    pub invariant_reverts: Option<u64>,
     pub json_path: String,
     pub trace_path: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct FoundryCoverage {
+    pub source: String,
+    pub lines_found: u64,
+    pub lines_hit: u64,
+    pub branches_found: u64,
+    pub branches_hit: u64,
+    pub report_path: String,
+    pub log_path: String,
+    pub exit_success: bool,
 }
 
 fn get_str<'a>(value: &'a Value, field: &str) -> Result<&'a str, String> {
@@ -299,7 +319,7 @@ fn run_bounded(mut command: Command, timeout: Duration, output: &Path) -> Result
     }
 }
 
-fn statuses(json: &Value) -> BTreeMap<String, String> {
+fn test_results(json: &Value) -> BTreeMap<String, Value> {
     let mut found = BTreeMap::new();
     if let Some(suites) = json.as_object() {
         for (name, suite) in suites {
@@ -308,14 +328,107 @@ fn statuses(json: &Value) -> BTreeMap<String, String> {
             }
             if let Some(results) = suite.get("test_results").and_then(Value::as_object) {
                 for (name, result) in results {
-                    if let Some(status) = result.get("status").and_then(Value::as_str) {
-                        found.insert(name.clone(), status.into());
-                    }
+                    found.insert(name.clone(), result.clone());
                 }
             }
         }
     }
     found
+}
+
+fn statuses(results: &BTreeMap<String, Value>) -> BTreeMap<String, String> {
+    results
+        .iter()
+        .filter_map(|(name, result)| {
+            result
+                .get("status")
+                .and_then(Value::as_str)
+                .map(|status| (name.clone(), status.into()))
+        })
+        .collect()
+}
+
+fn observed_metrics(results: &BTreeMap<String, Value>) -> (Option<u64>, Option<u64>, Option<u64>) {
+    let fuzz_runs = results
+        .get("testFuzzBoundaries(uint256)")
+        .and_then(|result| result.pointer("/kind/Fuzz/runs"))
+        .and_then(Value::as_u64);
+    let mut calls = None;
+    let mut reverts = None;
+    for (name, result) in results {
+        if !name.starts_with("invariant") {
+            continue;
+        }
+        let Some(invariant) = result.pointer("/kind/Invariant") else {
+            continue;
+        };
+        if let (Some(observed_calls), Some(observed_reverts)) = (
+            invariant.get("calls").and_then(Value::as_u64),
+            invariant.get("reverts").and_then(Value::as_u64),
+        ) {
+            calls = Some(calls.unwrap_or(0_u64).saturating_add(observed_calls));
+            reverts = Some(reverts.unwrap_or(0_u64).saturating_add(observed_reverts));
+        }
+    }
+    (fuzz_runs, calls, reverts)
+}
+
+pub(crate) fn target_coverage(
+    lcov: &str,
+    report_path: &Path,
+    log_path: &Path,
+    exit_success: bool,
+) -> Option<FoundryCoverage> {
+    let mut in_target = false;
+    let mut target_seen = false;
+    let mut lines = BTreeMap::<u64, u64>::new();
+    let mut branches = BTreeMap::<String, bool>::new();
+    for entry in lcov.lines() {
+        if let Some(name) = entry.strip_prefix("SF:") {
+            in_target = name == "Target.sol" || Path::new(name).ends_with("src/Target.sol");
+            target_seen |= in_target;
+            continue;
+        }
+        if !in_target {
+            continue;
+        }
+        if let Some(data) = entry.strip_prefix("DA:") {
+            let mut parts = data.split(',');
+            if let (Some(number), Some(hits)) = (parts.next(), parts.next()) {
+                if let (Ok(number), Ok(hits)) = (number.parse::<u64>(), hits.parse::<u64>()) {
+                    let recorded = lines.entry(number).or_insert(0);
+                    *recorded = (*recorded).max(hits);
+                }
+            }
+        } else if let Some(data) = entry.strip_prefix("BRDA:") {
+            let mut parts = data.split(',');
+            if let (Some(line), Some(block), Some(branch), Some(taken)) =
+                (parts.next(), parts.next(), parts.next(), parts.next())
+            {
+                let key = format!("{line}:{block}:{branch}");
+                let hit = taken.parse::<u64>().is_ok_and(|count| count > 0);
+                branches
+                    .entry(key)
+                    .and_modify(|value| *value |= hit)
+                    .or_insert(hit);
+            }
+        } else if entry == "end_of_record" {
+            in_target = false;
+        }
+    }
+    if !target_seen {
+        return None;
+    }
+    Some(FoundryCoverage {
+        source: "src/Target.sol".into(),
+        lines_found: lines.len() as u64,
+        lines_hit: lines.values().filter(|hits| **hits > 0).count() as u64,
+        branches_found: branches.len() as u64,
+        branches_hit: branches.values().filter(|hit| **hit).count() as u64,
+        report_path: report_path.display().to_string(),
+        log_path: log_path.display().to_string(),
+        exit_success,
+    })
 }
 
 /// Execute only a reviewed local harness. Successful tests create a review
@@ -399,27 +512,77 @@ pub fn judge_foundry_case(
             .env("FOUNDRY_FFI", "false")
             .env("FOUNDRY_OFFLINE", "true");
         let exit_success = run_bounded(command, Duration::from_secs(180), &trace_path)?;
-        let statuses = match read_private_json::<Value>(&json_path) {
-            Ok(json) => statuses(&json),
-            Err(_) => BTreeMap::new(),
-        };
+        let (statuses, fuzz_runs_observed, invariant_calls, invariant_reverts) =
+            match read_private_json::<Value>(&json_path) {
+                Ok(json) => {
+                    let results = test_results(&json);
+                    let statuses = statuses(&results);
+                    let (fuzz, calls, reverts) = observed_metrics(&results);
+                    (statuses, fuzz, calls, reverts)
+                }
+                Err(_) => (BTreeMap::new(), None, None, None),
+            };
         runs.push(FoundryRun {
             run: number,
             exit_success,
             test_statuses: statuses,
+            fuzz_runs_observed,
+            invariant_calls,
+            invariant_reverts,
             json_path: json_path.display().to_string(),
             trace_path: trace_path.display().to_string(),
         });
     }
-    let reproduced = runs.iter().all(|run| {
+    let tests_passed = runs.iter().all(|run| {
         run.exit_success
-            && run.test_statuses.len() == REQUIRED_TESTS.len()
+            && run.test_statuses.len() >= REQUIRED_TESTS.len()
+            && run.test_statuses.values().all(|status| status == "Success")
+            && run
+                .fuzz_runs_observed
+                .is_some_and(|observed| observed >= fuzz_runs as u64)
             && REQUIRED_TESTS.iter().all(|name| {
                 run.test_statuses
                     .get(*name)
                     .is_some_and(|status| status == "Success")
             })
     });
+    let coverage = if tests_passed {
+        let report_path = result_dir.join("coverage.info");
+        let log_path = result_dir.join("coverage.trace.txt");
+        let mut command = Command::new(forge_bin);
+        command
+            .arg("coverage")
+            .arg("--report")
+            .arg("lcov")
+            .arg("--report-file")
+            .arg(&report_path)
+            .arg("--exclude-tests")
+            .arg("--match-path")
+            .arg(TEST_FILE)
+            .arg("--fuzz-seed")
+            .arg(seed)
+            .arg("--fuzz-runs")
+            .arg(fuzz_runs.to_string())
+            .arg("--offline")
+            .arg("--use")
+            .arg(solc_bin)
+            .current_dir(case_dir)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("HOME", case_dir)
+            .env("FOUNDRY_FFI", "false")
+            .env("FOUNDRY_OFFLINE", "true");
+        let exit_success = run_bounded(command, Duration::from_secs(180), &log_path)?;
+        fs::read_to_string(&report_path)
+            .ok()
+            .and_then(|lcov| target_coverage(&lcov, &report_path, &log_path, exit_success))
+    } else {
+        None
+    };
+    let reproduced = tests_passed
+        && coverage
+            .as_ref()
+            .is_some_and(|metrics| metrics.exit_success && metrics.lines_hit > 0);
     let report = FoundryResult {
         schema: RESULT_SCHEMA.into(),
         candidate_key: case.candidate_key,
@@ -429,6 +592,7 @@ pub fn judge_foundry_case(
         fuzz_seed: seed.into(),
         fuzz_runs,
         runs,
+        coverage,
         caveat: "Human review must verify that assertions demonstrate the alleged behavior; successful execution alone does not confirm a vulnerability. Failed execution does not reject a hypothesis.".into(),
     };
     write_private(&result_dir.join("result.json"), &json_bytes(&report)?)?;

@@ -44,8 +44,8 @@ pub use evidence_package::{
     prepare_evidence_bundle,
 };
 pub use foundry_judge::{
-    FoundryCase, FoundryPlan, FoundryResult, FoundryRun, HarnessApproval, judge_foundry_case,
-    prepare_foundry_cases,
+    FoundryCase, FoundryCoverage, FoundryPlan, FoundryResult, FoundryRun, HarnessApproval,
+    judge_foundry_case, prepare_foundry_cases,
 };
 pub use ir::{
     AppliedModifier, ArithmeticExpression, BasicBlockId, BytecodePc, CallTarget, Confidence,

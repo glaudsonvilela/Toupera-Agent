@@ -48,6 +48,8 @@ M7 prepares private Foundry cases from M5/M6 output with exact source digests. I
 
 M8 snapshots a case into a private evidence bundle. A report can reach `REPORT_READY` only after a positive M7 result, artifact integrity checks and explicit human review of scope, assertions, impact and duplicates. No real report was generated during implementation. See [Evidence Delivery](docs/EVIDENCE-DELIVERY.md).
 
+The M7 judge also records observed fuzz runs and target LCOV coverage; optional invariant handler calls/reverts remain separate from verified economic calls to the target. These metrics have not been exercised on a case yet.
+
 ## Development
 
 ```sh

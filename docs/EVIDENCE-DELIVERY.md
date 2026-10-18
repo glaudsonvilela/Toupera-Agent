@@ -16,7 +16,7 @@ Depois da revisão e apenas com reprodução positiva:
 security-engine --evidence-finalize /caminho/privado/evidence/CANDIDATE_KEY
 ```
 
-O gate confere hashes dos artefatos, identidade do caso, status dos dois testes diretamente nos JSON Foundry, hash do harness e os campos obrigatórios de revisão. Então grava `report.md` e `ready.json` com hashes do manifesto, revisão e relatório, e status `REPORT_READY`. Esses arquivos não são recriados se já existirem. A saída é um **relatório privado pronto para revisão/entrega**, sem envio automático a programa, GitHub ou terceiros.
+O gate confere hashes dos artefatos, identidade do caso, status e contagem de fuzz dos dois testes diretamente nos JSON Foundry, hash do harness, LCOV com cobertura não nula do alvo e os campos obrigatórios de revisão. Então grava `report.md` e `ready.json` com hashes do manifesto, revisão e relatório, e status `REPORT_READY`. Esses arquivos não são recriados se já existirem. A saída é um **relatório privado pronto para revisão/entrega**, sem envio automático a programa, GitHub ou terceiros. Chamadas e reverts de invariantes só aparecem quando a campanha existe; não equivalem automaticamente a chamadas válidas ao alvo.
 
 Uma marcação humana em JSON não prova autorização, impacto, ausência de duplicidade ou qualidade semântica do teste. É responsabilidade do revisor conferir o programa e os artefatos. O relatório separa fatos, inferências, premissas, limitações, reprodução e impacto. Não divulgue um pacote com source privado fora do escopo autorizado.
 

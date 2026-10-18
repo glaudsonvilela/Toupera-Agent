@@ -10,6 +10,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::context_package::{ensure_private_cache, write_private};
+use crate::foundry_judge::target_coverage;
 use crate::{FoundryCase, FoundryResult};
 
 const SCHEMA: &str = "m8-evidence-v1";
@@ -139,8 +140,18 @@ fn copy_artifact(
     Ok(())
 }
 
-fn foundry_statuses(json: &Value) -> BTreeMap<String, String> {
+fn foundry_statuses(
+    json: &Value,
+) -> (
+    BTreeMap<String, String>,
+    Option<u64>,
+    Option<u64>,
+    Option<u64>,
+) {
     let mut result = BTreeMap::new();
+    let mut fuzz_runs = None;
+    let mut invariant_calls = None;
+    let mut invariant_reverts = None;
     if let Some(suites) = json.as_object() {
         for (name, suite) in suites {
             if !name.ends_with("Scenario.t.sol:Scenario") {
@@ -151,11 +162,29 @@ fn foundry_statuses(json: &Value) -> BTreeMap<String, String> {
                     if let Some(status) = value.get("status").and_then(Value::as_str) {
                         result.insert(test.clone(), status.into());
                     }
+                    if test == "testFuzzBoundaries(uint256)" {
+                        fuzz_runs = value.pointer("/kind/Fuzz/runs").and_then(Value::as_u64);
+                    }
+                    if test.starts_with("invariant") {
+                        if let (Some(calls), Some(reverts)) = (
+                            value
+                                .pointer("/kind/Invariant/calls")
+                                .and_then(Value::as_u64),
+                            value
+                                .pointer("/kind/Invariant/reverts")
+                                .and_then(Value::as_u64),
+                        ) {
+                            invariant_calls =
+                                Some(invariant_calls.unwrap_or(0_u64).saturating_add(calls));
+                            invariant_reverts =
+                                Some(invariant_reverts.unwrap_or(0_u64).saturating_add(reverts));
+                        }
+                    }
                 }
             }
         }
     }
-    result
+    (result, fuzz_runs, invariant_calls, invariant_reverts)
 }
 
 fn validate_reproduction(
@@ -189,15 +218,44 @@ fn validate_reproduction(
             return Err("M7 run artifacts or exit status are incomplete".into());
         }
         let json: Value = read_json(&bundle.join(&json_name))?;
-        let actual = foundry_statuses(&json);
+        let (actual, fuzz_runs, invariant_calls, invariant_reverts) = foundry_statuses(&json);
         if actual != run.test_statuses
-            || actual.len() != REQUIRED_TESTS.len()
+            || actual.len() < REQUIRED_TESTS.len()
+            || actual.values().any(|status| status != "Success")
+            || fuzz_runs != run.fuzz_runs_observed
+            || invariant_calls != run.invariant_calls
+            || invariant_reverts != run.invariant_reverts
+            || !fuzz_runs.is_some_and(|runs| runs >= report.fuzz_runs as u64)
             || !REQUIRED_TESTS
                 .iter()
                 .all(|name| actual.get(*name).is_some_and(|status| status == "Success"))
         {
             return Err("M7 test statuses do not match the captured Foundry JSON".into());
         }
+    }
+    let coverage = report.coverage.as_ref().ok_or("M7 coverage is absent")?;
+    if !coverage.exit_success
+        || coverage.lines_hit == 0
+        || !manifest.artifacts.contains_key("runs/coverage.info")
+        || !manifest.artifacts.contains_key("runs/coverage.trace.txt")
+    {
+        return Err("M7 target coverage is missing or empty".into());
+    }
+    let lcov = fs::read_to_string(bundle.join("runs/coverage.info"))
+        .map_err(|error| format!("cannot read M7 coverage: {error}"))?;
+    let actual_coverage = target_coverage(
+        &lcov,
+        &bundle.join("runs/coverage.info"),
+        &bundle.join("runs/coverage.trace.txt"),
+        true,
+    )
+    .ok_or("LCOV has no Target.sol record")?;
+    if actual_coverage.lines_found != coverage.lines_found
+        || actual_coverage.lines_hit != coverage.lines_hit
+        || actual_coverage.branches_found != coverage.branches_found
+        || actual_coverage.branches_hit != coverage.branches_hit
+    {
+        return Err("M7 coverage summary differs from bundled LCOV".into());
     }
     Ok(report)
 }
@@ -276,14 +334,18 @@ pub fn prepare_evidence_bundle(
     let mut stage = "PENDING_REPRODUCTION".to_owned();
     let result_path = case_dir.join("runs/result.json");
     if result_path.exists() {
+        copy_artifact(&result_path, output_dir, "runs/result.json", &mut artifacts)?;
         for name in [
-            "runs/result.json",
             "runs/run-1.json",
             "runs/run-1.trace.txt",
             "runs/run-2.json",
             "runs/run-2.trace.txt",
+            "runs/coverage.info",
+            "runs/coverage.trace.txt",
         ] {
-            copy_artifact(&case_dir.join(name), output_dir, name, &mut artifacts)?;
+            if case_dir.join(name).exists() {
+                copy_artifact(&case_dir.join(name), output_dir, name, &mut artifacts)?;
+            }
         }
         let temporary = EvidenceManifest {
             schema: SCHEMA.into(),
@@ -303,7 +365,7 @@ pub fn prepare_evidence_bundle(
             return Err("M7 result has an unknown state".into());
         }
     }
-    let facts = vec![
+    let mut facts = vec![
         EvidenceFact {
             statement: "The bundled Solidity source has the SHA-256 recorded in the M5 case".into(),
             artifact: "src/Target.sol".into(),
@@ -318,6 +380,21 @@ pub fn prepare_evidence_bundle(
             .into(),
         },
     ];
+    if stage == "PENDING_HUMAN_REVIEW" {
+        let report: FoundryResult = read_json(&output_dir.join("runs/result.json"))?;
+        if let Some(coverage) = report.coverage {
+            facts.push(EvidenceFact {
+                statement: format!(
+                    "Foundry LCOV records {} of {} target lines hit and {} of {} branches hit",
+                    coverage.lines_hit,
+                    coverage.lines_found,
+                    coverage.branches_hit,
+                    coverage.branches_found
+                ),
+                artifact: "runs/coverage.info".into(),
+            });
+        }
+    }
     let manifest = EvidenceManifest {
         schema: SCHEMA.into(),
         candidate_key: case.candidate_key,
@@ -386,6 +463,22 @@ fn report_markdown(
         ));
     }
     text.push_str("- Both Foundry executions returned Success for `testReproduce()` and `testFuzzBoundaries(uint256)` (see `runs/run-1.json`, `runs/run-2.json` and their traces).\n");
+    for run in &result.runs {
+        text.push_str(&format!(
+            "- Run {}: {} fuzz inputs recorded by Foundry.\n",
+            run.run,
+            run.fuzz_runs_observed.unwrap_or(0)
+        ));
+        if let (Some(calls), Some(reverts)) = (run.invariant_calls, run.invariant_reverts) {
+            text.push_str(&format!(
+                "- Run {} invariant campaign: {} handler calls, {} reverts.\n",
+                run.run, calls, reverts
+            ));
+        }
+    }
+    text.push_str(
+        "- No invariant call/revert rate is claimed when the harness has no invariant campaign.\n",
+    );
     text.push_str("\n## Human inference and impact\n\n");
     text.push_str(&list(&review.inferences));
     text.push_str(&format!("\nImpact assessment: {}\n", line(&review.impact)));
