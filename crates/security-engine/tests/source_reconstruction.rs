@@ -9,6 +9,8 @@ const PROXY_SOURCE: &str = include_str!("../../../tests/fixtures/VaultProxyFixtu
 const PROXY_AST: &str = include_str!("../../../tests/fixtures/VaultProxyFixture.ast.json");
 const FLOW_SOURCE: &str = include_str!("../../../tests/fixtures/VaultFlowFixture.sol");
 const FLOW_AST: &str = include_str!("../../../tests/fixtures/VaultFlowFixture.ast.json");
+const LOOP_SOURCE: &str = include_str!("../../../tests/fixtures/VaultLoopFixture.sol");
+const LOOP_AST: &str = include_str!("../../../tests/fixtures/VaultLoopFixture.ast.json");
 
 fn source_text<'a, T>(evidence: &Evidence<T>, source: &'a str, file: &str) -> &'a str {
     let EvidenceLocation::Source(span) = &evidence.location else {
@@ -283,4 +285,129 @@ fn control_graph_models_require_failure_and_ternary_paths() {
     assert!(edges.iter().any(|edge| edge.from == alternative.to
         && edge.to == merge.to
         && edge.kind == ControlEdgeKind::Next));
+}
+
+#[test]
+fn loop_graph_routes_break_continue_and_condition_exits() {
+    let records = reconstruct_from_ast_json(LOOP_AST, "VaultLoopFixture.sol", LOOP_SOURCE)
+        .expect("loop fixture AST must be accepted");
+    assert_eq!(records.len(), 4);
+    for (function, condition) in [
+        ("sumUntil(uint256)", "i < limit"),
+        ("countAtLeastOnce(uint256)", "count < limit"),
+        ("countWhile(uint256)", "count < limit"),
+    ] {
+        let graph = records
+            .iter()
+            .find(|item| item.function.0 == function)
+            .unwrap();
+        assert!(
+            graph.unresolved.is_empty(),
+            "{function}: {:?}",
+            graph.unresolved
+        );
+        let edges = &graph.control_edges;
+        assert!(
+            edges
+                .iter()
+                .all(|edge| !edge_text(edge, LOOP_SOURCE, "VaultLoopFixture.sol").is_empty())
+        );
+
+        let loop_exit = edges
+            .iter()
+            .find(|edge| {
+                edge.kind == ControlEdgeKind::False
+                    && edge_text(edge, LOOP_SOURCE, "VaultLoopFixture.sol") == condition
+                    && edges.iter().any(|next| {
+                        next.from == edge.to
+                            && next.to.0 == "exit"
+                            && next.kind == ControlEdgeKind::Exit
+                    })
+            })
+            .expect("false condition must reach the return after the loop");
+        let break_edge = edges
+            .iter()
+            .find(|edge| edge_text(edge, LOOP_SOURCE, "VaultLoopFixture.sol").starts_with("break"))
+            .expect("break must be represented");
+        assert_eq!(
+            break_edge.to, loop_exit.to,
+            "break must skip remaining loop work"
+        );
+        assert_eq!(break_edge.kind, ControlEdgeKind::Next);
+
+        let continue_edge = edges
+            .iter()
+            .find(|edge| {
+                edge_text(edge, LOOP_SOURCE, "VaultLoopFixture.sol").starts_with("continue")
+            })
+            .expect("continue must be represented");
+        assert_eq!(continue_edge.kind, ControlEdgeKind::LoopBack);
+        assert_ne!(continue_edge.to, loop_exit.to);
+        if function == "sumUntil(uint256)" {
+            assert!(
+                edges.iter().any(|edge| edge.from == continue_edge.to
+                    && edge.to == loop_exit.from
+                    && edge.kind == ControlEdgeKind::LoopBack),
+                "for continue must execute the update before rechecking the condition"
+            );
+        } else if function == "countAtLeastOnce(uint256)" {
+            assert_eq!(
+                continue_edge.to, loop_exit.from,
+                "do while continue must reach the condition"
+            );
+            assert!(
+                edges
+                    .iter()
+                    .any(|edge| edge.from == loop_exit.from && edge.kind == ControlEdgeKind::True),
+                "do while condition true must revisit the body"
+            );
+        } else {
+            assert_eq!(
+                continue_edge.to, loop_exit.from,
+                "while continue must recheck the condition"
+            );
+        }
+    }
+}
+
+#[test]
+fn nested_loop_break_stays_inside_outer_loop() {
+    let records = reconstruct_from_ast_json(LOOP_AST, "VaultLoopFixture.sol", LOOP_SOURCE)
+        .expect("loop fixture AST must be accepted");
+    let graph = records
+        .iter()
+        .find(|item| item.function.0 == "nestedLoops(uint256,uint256)")
+        .unwrap();
+    assert!(graph.unresolved.is_empty());
+    let edges = &graph.control_edges;
+    let inner_exit = edges
+        .iter()
+        .find(|edge| {
+            edge.kind == ControlEdgeKind::False
+                && edge_text(edge, LOOP_SOURCE, "VaultLoopFixture.sol") == "count < innerLimit"
+        })
+        .unwrap();
+    let outer_exit = edges
+        .iter()
+        .find(|edge| {
+            edge.kind == ControlEdgeKind::False
+                && edge_text(edge, LOOP_SOURCE, "VaultLoopFixture.sol") == "i < outerLimit"
+        })
+        .unwrap();
+    let inner_break = edges
+        .iter()
+        .find(|edge| edge_text(edge, LOOP_SOURCE, "VaultLoopFixture.sol").starts_with("break"))
+        .unwrap();
+    assert_eq!(inner_break.to, inner_exit.to);
+    assert_ne!(inner_break.to, outer_exit.to);
+
+    let outer_continue = edges
+        .iter()
+        .find(|edge| edge_text(edge, LOOP_SOURCE, "VaultLoopFixture.sol").starts_with("continue"))
+        .unwrap();
+    assert_eq!(outer_continue.kind, ControlEdgeKind::LoopBack);
+    assert!(edges.iter().any(|edge| edge.from == outer_continue.to
+        && edge.to == outer_exit.from
+        && edge.kind == ControlEdgeKind::LoopBack));
+    assert_ne!(outer_continue.to, inner_exit.from);
 }

@@ -18,6 +18,6 @@
 ## Estado após M2 — grafo source-level parcial
 
 - Leia `docs/ROADMAP-CHECKLIST.md`, `docs/ECONOMIC-IR.md` e `docs/SOURCE-RECONSTRUCTION.md`.
-- `crates/security-engine/src/source.rs` extrai IR de solc AST para um arquivo sem imports. `cfg.rs` constrói grafo estrutural parcial com proveniência por aresta. Testes cobrem três fixtures e a CLI foi executada com solc local 0.8.37.
-- Próxima etapa: terminar M2 com construções de fluxo restantes, herança/modifiers, dataflow e resolução de proxy. Não afirme que CFG completo ou a engenharia reversa de bytecode já funcionam.
+- `crates/security-engine/src/source.rs` extrai IR de solc AST para um arquivo sem imports. `cfg.rs` constrói grafo estrutural parcial com proveniência por aresta, incluindo `for`, `do while`, `break`, `continue` e laços aninhados. Testes cobrem quatro fixtures e a CLI foi executada com solc local 0.8.37.
+- Próxima etapa: terminar M2 com herança/modifiers, dataflow e resolução de proxy. `try`, assembly e ternários múltiplos ainda não têm fluxo completo. Não afirme que CFG completo ou a engenharia reversa de bytecode já funcionam.
 - Atualize este arquivo e `/agente.md` ao final de cada etapa, como solicitado pelo usuário.

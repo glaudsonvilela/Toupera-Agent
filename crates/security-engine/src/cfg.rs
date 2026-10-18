@@ -14,6 +14,12 @@ struct Pending {
     location: Option<EvidenceLocation>,
 }
 
+#[derive(Default)]
+struct LoopFrame {
+    breaks: Vec<Pending>,
+    continues: Vec<Pending>,
+}
+
 pub(crate) fn build_source_flow(
     body: &Value,
     file: &str,
@@ -26,6 +32,7 @@ pub(crate) fn build_source_flow(
         source_id,
         edges: Vec::new(),
         unresolved: Vec::new(),
+        loops: Vec::new(),
     };
     let entry = Pending {
         from: BasicBlockId("entry".into()),
@@ -43,6 +50,7 @@ struct Builder<'a> {
     source_id: i64,
     edges: Vec<ControlEdge>,
     unresolved: Vec<Uncertainty>,
+    loops: Vec<LoopFrame>,
 }
 
 impl Builder<'_> {
@@ -133,25 +141,38 @@ impl Builder<'_> {
                 };
                 self.connect(incoming, id.clone(), node);
                 let condition = &node["condition"];
+                self.loops.push(LoopFrame::default());
                 let body_exits = self.process(
                     &node["body"],
                     self.outgoing(id.clone(), ControlEdgeKind::True, condition),
                 );
-                let back_edges = body_exits
-                    .into_iter()
-                    .map(|edge| Pending {
-                        from: edge.from,
-                        kind: ControlEdgeKind::LoopBack,
-                        location: edge.location,
-                    })
-                    .collect();
-                self.connect(back_edges, id.clone(), condition);
-                self.outgoing(id, ControlEdgeKind::False, condition)
+                let frame = self.loops.pop().expect("loop frame was pushed");
+                self.back_to_condition(body_exits, frame.continues, id.clone(), node, condition);
+                let mut exits = self.outgoing(id, ControlEdgeKind::False, condition);
+                exits.extend(frame.breaks);
+                exits
             }
-            Some(
-                "ForStatement" | "DoWhileStatement" | "Break" | "Continue" | "TryStatement"
-                | "InlineAssembly",
-            ) => {
+            Some("ForStatement") => self.for_statement(node, incoming),
+            Some("DoWhileStatement") => self.do_while_statement(node, incoming),
+            Some("Break" | "Continue") => {
+                let is_break = node["nodeType"].as_str() == Some("Break");
+                let exits = self.plain(node, incoming, false);
+                if let Some(frame) = self.loops.last_mut() {
+                    if is_break {
+                        frame.breaks.extend(exits);
+                    } else {
+                        frame.continues.extend(exits.into_iter().map(loop_back));
+                    }
+                } else {
+                    self.unresolved.push(Uncertainty {
+                        kind: UncertaintyKind::AmbiguousSemantics,
+                        detail: "break/continue has no enclosing loop".into(),
+                        location: self.location(node),
+                    });
+                }
+                Vec::new()
+            }
+            Some("TryStatement" | "InlineAssembly") => {
                 self.unresolved.push(Uncertainty {
                     kind: UncertaintyKind::AmbiguousSemantics,
                     detail: format!(
@@ -168,6 +189,107 @@ impl Builder<'_> {
             Some("Return" | "RevertStatement") => self.plain(node, incoming, true),
             _ => self.plain(node, incoming, false),
         }
+    }
+
+    fn for_statement(&mut self, node: &Value, incoming: Vec<Pending>) -> Vec<Pending> {
+        let Some(id) = self.id(node) else {
+            return incoming;
+        };
+        let start = if node
+            .get("initializationExpression")
+            .is_some_and(|part| !part.is_null())
+        {
+            self.process(&node["initializationExpression"], incoming)
+        } else {
+            incoming
+        };
+        if start.is_empty() {
+            return Vec::new();
+        }
+        self.connect(start, id.clone(), node);
+        let condition = node
+            .get("condition")
+            .filter(|part| !part.is_null())
+            .unwrap_or(node);
+        self.loops.push(LoopFrame::default());
+        let body_exits = self.process(
+            &node["body"],
+            self.outgoing(id.clone(), ControlEdgeKind::True, condition),
+        );
+        let frame = self.loops.pop().expect("loop frame was pushed");
+        let update = node.get("loopExpression").filter(|part| !part.is_null());
+        if let Some(update) = update {
+            let updated = self.process(
+                update,
+                body_exits.into_iter().chain(frame.continues).collect(),
+            );
+            self.connect(
+                updated.into_iter().map(loop_back).collect(),
+                id.clone(),
+                condition,
+            );
+        } else {
+            self.back_to_condition(body_exits, frame.continues, id.clone(), node, condition);
+        }
+        let mut exits = if node.get("condition").is_some_and(|part| !part.is_null()) {
+            self.outgoing(id, ControlEdgeKind::False, condition)
+        } else {
+            Vec::new()
+        };
+        exits.extend(frame.breaks);
+        exits
+    }
+
+    fn back_to_condition(
+        &mut self,
+        normal: Vec<Pending>,
+        continues: Vec<Pending>,
+        loop_id: BasicBlockId,
+        loop_node: &Value,
+        condition: &Value,
+    ) {
+        if !normal.is_empty() {
+            let latch = BasicBlockId(format!("{}:latch", loop_id.0));
+            self.connect(normal, latch.clone(), loop_node);
+            self.connect(
+                self.outgoing(latch, ControlEdgeKind::LoopBack, loop_node),
+                loop_id.clone(),
+                condition,
+            );
+        }
+        self.connect(
+            continues.into_iter().map(loop_back).collect(),
+            loop_id,
+            condition,
+        );
+    }
+
+    fn do_while_statement(&mut self, node: &Value, incoming: Vec<Pending>) -> Vec<Pending> {
+        let Some(id) = self.id(node) else {
+            return incoming;
+        };
+        let condition = &node["condition"];
+        let condition_id = BasicBlockId(format!("{}:condition", id.0));
+        self.connect(incoming, id.clone(), node);
+        self.loops.push(LoopFrame::default());
+        let body_exits = self.process(
+            &node["body"],
+            self.outgoing(id.clone(), ControlEdgeKind::Next, node),
+        );
+        let frame = self.loops.pop().expect("loop frame was pushed");
+        let to_condition: Vec<_> = body_exits.into_iter().chain(frame.continues).collect();
+        if to_condition.is_empty() {
+            return frame.breaks;
+        }
+        self.connect(to_condition, condition_id.clone(), condition);
+        self.connect(
+            self.outgoing(condition_id.clone(), ControlEdgeKind::True, condition),
+            id,
+            node,
+        );
+        let mut exits = self.outgoing(condition_id, ControlEdgeKind::False, condition);
+        exits.extend(frame.breaks);
+        exits
     }
 
     fn plain(&mut self, node: &Value, incoming: Vec<Pending>, terminal: bool) -> Vec<Pending> {
@@ -227,6 +349,11 @@ impl Builder<'_> {
         }
         self.outgoing(id, ControlEdgeKind::Next, node)
     }
+}
+
+fn loop_back(mut edge: Pending) -> Pending {
+    edge.kind = ControlEdgeKind::LoopBack;
+    edge
 }
 
 fn guard_condition(node: &Value) -> Option<&Value> {
