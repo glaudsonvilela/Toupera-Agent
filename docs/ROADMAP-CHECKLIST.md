@@ -23,7 +23,7 @@ Esta lista acompanha a construção do Toupera Agent e o ciclo completo de anál
 - [ ] Identificar proxies/implementações quando houver evidência.
 - [x] Comparar a IR com fixtures e resultados locais conhecidos.
 
-O recorte atual captura condições de desvio, chamadas internas, acessos diretos a storage e candidatos de oracle/proxy. O grafo estrutural source-level liga `if`, retornos, `require`/`assert`, ternários simples, laços e modifiers locais com um `_`. Caminhos internos de chamadas até storage, oracle e conversões são registrados com proveniência; ainda não provam propagação de valor. Faltam `try`/assembly, dataflow de valor, herança e resolução mais forte de proxy para fechar as três caixas restantes.
+O recorte atual captura condições de desvio, chamadas internas, acessos diretos a storage e candidatos de oracle/proxy. O grafo estrutural source-level liga `if`, retornos, `require`/`assert`, ternários simples, laços e modifiers locais com um `_`. Caminhos internos de chamadas e fluxo de valor conservador chegam a storage, oracle e conversões com proveniência. Laços e chamadas desconhecidas mantêm incertezas. Faltam herança e resolução mais forte de proxy para fechar as caixas restantes; `try`/assembly continuam fora da cobertura completa.
 
 ### M3 — Engenharia reversa de bytecode EVM
 - [ ] Normalizar bytecode e remover metadados quando possível.

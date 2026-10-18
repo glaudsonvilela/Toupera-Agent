@@ -1,6 +1,6 @@
 use security_engine::{
     Confidence, ControlEdge, ControlEdgeKind, EconomicOperation, Evidence, EvidenceLocation,
-    ReachabilityTerminal, reconstruct_from_ast_json,
+    ReachabilityTerminal, ValueOrigin, ValueSink, reconstruct_from_ast_json,
 };
 
 const VAULT_SOURCE: &str = include_str!("../../../tests/fixtures/VaultWithOracle.sol");
@@ -381,6 +381,94 @@ fn internal_call_paths_reach_oracle_conversion_and_storage() {
 }
 
 #[test]
+fn oracle_value_flow_distinguishes_guard_only_from_share_pricing() {
+    let guarded =
+        reconstruct_from_ast_json(VAULT_AST, "VaultWithOracle.sol", VAULT_SOURCE).unwrap();
+    let guarded_deposit = guarded
+        .iter()
+        .find(|item| item.function.0 == "deposit(uint256)")
+        .unwrap();
+    let oracle_flows: Vec<_> = guarded_deposit
+        .value_flows
+        .iter()
+        .filter(|flow| matches!(flow.origin.value, ValueOrigin::OracleCall(_)))
+        .collect();
+    assert!(!oracle_flows.is_empty());
+    assert!(
+        oracle_flows
+            .iter()
+            .all(|flow| flow.sink.value == ValueSink::Guard)
+    );
+
+    let priced =
+        reconstruct_from_ast_json(CALL_AST, "VaultCallFlowFixture.sol", CALL_SOURCE).unwrap();
+    let priced_deposit = priced
+        .iter()
+        .find(|item| item.function.0 == "deposit(uint256)")
+        .unwrap();
+    let to_conversion = priced_deposit.value_flows.iter().find(|flow| {
+        matches!(&flow.origin.value, ValueOrigin::OracleCall(target) if target.0 == "oracle.latestPrice")
+            && matches!(&flow.sink.value, ValueSink::ConversionArgument(function) if function.0 == "convertToShares(uint256)")
+    }).expect("oracle value must reach conversion input");
+    assert_eq!(
+        to_conversion
+            .calls
+            .iter()
+            .map(|call| call.value.0.as_str())
+            .collect::<Vec<_>>(),
+        vec!["rawPrice()", "readPrice()"]
+    );
+    assert_eq!(
+        source_text(
+            &to_conversion.origin,
+            CALL_SOURCE,
+            "VaultCallFlowFixture.sol"
+        ),
+        "oracle.latestPrice()"
+    );
+    assert_eq!(
+        source_text(&to_conversion.sink, CALL_SOURCE, "VaultCallFlowFixture.sol"),
+        "assets * price"
+    );
+
+    let to_supply = priced_deposit.value_flows.iter().find(|flow| {
+        matches!(flow.origin.value, ValueOrigin::OracleCall(_))
+            && matches!(&flow.sink.value, ValueSink::StorageWrite(storage) if storage.0 == "totalSupply")
+    }).expect("oracle value must reach share supply update");
+    assert_eq!(
+        to_supply
+            .calls
+            .iter()
+            .map(|call| call.value.0.as_str())
+            .collect::<Vec<_>>(),
+        vec!["rawPrice()", "readPrice()", "convertToShares(uint256)"]
+    );
+}
+
+#[test]
+fn modifier_argument_and_guard_value_flows_are_composed() {
+    let records =
+        reconstruct_from_ast_json(MODIFIER_AST, "ModifierFlowFixture.sol", MODIFIER_SOURCE)
+            .unwrap();
+    let mint = records
+        .iter()
+        .find(|item| item.function.0 == "mint(uint256)")
+        .unwrap();
+    assert!(mint.unresolved.is_empty());
+    assert!(mint.value_flows.iter().any(|flow| {
+        matches!(&flow.origin.value, ValueOrigin::Parameter(name) if name == "assets")
+            && flow.sink.value == ValueSink::Guard
+            && source_text(&flow.sink, MODIFIER_SOURCE, "ModifierFlowFixture.sol")
+                == "totalAssets >= minAssets"
+    }));
+    assert!(mint.value_flows.iter().any(|flow| {
+        matches!(&flow.origin.value, ValueOrigin::Storage(storage) if storage.0 == "totalSupply")
+            && matches!(&flow.sink.value, ValueSink::StorageWrite(storage) if storage.0 == "totalSupply")
+            && source_text(&flow.sink, MODIFIER_SOURCE, "ModifierFlowFixture.sol") == "totalSupply"
+    }));
+}
+
+#[test]
 fn unresolved_modifier_links_and_missing_placeholders_stay_explicit() {
     let mut missing_definition: serde_json::Value = serde_json::from_str(FLOW_AST).unwrap();
     let contract = missing_definition["sources"]["VaultFlowFixture.sol"]["ast"]["nodes"]
@@ -581,7 +669,9 @@ fn loop_graph_routes_break_continue_and_condition_exits() {
             .find(|item| item.function.0 == function)
             .unwrap();
         assert!(
-            graph.unresolved.is_empty(),
+            graph.unresolved.iter().all(|item| item
+                .detail
+                .contains("loop value flow uses a one-iteration approximation")),
             "{function}: {:?}",
             graph.unresolved
         );
@@ -657,7 +747,10 @@ fn nested_loop_break_stays_inside_outer_loop() {
         .iter()
         .find(|item| item.function.0 == "nestedLoops(uint256,uint256)")
         .unwrap();
-    assert!(graph.unresolved.is_empty());
+    assert!(graph.unresolved.iter().all(|item| {
+        item.detail
+            .contains("loop value flow uses a one-iteration approximation")
+    }));
     let edges = &graph.control_edges;
     let inner_exit = edges
         .iter()

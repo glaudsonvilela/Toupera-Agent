@@ -12,6 +12,7 @@ The Rust `EconomicFunction` record is a compact description of one vault or orac
 - **Control flow:** `ControlEdge` links source graph nodes with `Next`, `True`, `False`, `LoopBack`, or `Exit` and a source location.
 - **Local modifiers:** `AppliedModifier` keeps the invocation and definition spans, parameter-to-argument bindings, and direct reads, writes, calls, arithmetic, and conditions observed in the modifier body. These observations are also included in the function-level dependency lists.
 - **Internal call reachability:** `ReachabilityPath` records each call-site span and a terminal storage read/write, oracle call, or conversion. It is call reachability, not proof that a value propagates through the chain.
+- **Value dependence:** `ValueFlow` links a parameter, storage read, oracle call, or external call to a guard, return, storage write, or conversion argument. It retains source spans, contributing call sites, and `Inferred` confidence. A path is a conservative static inference, not a vulnerability verdict.
 
 `SourceSpan` uses UTF-8 byte offsets with an exclusive end and a path relative to the analyzed source root. Its `slice` method checks bounds and character boundaries against the supplied source text. A bytecode location identifies an artifact and program counter; bytecode ingestion itself is not implemented.
 

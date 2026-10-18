@@ -10,6 +10,7 @@ use serde_json::{Map, Value, json};
 
 use crate::callgraph::populate_reachability;
 use crate::cfg::{build_source_flow, build_source_flow_with_modifiers};
+use crate::dataflow::populate_value_flows;
 use crate::{
     AppliedModifier, ArithmeticExpression, CallTarget, Confidence, ContractId, EconomicFunction,
     EconomicOperation, Evidence, EvidenceLocation, FunctionId, ModifierArgumentBinding, SourceSpan,
@@ -143,6 +144,7 @@ pub fn reconstruct_from_ast_json(
             .filter_map(|node| Some((node.get("id")?.as_i64()?, node)))
             .collect();
 
+        let first_function = functions.len();
         for function in members
             .iter()
             .filter(|node| node_type(node) == Some("FunctionDefinition"))
@@ -233,6 +235,15 @@ pub fn reconstruct_from_ast_json(
             ir.unresolved.extend(uncertainties);
             functions.push(ir);
         }
+        populate_value_flows(
+            &mut functions[first_function..],
+            members,
+            &function_ids,
+            &state,
+            source_name,
+            source,
+            source_id,
+        );
     }
     populate_reachability(&mut functions);
     Ok(functions)
@@ -462,7 +473,7 @@ fn bind_modifier_arguments(
         .collect()
 }
 
-fn placeholder_count(node: &Value) -> usize {
+pub(crate) fn placeholder_count(node: &Value) -> usize {
     match node {
         Value::Array(items) => items.iter().map(placeholder_count).sum(),
         Value::Object(fields) => {

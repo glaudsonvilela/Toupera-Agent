@@ -140,6 +140,31 @@ pub struct ReachabilityPath {
     pub terminal: ReachabilityTerminal,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub enum ValueOrigin {
+    Parameter(String),
+    Storage(StorageId),
+    OracleCall(CallTarget),
+    ExternalCall(CallTarget),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub enum ValueSink {
+    Guard,
+    Return,
+    StorageWrite(StorageId),
+    ConversionArgument(FunctionId),
+}
+
+/// Conservative value dependence with source and call-site provenance.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ValueFlow {
+    pub origin: Evidence<ValueOrigin>,
+    pub calls: Vec<Evidence<FunctionId>>,
+    pub sink: Evidence<ValueSink>,
+    pub confidence: Confidence,
+}
+
 /// Direct syntax observed in a locally resolved modifier applied to a function.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct AppliedModifier {
@@ -175,6 +200,7 @@ pub struct EconomicFunction {
     pub applied_modifiers: Vec<AppliedModifier>,
     pub related_functions: Vec<Evidence<FunctionId>>,
     pub reachability_paths: Vec<ReachabilityPath>,
+    pub value_flows: Vec<ValueFlow>,
     pub unresolved: Vec<Uncertainty>,
 }
 
@@ -200,6 +226,7 @@ impl EconomicFunction {
             applied_modifiers: Vec::new(),
             related_functions: Vec::new(),
             reachability_paths: Vec::new(),
+            value_flows: Vec::new(),
             unresolved: Vec::new(),
         }
     }
