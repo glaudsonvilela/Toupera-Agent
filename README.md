@@ -32,6 +32,7 @@ The Rust engine is intended to reconstruct the contract's economic model, not on
 
 See the [build and audit checklist](docs/ROADMAP-CHECKLIST.md) for the path from repository foundation through evidence review and final report.
 The [tooling strategy](docs/TOOLING-STRATEGY.md) compares static analyzers, fuzzers, and formal tools for this economic scope and explains when they can reduce LLM usage.
+The [VPS setup](docs/VPS-SETUP.md) records the verified development server, installed tools, and current deployment limits.
 
 ## Status
 
