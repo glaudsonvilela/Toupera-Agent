@@ -5,19 +5,71 @@ use std::process::ExitCode;
 
 use security_engine::{
     CachingProvider, CompanionAnalysis, DeepSeekProvider, RateCard, analyze_economic_functions,
-    compare_with_solc_contract, import_gigahorse_tac, import_heimdall_abi,
-    load_or_build_context_package, prepare_review_plan, reconstruct_bytecode_hex,
-    reconstruct_source_file, run_review,
+    compare_with_solc_contract, import_gigahorse_tac, import_heimdall_abi, judge_foundry_case,
+    load_or_build_context_package, prepare_foundry_cases, prepare_review_plan,
+    reconstruct_bytecode_hex, reconstruct_source_file, run_review,
 };
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
+            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
         );
         return ExitCode::FAILURE;
     };
+    if source == "--foundry-plan" || source == "--foundry-run" {
+        let arguments: Vec<_> = args.collect();
+        let result = if source == "--foundry-plan" {
+            if arguments.len() != 4 {
+                eprintln!(
+                    "usage: security-engine --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir>"
+                );
+                return ExitCode::FAILURE;
+            }
+            let read_json = |path: &str| -> Result<serde_json::Value, String> {
+                let bytes =
+                    fs::read(path).map_err(|error| format!("cannot read {path}: {error}"))?;
+                serde_json::from_slice(&bytes).map_err(|error| format!("invalid {path}: {error}"))
+            };
+            read_json(&arguments[0]).and_then(|context| {
+                read_json(&arguments[1]).and_then(|review| {
+                    prepare_foundry_cases(
+                        &context,
+                        &review,
+                        Path::new(&arguments[2]),
+                        Path::new(&arguments[3]),
+                    )
+                    .and_then(|plan| serde_json::to_value(plan).map_err(|error| error.to_string()))
+                })
+            })
+        } else {
+            if arguments.len() != 3 {
+                eprintln!("usage: security-engine --foundry-run <case-dir> <forge-bin> <solc-bin>");
+                return ExitCode::FAILURE;
+            }
+            judge_foundry_case(
+                Path::new(&arguments[0]),
+                Path::new(&arguments[1]),
+                Path::new(&arguments[2]),
+            )
+            .and_then(|report| serde_json::to_value(report).map_err(|error| error.to_string()))
+        };
+        return match result {
+            Ok(value) => {
+                if let Err(error) = serde_json::to_writer(std::io::stdout(), &value) {
+                    eprintln!("cannot write Foundry output: {error}");
+                    return ExitCode::FAILURE;
+                }
+                println!();
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if source == "--bytecode" {
         let Some(path) = args.next() else {
             eprintln!("usage: security-engine --bytecode <runtime.hex>");

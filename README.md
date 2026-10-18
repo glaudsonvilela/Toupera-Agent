@@ -44,6 +44,8 @@ M5 builds bounded, local context slices for those candidates. SHA-256 fingerprin
 
 M6 prepares one structured review request per eligible, deduplicated slice. A provider interface and an opt-in DeepSeek adapter require a JSON hypothesis with assumptions, relevant paths, and a suggested local test; the candidate remains `UNVERIFIED`. Prompt response caching and provider token usage make repeat calls and spend visible. No API key or live model call was used during implementation. See [LLM Review](docs/LLM-REVIEW.md).
 
+M7 prepares private Foundry cases from M5/M6 output with exact source digests. Its local judge requires a target-specific, reviewed harness and two consistent runs before proposing `REPRODUCED_PENDING_REVIEW`. The scaffold deliberately fails until completed; no Foundry test was executed during this implementation. See [Foundry Judge](docs/FOUNDRY-JUDGE.md).
+
 ## Development
 
 ```sh

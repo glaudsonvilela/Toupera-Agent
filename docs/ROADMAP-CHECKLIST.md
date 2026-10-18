@@ -67,13 +67,17 @@ O M5 opera no recorte source-backed do M2/M4, um arquivo sem imports. Runtime op
 O M6 foi implementado no recorte de candidatos source-backed do M4/M5. Preparação offline e chamada externa são comandos distintos; a API não foi acionada nesta etapa. O custo estimado requer rate card local com tarifas atuais. Prompt, contrato de saída e limites em [Revisão com IA](LLM-REVIEW.md). Qualidade e economia de tokens seguem sem medição até a validação geral solicitada pelo usuário.
 
 ### M7 — Juiz Foundry
-- [ ] Gerar teste local reproduzível para cada hipótese priorizada.
-- [ ] Executar apenas em unit tests, Anvil ou fork local autorizado.
+- [x] Preparar caso privado por hipótese priorizada, com snapshot do alvo e scaffold Foundry explicitamente pendente de implementação humana.
+- [x] Implementar executor local com seed fixa, duas execuções, limites de tempo e gates de harness revisado; execução adiada a pedido do usuário.
+- [ ] Implementar harness específico e obter teste reproduzível para cada hipótese real.
+- [ ] Executar apenas em unit tests, Anvil ou fork local autorizado após a implementação geral.
 - [ ] Aplicar fuzzing de Foundry a limites, fees e arredondamentos.
 - [ ] Rejeitar hipóteses que não reproduzem o comportamento alegado.
 - [ ] Reexecutar resultados positivos e guardar traces relevantes.
 - [ ] Medir cobertura, chamadas válidas e reverts; avaliar Echidna ou Medusa apenas quando acrescentarem alcance ou achados únicos.
 - [ ] Piloto Halmos para propriedades curtas; avaliar Kontrol ou Certora somente para provas críticas com premissas explícitas.
+
+O comando `--foundry-plan` cria casos sem executar testes. `--foundry-run` está implementado, mas não foi acionado nesta etapa. Uma aprovação declarada em `harness.json` é condição de entrada, não prova de qualidade do teste. O motor não converte texto da IA em Solidity, não rejeita hipótese automaticamente com uma execução falha e não confirma achado por um teste verde. Ver [Juiz Foundry](FOUNDRY-JUDGE.md).
 
 Critérios e prioridade por ferramenta: [Estratégia de ferramentas](TOOLING-STRATEGY.md).
 

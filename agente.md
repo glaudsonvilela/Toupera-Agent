@@ -7,7 +7,7 @@ Construir um auditor de segurança econômica Solidity/EVM para vaults, oracles,
 Alvo autorizado → source/bytecode → reconstrução Rust com proveniência e incertezas → filtros determinísticos/Slither → context slicing → LLM → hipótese → teste local Foundry → evidência → revisão humana → relatório. Source e runtime EVM legado explícito já têm recortes de reconstrução separados. Nenhuma hipótese vira vulnerabilidade sem reprodução.
 
 ## Fase atual
-M0–M3 concluídos nos recortes documentados. M4 implementa triagem econômica source-backed, com calibração em fixtures adiada a pedido do usuário. M5 produz slices locais limitados e cache por conteúdo. M6 prepara requisições reduzidas e inclui adaptador DeepSeek opt-in, ainda sem chave ou chamada real. O próximo marco é M7, reprodução local com Foundry. O motor não atribui identidade de oracle/assets/shares apenas pelo bytecode.
+M0–M3 concluídos nos recortes documentados. M4 implementa triagem econômica source-backed, com calibração em fixtures adiada a pedido do usuário. M5 produz slices locais limitados e cache por conteúdo. M6 prepara requisições reduzidas e inclui adaptador DeepSeek opt-in, ainda sem chave ou chamada real. M7 prepara casos Foundry privados e possui juiz local com duas execuções, ainda sem harness de alvo ou execução por pedido do usuário. O motor não atribui identidade de oracle/assets/shares apenas pelo bytecode.
 
 ## Decisões técnicas
 - Core Rust em workspace Cargo; `serde`/`serde_json` apenas para AST e IR JSON.
@@ -38,7 +38,7 @@ M2 liga base e derivado pelo AST, conserva identidade das chamadas herdadas e di
 Sem suporte a imports, herança em outros arquivos, CFG completo ou resolução de endereço de proxy fornecido na implantação. O suporte a bytecode é somente runtime legado conservador, não EOF/creation code nem decompilação completa. Loops de source têm aproximação de uma iteração com incerteza; chamadas desconhecidas não têm retorno presumido. Fluxo de valor não prova factibilidade de caminho. Modifiers ausentes da fonte ou com zero/múltiplos `_` ficam sem composição. `try`, assembly e ternários múltiplos/aninhados não têm fluxo completo.
 
 ## Próximo passo
-Implementar M7 com juiz Foundry local para hipóteses priorizadas, mantendo o uso de API externa sujeito a escopo autorizado e chave por ambiente. Testes, fixtures e benchmark permanecem adiados a pedido do usuário até a implementação geral estar completa.
+Prosseguir para M8, pacote de evidência e entrega, sem marcar achados como confirmados antes de harness específico e reprodução. Testes, fixtures e benchmark permanecem adiados a pedido do usuário até a implementação geral estar completa.
 
 ## Etapa M3 inicial (2026-10-18)
 - `crates/security-engine/src/bytecode.rs` analisa runtime EVM legado em hex. Remove metadados CBOR Solidity somente com estrutura completa e chave reconhecida; decodifica `PUSH` sem confundir dados imediatos com opcodes, cria blocos, resolve apenas saltos literais a `JUMPDEST`, reconhece candidatos de dispatch direto `PUSH4/EQ/PUSH/JUMPI` (`Inferred` só com `DUP1` anterior e alcance conhecido) e observa storage/transient storage/chamadas/criação/autodestruição por PC.
@@ -77,7 +77,7 @@ Implementar M7 com juiz Foundry local para hipóteses priorizadas, mantendo o us
 - `cargo fmt --all` e `cargo check -p security-engine --offline` executados durante a implementação. Nenhum teste foi adicionado ou executado nesta etapa.
 
 ## Pendências
-Calibração M4–M6, juiz Foundry M7 e entrega M8 permanecem pendentes. Nunca armazenar secrets ou executar exploração em produção.
+Calibração M4–M6, execução e métricas do juiz Foundry M7 e entrega M8 permanecem pendentes. Nunca armazenar secrets ou executar exploração em produção.
 
 ## Complemento M3 — EVMole como evidência independente (2026-10-18)
 - Dependência Rust `evmole = =0.9.4`, com recursos padrão desligados, integra a análise de runtime legado já normalizado em `crates/security-engine/src/bytecode_evmole.rs`. `BytecodeAnalysis.evmole` registra selectors ABI/fallback, tipos prováveis de argumentos, mutabilidade, layout de storage persistente/transitório, CFG, versão, confiança e divergências. O processamento é local; não há consulta a rede durante a análise.
@@ -112,3 +112,8 @@ Calibração M4–M6, juiz Foundry M7 e entrega M8 permanecem pendentes. Nunca a
 - Métricas de chamadas e tokens vêm da resposta da API; rate card local opcional permite estimativa de custo sem preço fixado em código. Respostas válidas idênticas são reaproveitadas em cache `0700`/`0600`. Limite padrão de 5 candidatos, máximo 20 por execução; sem retry automático.
 - Documentação em `docs/LLM-REVIEW.md`, roadmap/README/arquitetura/VPS e `codex/agent.md` atualizados. `cargo fmt --all`, `cargo +1.93.0 check --locked --offline -p security-engine` e `git diff --check` usados. Nenhum teste, fixture, chamada DeepSeek ou benchmark executado, conforme pedido do usuário.
 - Revisão de código M6 `6ff127a` enviada ao GitHub privado, sincronizada no VPS e compilada em release com `cargo build --release --locked -p security-engine` sob `toupera`. `.deployed-commit` recebeu essa revisão antes do complemento documental final. O diretório `web/` surgiu como arquivo não rastreado durante a etapa; não foi alterado, adicionado ou incluído no deploy.
+
+## M7 — preparação e juiz Foundry (2026-10-18)
+- `foundry_judge.rs` lê pacote M5, relatório M6 e arquivo source idêntico ao hash registrado. Para cada hipótese `UNVERIFIED`, cria caso privado com snapshot `src/Target.sol`, `case.json` e scaffold `test/Scenario.t.sol` que falha até receber um harness específico. Texto da IA não vira Solidity. `--foundry-plan` não executa teste.
+- `--foundry-run` exige harness alterado, nota de revisão, confirmação de chamadas válidas e limites, binários absolutos de forge/solc, configuração Foundry local intacta e source com hash original. Faz duas execuções offline com seed fixa e fuzz de 256 entradas, guarda JSON e traces. Só oferece `REPRODUCED_PENDING_REVIEW` quando ambos os testes exigidos passam nas duas execuções; os demais casos são `INCONCLUSIVE`. Não confirma vulnerabilidade nem rejeita hipótese automaticamente.
+- O gate humano não prova não vacuidade, e `--offline` não isola rede completamente. Executar apenas em ambiente local isolado e autorizado após revisão do harness. Cobertura, chamadas válidas, reverts, Echidna/Medusa, piloto Halmos e métricas seguem pendentes até os testes gerais pedidos pelo usuário. Ver `docs/FOUNDRY-JUDGE.md` e roadmap. Nenhum teste Foundry, fixture ou campanha foi executado nesta etapa.

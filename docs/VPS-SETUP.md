@@ -53,6 +53,8 @@ A execução local dessa fixture produziu 4 registros de IR. Slither analisou a 
 
 O servidor não contém `.git` nem credenciais para acessar o repositório privado. Atualizações do projeto devem ser enviadas novamente a partir de um checkout autorizado e recompiladas. A revisão implantada fica em `.deployed-commit`. Não existem serviço `systemd`, endpoint HTTP, banco de dados ou chave da API DeepSeek configurados. O CLI aceita um arquivo Solidity sem imports e um caminho opcional para `solc`, ou `--bytecode <runtime.hex>`; a comparação com saída local do compilador usa `--compare-bytecode`. O modo M6 pode chamar DeepSeek apenas com opções explícitas e chave no ambiente; ainda não foi executado.
 
+O M7 acrescenta `--foundry-plan <context.json> <review.json> <source.sol> <private-output-dir>` e `--foundry-run <case-dir> <forge-bin> <solc-bin>`. O primeiro não executa testes; o segundo exige harness local revisado. Os caminhos de `forge` e `solc` instalados estão na tabela acima. Nenhum teste M7 foi executado durante a implementação. Consulte `docs/FOUNDRY-JUDGE.md` antes de usar.
+
 ## Companions de engenharia reversa
 
 - Heimdall-rs foi instalado em `/usr/local/bin/heimdall` a partir do asset oficial `heimdall-linux-amd64` da release `0.9.3`. O próprio binário informa `heimdall 0.9.2` em `--version`; registrar **ambos** os identificadores até o upstream esclarecer a divergência. SHA-256 do asset e binário instalado: `8d58c97f56d584d5d0737d0d0895fc8c68b7b8b2b680f2a7842245789f0b4868`.
