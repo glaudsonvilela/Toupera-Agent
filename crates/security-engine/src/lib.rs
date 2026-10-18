@@ -1,5 +1,12 @@
 //! Foundational types for focused Solidity/EVM economic security analysis.
 
+mod ir;
+
+pub use ir::{
+    ArithmeticExpression, BasicBlockId, BytecodePc, CallTarget, Confidence, EconomicFunction,
+    Evidence, EvidenceLocation, SourceSpan, StorageId, Uncertainty, UncertaintyKind,
+};
+
 /// Stable identity of a contract in an analysis target.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ContractId(pub String);

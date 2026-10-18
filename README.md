@@ -34,7 +34,7 @@ See the [build and audit checklist](docs/ROADMAP-CHECKLIST.md) for the path from
 
 ## Status
 
-M0 — Repository/Foundation. The Rust `security-engine` crate currently provides foundational IDs, economic operation and finding types; reconstruction and analysis are not implemented yet. See [agente.md](agente.md) for operational state and next steps.
+M1 — Economic IR foundation. The Rust `security-engine` crate now models per-function economic operations, dependencies, evidence locations, confidence, and unresolved behavior. Source extraction, bytecode reconstruction, and detectors are planned for later milestones. See [Economic IR](docs/ECONOMIC-IR.md) and [agente.md](agente.md) for the current state.
 
 ## Development
 

@@ -14,3 +14,9 @@
 12. Não invente resultados: registre apenas verificações realmente executadas.
 13. Uma vulnerabilidade só é válida após reprodução.
 14. Não execute exploração em produção nem envie transações ofensivas para contratos reais.
+
+## Estado após M1
+
+- Leia também `docs/ROADMAP-CHECKLIST.md` e `docs/ECONOMIC-IR.md` antes do próximo milestone.
+- A IR Rust de `crates/security-engine/src/ir.rs` está pronta para receber observações com proveniência e confiança; a fixture de teste ainda é montada manualmente.
+- Próxima etapa: extrair operações e dependências de solc AST para a IR. Não afirme que a extração ou a engenharia reversa de bytecode já funcionam.

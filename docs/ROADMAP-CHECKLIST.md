@@ -8,15 +8,15 @@ Esta lista acompanha a construção do Toupera Agent e o ciclo completo de anál
 - [x] Repositório privado, estrutura, documentação e imagem oficial.
 - [x] Crate Rust com tipos fundamentais e testes mínimos.
 
-### M1 — IR econômica com proveniência (próximo passo)
-- [ ] Definir IDs de contrato, função e localizações de evidência.
-- [ ] Representar operações deposit/mint/withdraw/redeem, previews e conversões.
-- [ ] Representar storage lido/escrito, chamadas, oracles e expressões aritméticas.
-- [ ] Associar cada elemento ao source span e preparar PC de bytecode para etapa futura.
-- [ ] Marcar confiança, semântica incerta e dados ausentes explicitamente.
-- [ ] Validar a IR com fixtures pequenas de vaults Solidity.
+### M1 — IR econômica com proveniência
+- [x] Definir IDs de contrato, função e localizações de evidência.
+- [x] Representar operações deposit/mint/withdraw/redeem, previews e conversões.
+- [x] Representar storage lido/escrito, chamadas, oracles e expressões aritméticas.
+- [x] Associar cada elemento ao source span e preparar PC de bytecode para etapa futura.
+- [x] Marcar confiança, semântica incerta e dados ausentes explicitamente.
+- [x] Validar a IR com fixtures pequenas de vaults Solidity.
 
-### M2 — Reconstrução source-first
+### M2 — Reconstrução source-first (próximo passo)
 - [ ] Ingerir Solidity de alvos autorizados e obter AST do solc.
 - [ ] Construir fluxos de controle, chamadas e dependências de estado.
 - [ ] Mapear operações econômicas, caminhos de oracle e conversões shares/assets.

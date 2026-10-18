@@ -62,7 +62,7 @@ Target shape: 10,000 functions → AST/Rust/Slither → about 500 candidates →
 
 ## Intermediate representation
 
-A compact per-function record should describe contract and function identity, storage reads/writes, external calls, and economic operation. Example:
+A compact per-function record describes contract and function identity, storage reads/writes, external calls, economic operation, evidence locations, confidence, and unresolved facts. The M1 Rust data model is specified in [Economic IR](ECONOMIC-IR.md). This conceptual JSON example omits provenance fields for brevity; no JSON serializer or source extractor exists yet:
 
 ```json
 {
