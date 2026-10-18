@@ -1,45 +1,39 @@
 # Memória operacional — Toupera Agent
 
 ## Objetivo atual
-Criar a base de um auditor de segurança econômica para Solidity/EVM, focado em vaults, oracles, accounting, conversões de shares/assets, fees e rounding.
+Construir um auditor de segurança econômica Solidity/EVM para vaults, oracles, accounting, shares/assets, pricing, fees e rounding. O motor Rust deve reconstruir o modelo econômico do contrato antes de formular hipóteses.
 
 ## Arquitetura vigente
-Reconstrução econômica do contrato em Rust, por source e futuramente bytecode EVM (fluxos, storage, chamadas, oracles, pricing e shares/assets) → filtragem determinística (AST/Slither) → redução de candidatos e context slicing → raciocínio LLM → hipótese econômica → validação local reproduzível com Foundry → evidências e revisão humana. Inferências precisam de proveniência e nível de confiança; semântica ambígua permanece marcada como incerta. A IA não recebe o repositório inteiro por padrão e não confirma vulnerabilidades sem reprodução.
+Alvo autorizado → source/bytecode → reconstrução Rust com proveniência e incertezas → filtros determinísticos/Slither → context slicing → LLM → hipótese → teste local Foundry → evidência → revisão humana → relatório. Source é a entrada atual; bytecode virá depois. Nenhuma hipótese vira vulnerabilidade sem reprodução.
 
 ## Fase atual
-M1 — IR econômica com proveniência concluída. M2 (extração source/AST) é o próximo milestone.
+M0 e M1 concluídos. M2 em andamento: primeiro recorte de extração source/AST implementado para um arquivo Solidity por vez.
 
 ## Decisões técnicas
-- Core Rust em workspace Cargo, sem dependências externas no crate inicial.
-- README e documentação mantêm o escopo restrito a Solidity/EVM, vaults e oracles.
-- IDs como newtypes `String`; operações e classificações como enums.
-- O core Rust também deverá reconstruir o modelo econômico do contrato; source-first no início, bytecode-only como extensão planejada com evidências e incertezas explícitas.
-- `EconomicFunction` registra operação, storage, chamadas, oracles, aritmética e incertezas; cada observação tem localização e confiança. A fixture M1 monta esses dados manualmente; extração automática ainda não existe.
+- Core Rust em workspace Cargo; `serde`/`serde_json` apenas para AST e IR JSON.
+- `solc --standard-json` é executado localmente sobre arquivo fornecido explicitamente; sem imports nesta etapa.
+- IR registra operação, storage, chamadas, oracle, aritmética, condições, modifiers e incertezas com source spans e confiança.
+- `delegatecall` produz candidato de implementação com confiança tentativa, sem afirmar relação de proxy comprovada.
 - Remoto `origin` privado: `https://github.com/glaudsonvilela/Toupera-Agent`.
 
-## Arquivos alterados/criados
-- `README.md`, `agente.md`, `.gitignore`, `Cargo.toml`, `Cargo.lock`
-- `codex/agent.md`
-- `docs/ARCHITECTURE.md`, `docs/ECONOMIC-IR.md`, `docs/ECONOMIC-SCOPE.md`, `docs/SECURITY-SCOPE.md`, `docs/ROADMAP-CHECKLIST.md`
-- `assets/toupera-agent.png`
-- `crates/security-engine/Cargo.toml`, `crates/security-engine/src/lib.rs`, `crates/security-engine/src/ir.rs`, `crates/security-engine/tests/economic_ir.rs`
-- `tests/fixtures/VaultWithOracle.sol`
+## Arquivos alterados nesta etapa
+- `Cargo.lock`, `crates/security-engine/Cargo.toml`, `crates/security-engine/src/{lib,ir,source,main}.rs`
+- `crates/security-engine/tests/source_reconstruction.rs`
+- `tests/fixtures/{VaultWithOracle,VaultProxyFixture,VaultFlowFixture}.ast.json` e os dois novos fixtures `.sol`
+- `README.md`, `agente.md`, `codex/agent.md`, `docs/{ARCHITECTURE,ECONOMIC-IR,ROADMAP-CHECKLIST,SOURCE-RECONSTRUCTION}.md`
 
 ## Testes executados
-`cargo test -p security-engine` (18/10/2026): 2 testes unitários passaram; doc-tests: 0 testes, sem falhas.
-Esta atualização mudou apenas documentação; `git diff --check` passou. Os testes Rust não foram reexecutados.
-Checklist de construção e auditoria adicionada em `docs/ROADMAP-CHECKLIST.md`; testes não reexecutados nesta etapa documental.
-M1: `cargo fmt --all` e `cargo test -p security-engine` executados; 5 testes passaram, 0 falhas; doc-tests: 0 testes.
+- `cargo fmt --all` e `cargo test -p security-engine --offline`: 9 testes passaram; 0 falhas; doc-tests 0.
+- CLI executada com solc local 0.8.37 nos três fixtures: IR gerada para vault, proxy e fluxo interno.
 
 ## Resultados
-M1: IR de função econômica compilada sem dependências novas. Cinco testes passaram, incluindo resolução de source spans, limites UTF-8 e registro de evidências do vault fixture.
+AST solc → IR automática para deposit/redeem, conversões, preview, leituras/escritas diretas, chamadas e condições. Source spans, erros do compilador e IDs de arquivo são verificados. `delegatecall` é sinalizado com incerteza explícita.
 
-## Erros conhecidos
-Nenhum erro conhecido no M1. O teste monta a IR manualmente; ingestão solc AST, reconstrução de bytecode, detectores e integração Foundry ainda não foram implementados.
+## Erros conhecidos / limites
+Sem suporte a imports, herança, CFG completo, corpos de modifiers, dataflow transitivo, resolução real da implementação de proxy ou bytecode. Classificação por nome de função é inferida, não prova semântica econômica.
 
 ## Próximo passo
-M2 recomendado: ingerir solc AST de um vault autorizado/fixture e preencher a IR automaticamente, preservando source spans; começar por operações e dependências diretas antes de montar CFG completo.
+Concluir M2: construir grafo de fluxo sobre AST, resolver dependências herdadas/modifiers e rastrear caminhos entre oracle e conversões sem perder proveniência; depois melhorar a resolução de proxy com evidência local.
 
 ## Pendências
-- Integrações e detectores seguem pendentes para milestones posteriores.
-- Reconstrução bytecode-only (CFG, selector dispatch, storage/call inference e proxy mapping) permanece planejada; ainda não implementada.
+M3 bytecode, detectores econômicos, deduplicação, LLM e Foundry permanecem planejados. Nunca armazenar secrets ou executar exploração em produção.

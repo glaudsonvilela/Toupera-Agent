@@ -14,6 +14,6 @@ The Rust `EconomicFunction` record is a compact description of one vault or orac
 
 `Confidence::Direct` means the represented syntax or event was directly observed. `Inferred` and `Tentative` describe progressively weaker semantic interpretations. These levels do not confirm a vulnerability. Unknown behavior belongs in `unresolved`, never in a fabricated observation.
 
-## M1 boundary
+## Milestone state
 
-The fixture at `tests/fixtures/VaultWithOracle.sol` is a small accounting example. The Rust integration test assembles its IR manually and verifies that source locations resolve to the claimed code. M1 does not parse solc AST, recover bytecode, classify functions automatically, or detect vulnerabilities. Those capabilities start in later milestones.
+M1 established this data model with a manually assembled vault fixture. The M2 extractor now fills it from solc AST for a single source file; see [Source Reconstruction](SOURCE-RECONSTRUCTION.md). It does not recover bytecode or detect vulnerabilities.

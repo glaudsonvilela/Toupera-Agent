@@ -43,6 +43,8 @@ For source-backed targets, solc AST and source locations provide the initial pat
 
 The compact economic IR should be the shared boundary between reconstruction, deterministic detectors, context slicing, and later Foundry test generation. Build source-first IR and provenance before adding bytecode recovery; bytecode reconstruction is a planned milestone, not part of M0.
 
+The current M2 source-backed extractor and its limits are described in [Source Reconstruction](SOURCE-RECONSTRUCTION.md).
+
 ## Stack plan
 
 - **Core:** Rust; Alloy for EVM-facing components when needed.

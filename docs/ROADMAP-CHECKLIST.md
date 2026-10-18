@@ -16,12 +16,14 @@ Esta lista acompanha a construção do Toupera Agent e o ciclo completo de anál
 - [x] Marcar confiança, semântica incerta e dados ausentes explicitamente.
 - [x] Validar a IR com fixtures pequenas de vaults Solidity.
 
-### M2 — Reconstrução source-first (próximo passo)
-- [ ] Ingerir Solidity de alvos autorizados e obter AST do solc.
+### M2 — Reconstrução source-first (em andamento)
+- [x] Ingerir um arquivo Solidity explícito e obter AST do solc local.
 - [ ] Construir fluxos de controle, chamadas e dependências de estado.
 - [ ] Mapear operações econômicas, caminhos de oracle e conversões shares/assets.
 - [ ] Identificar proxies/implementações quando houver evidência.
-- [ ] Comparar a IR com fixtures e resultados locais conhecidos.
+- [x] Comparar a IR com fixtures e resultados locais conhecidos.
+
+O recorte atual captura condições de desvio, chamadas internas, acessos diretos a storage e candidatos de oracle/proxy. As três caixas restantes exigem grafo de fluxo, dataflow entre funções e resolução mais forte de proxy.
 
 ### M3 — Engenharia reversa de bytecode EVM
 - [ ] Normalizar bytecode e remover metadados quando possível.

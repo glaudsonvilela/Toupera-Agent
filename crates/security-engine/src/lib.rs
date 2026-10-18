@@ -1,22 +1,26 @@
 //! Foundational types for focused Solidity/EVM economic security analysis.
 
 mod ir;
+mod source;
+
+use serde::Serialize;
 
 pub use ir::{
     ArithmeticExpression, BasicBlockId, BytecodePc, CallTarget, Confidence, EconomicFunction,
     Evidence, EvidenceLocation, SourceSpan, StorageId, Uncertainty, UncertaintyKind,
 };
+pub use source::{reconstruct_from_ast_json, reconstruct_source_file};
 
 /// Stable identity of a contract in an analysis target.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 pub struct ContractId(pub String);
 
 /// Stable identity of a function in an analyzed contract.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 pub struct FunctionId(pub String);
 
 /// Economic operation associated with a Solidity function.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize)]
 pub enum EconomicOperation {
     Deposit,
     Mint,

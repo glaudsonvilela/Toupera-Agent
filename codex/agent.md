@@ -15,8 +15,9 @@
 13. Uma vulnerabilidade só é válida após reprodução.
 14. Não execute exploração em produção nem envie transações ofensivas para contratos reais.
 
-## Estado após M1
+## Estado após M2 — primeiro recorte
 
-- Leia também `docs/ROADMAP-CHECKLIST.md` e `docs/ECONOMIC-IR.md` antes do próximo milestone.
-- A IR Rust de `crates/security-engine/src/ir.rs` está pronta para receber observações com proveniência e confiança; a fixture de teste ainda é montada manualmente.
-- Próxima etapa: extrair operações e dependências de solc AST para a IR. Não afirme que a extração ou a engenharia reversa de bytecode já funcionam.
+- Leia `docs/ROADMAP-CHECKLIST.md`, `docs/ECONOMIC-IR.md` e `docs/SOURCE-RECONSTRUCTION.md`.
+- `crates/security-engine/src/source.rs` extrai IR de solc AST para um arquivo sem imports. Testes cobrem três fixtures e a CLI foi executada com solc local 0.8.37.
+- Próxima etapa: terminar M2 com grafo de fluxo, herança/modifiers, dataflow e resolução de proxy. Não afirme que esses recursos ou a engenharia reversa de bytecode já funcionam.
+- Atualize este arquivo e `/agente.md` ao final de cada etapa, como solicitado pelo usuário.
