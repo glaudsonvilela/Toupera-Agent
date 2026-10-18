@@ -61,3 +61,4 @@
 - Assinaturas/ABI e CFG propostos são `Tentative`. Correlacione selectors e PCs com o decoder nativo/EVMole; não incorpore automaticamente arestas TAC ou expressões ao `ValueFlow` nativo. Importação não confirma vulnerabilidade. Consulte `docs/BYTECODE-RECONSTRUCTION.md`.
 - Após esta etapa, `cargo fmt --all`, `cargo check --locked --offline -p security-engine` e `git diff --check` passaram; testes automatizados não foram adicionados ou executados.
 - No VPS, Heimdall está em `/usr/local/bin/heimdall` (asset release 0.9.3; `--version` informa 0.9.2) e Gigahorse está em imagem Podman fixada por digest; veja `docs/VPS-SETUP.md`. Não afirmar que decompilação de contrato foi executada só porque as ferramentas foram instaladas.
+- A revisão de implementação `a3b4d6f` foi publicada e compilada em release no VPS; `.deployed-commit` deve acompanhar a revisão corrente. O fluxo completo Heimdall→Gigahorse→importação ainda não foi executado em fixture ou alvo.
