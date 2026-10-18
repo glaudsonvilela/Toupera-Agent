@@ -11,8 +11,8 @@ use serde::Serialize;
 pub use ir::{
     AppliedModifier, ArithmeticExpression, BasicBlockId, BytecodePc, CallTarget, Confidence,
     ControlEdge, ControlEdgeKind, EconomicFunction, Evidence, EvidenceLocation,
-    ModifierArgumentBinding, ReachabilityPath, ReachabilityTerminal, SourceSpan, StorageId,
-    Uncertainty, UncertaintyKind, ValueFlow, ValueOrigin, ValueSink,
+    ModifierArgumentBinding, ReachabilityPath, ReachabilityTerminal, ResolvedFunction, SourceSpan,
+    StorageId, Uncertainty, UncertaintyKind, ValueFlow, ValueOrigin, ValueSink,
 };
 pub use source::{reconstruct_from_ast_json, reconstruct_source_file};
 

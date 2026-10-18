@@ -13,8 +13,8 @@ use crate::cfg::{build_source_flow, build_source_flow_with_modifiers};
 use crate::dataflow::populate_value_flows;
 use crate::{
     AppliedModifier, ArithmeticExpression, CallTarget, Confidence, ContractId, EconomicFunction,
-    EconomicOperation, Evidence, EvidenceLocation, FunctionId, ModifierArgumentBinding, SourceSpan,
-    StorageId, Uncertainty, UncertaintyKind,
+    EconomicOperation, Evidence, EvidenceLocation, FunctionId, ModifierArgumentBinding,
+    ResolvedFunction, SourceSpan, StorageId, Uncertainty, UncertaintyKind,
 };
 
 /// Compiles one explicitly supplied Solidity source file locally, then reconstructs its IR.
@@ -107,6 +107,11 @@ pub fn reconstruct_from_ast_json(
         .and_then(Value::as_array)
         .ok_or("solc source entry has no AST nodes")?;
 
+    let contracts: HashMap<i64, &Value> = nodes
+        .iter()
+        .filter(|node| node_type(node) == Some("ContractDefinition"))
+        .filter_map(|node| Some((node.get("id")?.as_i64()?, node)))
+        .collect();
     let mut functions = Vec::new();
     for contract in nodes
         .iter()
@@ -122,7 +127,30 @@ pub fn reconstruct_from_ast_json(
         let Some(members) = contract.get("nodes").and_then(Value::as_array) else {
             continue;
         };
-        let state: HashMap<i64, String> = members
+        let base_ids = contract["linearizedBaseContracts"]
+            .as_array()
+            .ok_or("contract has no linearized base list")?;
+        let missing_bases = base_ids
+            .iter()
+            .any(|id| id.as_i64().is_none_or(|id| !contracts.contains_key(&id)));
+        let inherited_members: Vec<Value> = base_ids
+            .iter()
+            .filter_map(|id| contracts.get(&id.as_i64()?).copied())
+            .flat_map(|base| base["nodes"].as_array().into_iter().flatten().cloned())
+            .collect();
+        let declaring_contracts: HashMap<i64, ContractId> = base_ids
+            .iter()
+            .filter_map(|id| contracts.get(&id.as_i64()?).copied())
+            .flat_map(|base| {
+                let name = ContractId(base["name"].as_str().unwrap_or("").to_owned());
+                base["nodes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(move |member| Some((member["id"].as_i64()?, name.clone())))
+            })
+            .collect();
+        let state: HashMap<i64, String> = inherited_members
             .iter()
             .filter(|node| node_type(node) == Some("VariableDeclaration"))
             .filter(|node| node.get("stateVariable").and_then(Value::as_bool) == Some(true))
@@ -133,12 +161,12 @@ pub fn reconstruct_from_ast_json(
                 ))
             })
             .collect();
-        let function_ids: HashMap<i64, FunctionId> = members
+        let function_ids: HashMap<i64, FunctionId> = inherited_members
             .iter()
             .filter(|node| node_type(node) == Some("FunctionDefinition"))
             .filter_map(|node| Some((node.get("id")?.as_i64()?, function_id(node)?)))
             .collect();
-        let local_modifiers: HashMap<i64, &Value> = members
+        let local_modifiers: HashMap<i64, &Value> = inherited_members
             .iter()
             .filter(|node| node_type(node) == Some("ModifierDefinition"))
             .filter_map(|node| Some((node.get("id")?.as_i64()?, node)))
@@ -177,14 +205,10 @@ pub fn reconstruct_from_ast_json(
                 confidence: Confidence::Inferred,
             };
             let mut ir = EconomicFunction::new(ContractId(contract_name.to_owned()), id, operation);
-            if contract
-                .get("baseContracts")
-                .and_then(Value::as_array)
-                .is_some_and(|bases| !bases.is_empty())
-            {
+            if missing_bases {
                 ir.unresolved.push(Uncertainty {
                     kind: UncertaintyKind::MissingInput,
-                    detail: "inherited state and functions are not resolved in this source slice"
+                    detail: "one or more inherited contracts are absent from the supplied source"
                         .into(),
                     location: None,
                 });
@@ -194,6 +218,7 @@ pub fn reconstruct_from_ast_json(
                 &local_modifiers,
                 &state,
                 &function_ids,
+                &declaring_contracts,
                 source_name,
                 source,
                 source_id,
@@ -205,6 +230,7 @@ pub fn reconstruct_from_ast_json(
                 source_id,
                 state: &state,
                 function_ids: &function_ids,
+                declaring_contracts: &declaring_contracts,
                 ir: &mut ir,
             };
             walker.visit(body, Access::Read, false);
@@ -237,7 +263,7 @@ pub fn reconstruct_from_ast_json(
         }
         populate_value_flows(
             &mut functions[first_function..],
-            members,
+            &inherited_members,
             &function_ids,
             &state,
             source_name,
@@ -275,6 +301,7 @@ fn resolve_local_modifiers(
     local_modifiers: &HashMap<i64, &Value>,
     state: &HashMap<i64, String>,
     function_ids: &HashMap<i64, FunctionId>,
+    declaring_contracts: &HashMap<i64, ContractId>,
     source_name: &str,
     source: &str,
     source_id: i64,
@@ -304,7 +331,7 @@ fn resolve_local_modifiers(
         let Some(definition) = definition else {
             ir.unresolved.push(Uncertainty {
                 kind: UncertaintyKind::MissingInput,
-                detail: "modifier definition is not local to this contract".into(),
+                detail: "modifier definition is not available in the supplied source".into(),
                 location: invocation_evidence.map(|evidence| evidence.location),
             });
             continue;
@@ -360,6 +387,7 @@ fn resolve_local_modifiers(
             source_id,
             state,
             function_ids,
+            declaring_contracts,
             ir: &mut observed,
         }
         .visit(body, Access::Read, false);
@@ -399,6 +427,8 @@ fn resolve_local_modifiers(
             .extend(observed.delegatecall_targets.iter().cloned());
         ir.related_functions
             .extend(observed.related_functions.iter().cloned());
+        ir.resolved_calls
+            .extend(observed.resolved_calls.iter().cloned());
         ir.unresolved.extend(unresolved.iter().cloned());
         ir.applied_modifiers.push(AppliedModifier {
             invocation: invocation_evidence,
@@ -412,6 +442,7 @@ fn resolve_local_modifiers(
             control_conditions: observed.control_conditions,
             delegatecall_targets: observed.delegatecall_targets,
             related_functions: observed.related_functions,
+            resolved_calls: observed.resolved_calls,
             unresolved,
         });
     }
@@ -594,6 +625,7 @@ struct Walker<'a> {
     source_id: i64,
     state: &'a HashMap<i64, String>,
     function_ids: &'a HashMap<i64, FunctionId>,
+    declaring_contracts: &'a HashMap<i64, ContractId>,
     ir: &'a mut EconomicFunction,
 }
 
@@ -756,7 +788,17 @@ impl Walker<'_> {
         {
             if let Some(function) = self.function_ids.get(&id) {
                 if let Some(evidence) = self.evidence(node, function.clone(), Confidence::Direct) {
-                    self.ir.related_functions.push(evidence);
+                    self.ir.related_functions.push(evidence.clone());
+                    if let Some(contract) = self.declaring_contracts.get(&id) {
+                        self.ir.resolved_calls.push(Evidence {
+                            value: ResolvedFunction {
+                                contract: contract.clone(),
+                                function: function.clone(),
+                            },
+                            location: evidence.location,
+                            confidence: Confidence::Direct,
+                        });
+                    }
                 }
             }
         }

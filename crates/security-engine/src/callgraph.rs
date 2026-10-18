@@ -39,7 +39,7 @@ fn explore(
     calls: &mut Vec<Evidence<FunctionId>>,
     root: &mut EconomicFunction,
 ) {
-    for call in &snapshot[current].related_functions {
+    for call in &snapshot[current].resolved_calls {
         if root.reachability_paths.len() >= MAX_PATHS {
             root.unresolved.push(Uncertainty {
                 kind: UncertaintyKind::AmbiguousSemantics,
@@ -48,13 +48,13 @@ fn explore(
             });
             return;
         }
-        let key = (snapshot[current].contract.0.clone(), call.value.0.clone());
+        let key = (call.value.contract.0.clone(), call.value.function.0.clone());
         let Some(&target_index) = indices.get(&key) else {
             root.unresolved.push(Uncertainty {
                 kind: UncertaintyKind::MissingInput,
                 detail: format!(
                     "internal call target {} was not reconstructed",
-                    call.value.0
+                    call.value.function.0
                 ),
                 location: Some(call.location.clone()),
             });
@@ -68,7 +68,11 @@ fn explore(
             });
             continue;
         }
-        calls.push(call.clone());
+        calls.push(Evidence {
+            value: call.value.function.clone(),
+            location: call.location.clone(),
+            confidence: call.confidence,
+        });
         stack.push(target_index);
         let target = &snapshot[target_index];
         let terminals = target

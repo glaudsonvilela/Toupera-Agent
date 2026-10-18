@@ -62,10 +62,14 @@ pub(crate) fn populate_value_flows(
         source_id,
     };
     for record in records {
-        let function_id = function_ids
-            .iter()
-            .find(|(_, name)| **name == record.function)
-            .map(|(id, _)| *id);
+        let function_id = engine.functions.iter().find_map(|(id, node)| {
+            let matches_name = function_ids.get(id) == Some(&record.function);
+            let same_location = node["nameLocation"]
+                .as_str()
+                .and_then(|span| parse_span(span, file, source, source_id))
+                .is_some_and(|span| record.operation.location == EvidenceLocation::Source(span));
+            (matches_name && same_location).then_some(*id)
+        });
         if let Some(function_id) = function_id {
             let summary = engine.analyze(function_id, None, HashMap::new(), &[]);
             record.value_flows = summary.flows;

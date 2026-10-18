@@ -15,6 +15,8 @@ const MODIFIER_SOURCE: &str = include_str!("../../../tests/fixtures/ModifierFlow
 const MODIFIER_AST: &str = include_str!("../../../tests/fixtures/ModifierFlowFixture.ast.json");
 const CALL_SOURCE: &str = include_str!("../../../tests/fixtures/VaultCallFlowFixture.sol");
 const CALL_AST: &str = include_str!("../../../tests/fixtures/VaultCallFlowFixture.ast.json");
+const INHERITED_SOURCE: &str = include_str!("../../../tests/fixtures/InheritedVaultFixture.sol");
+const INHERITED_AST: &str = include_str!("../../../tests/fixtures/InheritedVaultFixture.ast.json");
 
 fn source_text<'a, T>(evidence: &Evidence<T>, source: &'a str, file: &str) -> &'a str {
     let EvidenceLocation::Source(span) = &evidence.location else {
@@ -446,6 +448,62 @@ fn oracle_value_flow_distinguishes_guard_only_from_share_pricing() {
 }
 
 #[test]
+fn inherited_members_keep_declaring_contract_and_economic_paths() {
+    let records =
+        reconstruct_from_ast_json(INHERITED_AST, "InheritedVaultFixture.sol", INHERITED_SOURCE)
+            .unwrap();
+    let deposit = records
+        .iter()
+        .find(|item| {
+            item.contract.0 == "InheritedVaultFixture" && item.function.0 == "deposit(uint256)"
+        })
+        .unwrap();
+    assert!(deposit.unresolved.is_empty(), "{:?}", deposit.unresolved);
+    assert!(
+        deposit
+            .reads
+            .iter()
+            .any(|read| read.value.0 == "totalAssets")
+    );
+    assert!(
+        deposit
+            .writes
+            .iter()
+            .any(|write| write.value.0 == "totalSupply")
+    );
+    assert_eq!(deposit.applied_modifiers[0].definition.value, "active");
+    assert!(deposit.control_edges.iter().any(|edge| {
+        edge_text(edge, INHERITED_SOURCE, "InheritedVaultFixture.sol").contains("totalAssets > 0")
+    }));
+    assert!(
+        deposit
+            .resolved_calls
+            .iter()
+            .any(|call| call.value.contract.0 == "BaseVault"
+                && call.value.function.0 == "readPrice()")
+    );
+    assert!(
+        deposit
+            .resolved_calls
+            .iter()
+            .any(|call| call.value.contract.0 == "BaseVault"
+                && call.value.function.0 == "convertToShares(uint256)")
+    );
+    assert!(deposit.reachability_paths.iter().any(|path| {
+        path.calls.iter().any(|call| call.value.0 == "readPrice()")
+            && matches!(&path.terminal, ReachabilityTerminal::OracleCall(call) if call.value.0 == "oracle.latestPrice")
+    }));
+    assert!(deposit.value_flows.iter().any(|flow| {
+        matches!(&flow.origin.value, ValueOrigin::OracleCall(call) if call.0 == "oracle.latestPrice")
+            && matches!(&flow.sink.value, ValueSink::ConversionArgument(function) if function.0 == "convertToShares(uint256)")
+    }));
+    assert!(deposit.value_flows.iter().any(|flow| {
+        matches!(&flow.origin.value, ValueOrigin::OracleCall(_))
+            && matches!(&flow.sink.value, ValueSink::StorageWrite(storage) if storage.0 == "totalSupply")
+    }));
+}
+
+#[test]
 fn modifier_argument_and_guard_value_flows_are_composed() {
     let records =
         reconstruct_from_ast_json(MODIFIER_AST, "ModifierFlowFixture.sol", MODIFIER_SOURCE)
@@ -499,7 +557,7 @@ fn unresolved_modifier_links_and_missing_placeholders_stay_explicit() {
         preview
             .unresolved
             .iter()
-            .any(|item| item.detail.contains("not local"))
+            .any(|item| item.detail.contains("not available"))
     );
 
     let mut missing_placeholder: serde_json::Value = serde_json::from_str(FLOW_AST).unwrap();

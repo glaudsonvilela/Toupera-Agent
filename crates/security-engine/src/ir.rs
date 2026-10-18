@@ -140,6 +140,13 @@ pub struct ReachabilityPath {
     pub terminal: ReachabilityTerminal,
 }
 
+/// Compiler-resolved internal call, including the declaring contract.
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
+pub struct ResolvedFunction {
+    pub contract: ContractId,
+    pub function: FunctionId,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum ValueOrigin {
     Parameter(String),
@@ -179,6 +186,7 @@ pub struct AppliedModifier {
     pub control_conditions: Vec<Evidence<String>>,
     pub delegatecall_targets: Vec<Evidence<CallTarget>>,
     pub related_functions: Vec<Evidence<FunctionId>>,
+    pub resolved_calls: Vec<Evidence<ResolvedFunction>>,
     pub unresolved: Vec<Uncertainty>,
 }
 
@@ -199,6 +207,7 @@ pub struct EconomicFunction {
     pub modifiers: Vec<Evidence<String>>,
     pub applied_modifiers: Vec<AppliedModifier>,
     pub related_functions: Vec<Evidence<FunctionId>>,
+    pub resolved_calls: Vec<Evidence<ResolvedFunction>>,
     pub reachability_paths: Vec<ReachabilityPath>,
     pub value_flows: Vec<ValueFlow>,
     pub unresolved: Vec<Uncertainty>,
@@ -225,6 +234,7 @@ impl EconomicFunction {
             modifiers: Vec::new(),
             applied_modifiers: Vec::new(),
             related_functions: Vec::new(),
+            resolved_calls: Vec::new(),
             reachability_paths: Vec::new(),
             value_flows: Vec::new(),
             unresolved: Vec::new(),

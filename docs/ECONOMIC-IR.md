@@ -6,7 +6,7 @@ The Rust `EconomicFunction` record is a compact description of one vault or orac
 
 - **Identity:** `ContractId` and `FunctionId`; `BasicBlockId` names source graph nodes now and can later identify EVM blocks.
 - **Operation:** `EconomicOperation` (deposit, mint, withdraw, redeem, previews, conversions, totals, oracle price, or other).
-- **Dependencies:** storage reads/writes, external calls, oracle dependencies, arithmetic expressions, modifiers, and related functions.
+- **Dependencies:** storage reads/writes, external calls, oracle dependencies, arithmetic expressions, modifiers, and related functions. Compiler-resolved calls also identify their declaring contract across same-file inheritance.
 - **Evidence:** each observation has a `SourceSpan` or a `BytecodePc` and a confidence level.
 - **Unresolved:** `Uncertainty` records ambiguous semantics or missing input, optionally tied to a location.
 - **Control flow:** `ControlEdge` links source graph nodes with `Next`, `True`, `False`, `LoopBack`, or `Exit` and a source location.
@@ -20,4 +20,4 @@ The Rust `EconomicFunction` record is a compact description of one vault or orac
 
 ## Milestone state
 
-M1 established this data model with a manually assembled vault fixture. The M2 extractor now fills it from solc AST for a single source file, adds a partial source control graph, and attaches locally resolved modifier effects; see [Source Reconstruction](SOURCE-RECONSTRUCTION.md). Local modifiers with exactly one `_` are composed into the function graph. Others remain explicitly unresolved. It does not recover bytecode or detect vulnerabilities.
+M1 established this data model with a manually assembled vault fixture. The M2 extractor now fills it from solc AST for a single source file, adds a partial source control graph, and attaches same-file modifier effects, including inherited definitions; see [Source Reconstruction](SOURCE-RECONSTRUCTION.md). Local modifiers with exactly one `_` are composed into the function graph. Others remain explicitly unresolved. It does not recover bytecode or detect vulnerabilities.
