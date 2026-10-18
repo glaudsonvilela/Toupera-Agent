@@ -1,6 +1,7 @@
 //! Foundational types for focused Solidity/EVM economic security analysis.
 
 mod bytecode;
+mod bytecode_flow;
 mod callgraph;
 mod cfg;
 mod dataflow;
@@ -12,7 +13,8 @@ use serde::Serialize;
 pub use bytecode::{
     BytecodeAnalysis, BytecodeBlock, BytecodeEffect, BytecodeEffectKind, BytecodeEntrySummary,
     BytecodeInstruction, BytecodeMetadata, BytecodeMethodMatch, BytecodeSelector,
-    BytecodeSourceComparison, compare_with_solc_contract, reconstruct_bytecode_hex,
+    BytecodeSourceComparison, BytecodeValueFlow, BytecodeValueOrigin, BytecodeValueOriginKind,
+    BytecodeValueSinkKind, compare_with_solc_contract, reconstruct_bytecode_hex,
 };
 pub use ir::{
     AppliedModifier, ArithmeticExpression, BasicBlockId, BytecodePc, CallTarget, Confidence,

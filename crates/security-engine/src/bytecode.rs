@@ -5,9 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::bytecode_flow::analyze_value_flow;
 use crate::{
-    BasicBlockId, BytecodePc, Confidence, ControlEdge, ControlEdgeKind, Evidence, EvidenceLocation,
-    Uncertainty, UncertaintyKind,
+    BasicBlockId, BytecodePc, Confidence, ControlEdge, ControlEdgeKind, EconomicOperation,
+    Evidence, EvidenceLocation, Uncertainty, UncertaintyKind,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -72,7 +73,45 @@ pub struct BytecodeEntrySummary {
     pub selector: String,
     pub entry_pc: BytecodePc,
     pub effects: Vec<BytecodeEffect>,
+    pub value_flows: Vec<BytecodeValueFlow>,
     pub incomplete: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum BytecodeValueOriginKind {
+    Calldata,
+    CallValue,
+    StorageRead,
+    TransientStorageRead,
+    ExternalReturn,
+    ExternalCallSuccess,
+    Balance,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct BytecodeValueOrigin {
+    pub kind: BytecodeValueOriginKind,
+    pub location: BytecodePc,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum BytecodeValueSinkKind {
+    StorageWrite,
+    TransientStorageWrite,
+    ExternalCallTarget,
+    ExternalCallValue,
+    ExternalCallInput,
+    Return,
+    BranchCondition,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BytecodeValueFlow {
+    pub origin: BytecodeValueOrigin,
+    pub sink_kind: BytecodeValueSinkKind,
+    pub sink_pc: BytecodePc,
+    pub arithmetic_pcs: Vec<BytecodePc>,
+    pub confidence: Confidence,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -80,6 +119,8 @@ pub struct BytecodeMethodMatch {
     pub signature: String,
     pub selector: String,
     pub destination_pc: BytecodePc,
+    /// Name-based label from a byte-for-byte matching local compiler runtime.
+    pub economic_operation: Option<EconomicOperation>,
     pub confidence: Confidence,
 }
 
@@ -108,6 +149,7 @@ pub struct BytecodeAnalysis {
     pub control_edges: Vec<ControlEdge>,
     pub selectors: Vec<BytecodeSelector>,
     pub effects: Vec<BytecodeEffect>,
+    pub value_flows: Vec<BytecodeValueFlow>,
     pub entry_summaries: Vec<BytecodeEntrySummary>,
     pub unresolved: Vec<Uncertainty>,
 }
@@ -149,12 +191,25 @@ pub fn reconstruct_bytecode_hex(artifact: &str, input: &str) -> Result<BytecodeA
     let mut unresolved = Vec::new();
     let instructions = disassemble(code, artifact, &mut unresolved);
     let mut blocks = basic_blocks(&instructions, code_size);
-    let control_edges = control_edges(&instructions, &blocks, artifact, &mut unresolved);
+    let mut control_edges = control_edges(&instructions, &blocks, artifact);
+    let value_flows = analyze_value_flow(
+        &instructions,
+        &blocks,
+        &mut control_edges,
+        artifact,
+        &mut unresolved,
+    );
     mark_reachable(&mut blocks, &control_edges);
     let selectors = selectors(&instructions, &blocks, artifact, &mut unresolved);
     let effects = effects(&instructions, &blocks, artifact);
-    let entry_summaries =
-        entry_summaries(&selectors, &blocks, &control_edges, &effects, &unresolved);
+    let entry_summaries = entry_summaries(
+        &selectors,
+        &blocks,
+        &control_edges,
+        &effects,
+        &value_flows,
+        &unresolved,
+    );
     Ok(BytecodeAnalysis {
         artifact: artifact.to_owned(),
         raw_size: raw.len(),
@@ -166,6 +221,7 @@ pub fn reconstruct_bytecode_hex(artifact: &str, input: &str) -> Result<BytecodeA
         control_edges,
         selectors,
         effects,
+        value_flows,
         entry_summaries,
         unresolved,
     })
@@ -253,6 +309,11 @@ pub fn compare_with_solc_contract(
                     signature: signature.clone(),
                     selector,
                     destination_pc: recovered.destination_pc.clone(),
+                    economic_operation: if normalized_runtime_match == Some(true) {
+                        operation_from_signature(signature)
+                    } else {
+                        None
+                    },
                     confidence: if normalized_runtime_match == Some(true) {
                         recovered.confidence
                     } else {
@@ -288,6 +349,25 @@ pub fn compare_with_solc_contract(
         unmatched_source_methods,
         unmatched_bytecode_selectors,
         unresolved,
+    })
+}
+
+fn operation_from_signature(signature: &str) -> Option<EconomicOperation> {
+    let name = signature.split_once('(')?.0;
+    Some(match name {
+        "deposit" => EconomicOperation::Deposit,
+        "mint" => EconomicOperation::Mint,
+        "withdraw" => EconomicOperation::Withdraw,
+        "redeem" => EconomicOperation::Redeem,
+        "previewDeposit" => EconomicOperation::PreviewDeposit,
+        "previewMint" => EconomicOperation::PreviewMint,
+        "previewWithdraw" => EconomicOperation::PreviewWithdraw,
+        "previewRedeem" => EconomicOperation::PreviewRedeem,
+        "convertToShares" => EconomicOperation::ConvertToShares,
+        "convertToAssets" => EconomicOperation::ConvertToAssets,
+        "totalAssets" => EconomicOperation::TotalAssets,
+        "totalSupply" => EconomicOperation::TotalSupply,
+        _ => return None,
     })
 }
 
@@ -613,7 +693,6 @@ fn control_edges(
     instructions: &[BytecodeInstruction],
     blocks: &[BytecodeBlock],
     artifact: &str,
-    unresolved: &mut Vec<Uncertainty>,
 ) -> Vec<ControlEdge> {
     let by_pc: BTreeMap<_, _> = instructions.iter().map(|item| (item.pc, item)).collect();
     let jumpdests: BTreeSet<_> = instructions
@@ -657,12 +736,6 @@ fn control_edges(
                         },
                     );
                 }
-            } else {
-                unresolved.push(uncertainty(
-                    artifact,
-                    last.pc,
-                    "jump destination is dynamic, invalid, or not a direct preceding PUSH",
-                ));
             }
             if last.opcode == 0x57 {
                 if let Some(next) = blocks.get(index + 1) {
@@ -718,6 +791,12 @@ fn selectors(
             confidence: if block_reachable(blocks, selector.pc)
                 && index > 0
                 && instructions[index - 1].opcode == 0x80
+                && instructions[index.saturating_sub(10)..index]
+                    .iter()
+                    .any(|item| item.opcode == 0x35)
+                && instructions[index.saturating_sub(10)..index]
+                    .iter()
+                    .any(|item| item.opcode == 0x1c)
             {
                 Confidence::Inferred
             } else {
@@ -799,6 +878,7 @@ fn entry_summaries(
     blocks: &[BytecodeBlock],
     edges: &[ControlEdge],
     effects: &[BytecodeEffect],
+    value_flows: &[BytecodeValueFlow],
     unresolved: &[Uncertainty],
 ) -> Vec<BytecodeEntrySummary> {
     selectors
@@ -827,6 +907,16 @@ fn entry_summaries(
                 .filter(|effect| contains(effect.location.pc))
                 .cloned()
                 .collect();
+            let value_flows = value_flows
+                .iter()
+                .filter(|flow| contains(flow.sink_pc.pc))
+                .map(|flow| {
+                    let mut candidate = flow.clone();
+                    // A shared destination may be reached by other selectors.
+                    candidate.confidence = Confidence::Tentative;
+                    candidate
+                })
+                .collect();
             let incomplete = selector.confidence == Confidence::Tentative || unresolved.iter().any(|item| {
                 matches!(&item.location, Some(EvidenceLocation::Bytecode(pc)) if contains(pc.pc))
             });
@@ -834,6 +924,7 @@ fn entry_summaries(
                 selector: selector.selector.clone(),
                 entry_pc: selector.destination_pc.clone(),
                 effects,
+                value_flows,
                 incomplete,
             }
         })

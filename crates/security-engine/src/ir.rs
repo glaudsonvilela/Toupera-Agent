@@ -66,7 +66,7 @@ impl SourceSpan {
 }
 
 /// Location in an identified EVM bytecode artifact; bytecode ingestion comes later.
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct BytecodePc {
     pub artifact: String,
     pub pc: usize,

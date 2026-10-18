@@ -26,14 +26,14 @@ Esta lista acompanha a construção do Toupera Agent e o ciclo completo de anál
 
 O recorte M2 cobre um arquivo Solidity sem imports. O grafo estrutural source-level liga `if`, retornos, `require`/`assert`, ternários simples, laços e modifiers com um `_`, inclusive herdados no mesmo arquivo. Chamadas internas preservam o contrato declarante; caminhos e fluxo de valor conservador chegam a storage, oracle e conversões com proveniência. `delegatecall` com implementação `immutable` criada localmente no construtor é ligado ao contrato alvo; endereços externos continuam candidatos incertos. Laços e chamadas desconhecidas mantêm incertezas. `try`, assembly, múltiplos ternários, imports e bytecode permanecem fora deste recorte; M3 cobre bytecode.
 
-### M3 — Engenharia reversa de bytecode EVM
+### M3 — Engenharia reversa de bytecode EVM (concluído no recorte legado conservador)
 - [x] Normalizar runtime hex legado e remover metadados CBOR Solidity apenas quando reconhecidos.
-- [ ] Recuperar selector dispatch, blocos básicos e fluxo de controle.
-- [ ] Inferir chamadas externas, acessos a storage e caminhos econômicos.
+- [x] Recuperar dispatch direto de selectors, blocos básicos e CFG de saltos literais ou constantes propagadas.
+- [x] Observar chamadas e storage por PC; inferir dependências genéricas entre entradas, leituras, retornos de chamadas, aritmética e sinks econômicos.
 - [x] Registrar observações e inferências recuperadas com PC, confiança e incertezas.
-- [ ] Manter comportamento ambíguo como desconhecido; comparar com source quando disponível.
+- [x] Manter comportamento ambíguo como desconhecido; comparar runtime normalizado e métodos com saída local do solc quando disponível.
 
-Primeira etapa M3: `docs/BYTECODE-RECONSTRUCTION.md` descreve o decoder legado, saltos literais, selectors diretos, efeitos de opcode e comparação opcional com `solc` Standard JSON. Dispatch, CFG e source matching são parciais; stack, memória e caminhos econômicos de bytecode ainda não foram reconstruídos. Não tratar o M3 como concluído.
+O fechamento M3 cobre somente runtime EVM legado fornecido explicitamente: interpretação abstrata limitada de stack e memória por palavras, com limite de propagação. Os caminhos econômicos são dependências genéricas até escrita de storage, valor/alvo/entrada de chamada, condição ou retorno, sem atribuir identidade de oracle, asset ou share ao bytecode isolado. Dispatch fora do padrão direto, saltos ainda dinâmicos, memória parcial, ABI desconhecida, EOF e creation code permanecem em `unresolved` ou fora do recorte. A comparação local com source só atribui rótulos econômicos quando o runtime normalizado coincide byte a byte. Não é decompilador completo nem detector de vulnerabilidade. Ver [reconstrução de bytecode](BYTECODE-RECONSTRUCTION.md).
 
 ### M4 — Análise econômica determinística
 - [ ] Codificar conservação de assets/shares e simetria de preço.

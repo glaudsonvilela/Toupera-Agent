@@ -4,7 +4,7 @@
 2. Trabalhe em etapas pequenas.
 3. Não faça grandes refactors sem necessidade.
 4. Não generalize o escopo: priorize Solidity/EVM, Vaults e Oracles.
-5. Trate o motor Rust como analisador econômico e motor de reconstrução do contrato; planeje suporte a source e, depois, bytecode EVM, sem afirmar inferências incertas como fatos.
+5. Trate o motor Rust como analisador econômico e motor de reconstrução do contrato; source e runtime legado já têm recortes implementados, mas toda inferência incerta deve permanecer explicitamente incerta.
 6. Execute os testes relevantes após cada mudança.
 7. Atualize `/agente.md` depois de cada etapa importante.
 8. Nunca armazene API keys, tokens, passwords, secrets, private keys ou seed phrases.
@@ -23,11 +23,13 @@
 - Clippy estrito aponta 13 avisos `collapsible_if`; Clippy com essa regra liberada e `-D warnings` passou. Limpeza de estilo fica separada do fechamento funcional do M2.
 - Atualize este arquivo e `/agente.md` ao final de cada etapa, como solicitado pelo usuário.
 
-## M3 em andamento — primeira etapa de bytecode legado
+## M3 — recorte legado concluído
 
 - Leia `docs/BYTECODE-RECONSTRUCTION.md`. O módulo `bytecode.rs` produz `BytecodeAnalysis` separado da IR source, com normalização hex/CBOR, disassembly, blocos, saltos literais, dispatch direto, efeitos por PC, resumo por selector e incertezas explícitas. O CLI oferece `--bytecode` e `--compare-bytecode` com saída local do solc.
-- Limites: EOF, creation code, saltos dinâmicos, stack/memória, alvos de chamada e caminhos de valor econômico não estão resolvidos. Selector match sem igualdade de runtime é `Tentative`; não confunda observação de opcode com vulnerabilidade.
-- `cargo fmt --all`, `cargo check -p security-engine --offline` e `git diff --check` foram executados. Nenhum teste automatizado foi executado nesta etapa. Próximo passo: propagação conservadora de stack e dependências econômicas para continuar M3.
+- `bytecode_flow.rs` propaga stack e palavras de memória por CFG conhecido; liga calldata, callvalue, storage e resultados de chamadas a storage, chamadas, retornos e condições, com PCs e limites explícitos. Saltos constantes propagados ampliam o CFG. A análise permanece genérica e não prova caminho factível.
+- `BytecodeAnalysis.value_flows` mantém origens, sinks, PCs aritméticos e confiança. Os resumos por selector são `Tentative` porque blocos podem ser compartilhados. EOF, creation code, ABI, layout completo de storage, memória parcial e saltos ainda dinâmicos permanecem fora do recorte ou em `unresolved`.
+- `compare_with_solc_contract` rotula operações econômicas pelo nome do método apenas com runtime normalizado idêntico. Selector match sem igualdade de runtime é `Tentative`; não confunda observação de opcode com vulnerabilidade.
+- `cargo fmt --all` e `cargo check -p security-engine --offline` executados; nenhum teste foi adicionado ou executado nesta etapa. Próximo marco: M4, análise econômica determinística.
 - A revisão `3d2a9a6` também foi enviada ao VPS e compilada em release com Rust 1.93.1. A documentação operacional em `docs/VPS-SETUP.md` foi atualizada para os novos modos do CLI.
 
 ## Estratégia de ferramentas após M2
