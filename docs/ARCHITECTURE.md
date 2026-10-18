@@ -54,7 +54,7 @@ The current M2 source-backed extractor and its limits are described in [Source R
 - **Validation:** Foundry fuzz and invariant tests first; Echidna or Medusa only if coverage and unique findings justify another campaign.
 - **Symbolic/formal:** Halmos for focused Foundry-style properties; Kontrol or Certora for selected high-impact proofs. Mythril is a selective bytecode experiment after M3; Securify2 and archived Manticore are not default dependencies.
 - **Orchestration:** small Python layer.
-- **LLM:** provider-agnostic interface, initially prepared for DeepSeek API.
+- **LLM:** interface Rust `HypothesisProvider`, com adaptador DeepSeek opt-in sobre slices M5 e saída sempre `UNVERIFIED`.
 - **Storage:** simple local storage for MVP; PostgreSQL later if needed.
 - **Sandbox:** Docker when needed.
 

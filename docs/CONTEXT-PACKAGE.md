@@ -4,8 +4,9 @@ O CLI constrói um pacote local por arquivo Solidity explícito. Ele executa o `
 
 ```sh
 umask 077
-./target/release/security-engine --context-package Vault.sol /srv/toupera-agent/private-cache /usr/local/bin/solc > context.json
-./target/release/security-engine --context-package Vault.sol /srv/toupera-agent/private-cache /usr/local/bin/solc --slither slither.json --bytecode runtime.hex > context.json
+mkdir -m 700 -p private-output
+./target/release/security-engine --context-package Vault.sol private-output/context-cache /usr/local/bin/solc > private-output/context.json
+./target/release/security-engine --context-package Vault.sol private-output/context-cache /usr/local/bin/solc --slither slither.json --bytecode runtime.hex > private-output/context.json
 ```
 
 `solc-path` deve apontar para o arquivo executável do compilador, pois seus bytes entram na chave do cache. `--slither` aceita o JSON local opcional do M4; `--bytecode` aceita um runtime hex legado opcional. O runtime é normalizado, com remoção de metadados Solidity reconhecidos, e **somente identificado por hash**. Não se presume que corresponda ao source fornecido. Arquivos de saída podem conter trechos de código privado; use `umask 077`, diretórios privados e retenção controlada.
@@ -20,4 +21,4 @@ umask 077
 
 O slice contém o candidato M4, função com trecho de source limitado a 4 KiB, até três funções relacionadas com até 1,5 KiB cada, até doze trechos de evidência com até 384 bytes cada, listas limitadas de storage lido/escrito, aritmética, alvos de oracle e chamadas resolvidas, além de perguntas de invariantes da categoria e incertezas. `truncated` sinaliza cortes. `function_digests` identifica funções no arquivo, mas não inclui seus corpos. `economic_metrics` expõe o volume de sinais e candidatos do M4.
 
-O M6 deverá selecionar apenas os slices ainda relevantes e as perguntas não resolvidas para a API DeepSeek, registrar custo e preservar `UNVERIFIED`. Nenhum mecanismo atual envia o pacote ou o repositório a um serviço externo. O cache economiza reconstruções idênticas; economia de tokens e qualidade de achados dependem de medição após a implementação completa, conforme pedido do usuário.
+O M6 seleciona apenas slices com evidência e perguntas não resolvidas, e prepara um plano local ou uma chamada DeepSeek autorizada explicitamente. O comando `--context-package` em si não envia dados a um serviço externo. O cache economiza reconstruções idênticas; economia de tokens e qualidade de achados dependem de medição após a implementação completa, conforme pedido do usuário. Leia [Revisão com IA](LLM-REVIEW.md).

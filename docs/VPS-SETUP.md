@@ -1,6 +1,6 @@
 # VPS de desenvolvimento e análise
 
-Estado verificado em 2026-10-18 para `srv2074743.hstgr.cloud` (Hostinger KVM 4). Este servidor executa o motor localmente; não há API, serviço web ou integração DeepSeek implantados.
+Estado verificado em 2026-10-18 para `srv2074743.hstgr.cloud` (Hostinger KVM 4). Este servidor executa o motor localmente. O adaptador DeepSeek M6 está no CLI, mas não há chave, chamada externa, API ou serviço web implantado.
 
 ## Recursos e acesso
 
@@ -51,7 +51,7 @@ cargo build --release --locked -p security-engine
 
 A execução local dessa fixture produziu 4 registros de IR. Slither analisou a mesma fixture com 102 detectores e gerou 3 alertas no JSON; seu código de saída 255 indicou alertas encontrados, e `success` foi `true`. Esses resultados são apenas verificações de funcionamento das ferramentas em uma fixture, não vulnerabilidades confirmadas.
 
-O servidor não contém `.git` nem credenciais para acessar o repositório privado. Atualizações do projeto devem ser enviadas novamente a partir de um checkout autorizado e recompiladas. O recorte M3 de runtime legado, incluindo fluxo abstrato de stack/memória, segunda leitura local com EVMole 0.9.4 e comparação opcional com source, foi sincronizado e compilado em release; a revisão implantada fica em `.deployed-commit`. Não existem serviço `systemd`, endpoint HTTP, banco de dados ou chave da API DeepSeek configurados. O CLI aceita um arquivo Solidity sem imports e um caminho opcional para `solc`, ou `--bytecode <runtime.hex>`; a comparação com saída local do compilador usa `--compare-bytecode`. Ele não recebe tarefas de rede nem chama IA.
+O servidor não contém `.git` nem credenciais para acessar o repositório privado. Atualizações do projeto devem ser enviadas novamente a partir de um checkout autorizado e recompiladas. A revisão implantada fica em `.deployed-commit`. Não existem serviço `systemd`, endpoint HTTP, banco de dados ou chave da API DeepSeek configurados. O CLI aceita um arquivo Solidity sem imports e um caminho opcional para `solc`, ou `--bytecode <runtime.hex>`; a comparação com saída local do compilador usa `--compare-bytecode`. O modo M6 pode chamar DeepSeek apenas com opções explícitas e chave no ambiente; ainda não foi executado.
 
 ## Companions de engenharia reversa
 
@@ -71,6 +71,10 @@ A revisão de implementação `d2ed831` foi sincronizada e compilada em release 
 
 A revisão de código M5 `acd4d48` foi sincronizada e compilada em release no VPS sob `toupera` em 2026-10-18. O marcador `.deployed-commit` registrou essa revisão antes do complemento documental final; nenhum pacote de contexto foi gerado em fixture ou alvo.
 
+## Revisão de hipóteses M6
+
+`--llm-plan <context.json>` monta o plano de perguntas sem rede. `--llm-review <context.json> --provider deepseek --allow-external --review-cache <diretório-privado>` pode enviar slices à API DeepSeek quando a chave `TOUPERA_DEEPSEEK_API_KEY` estiver no ambiente e o escopo permitir processamento externo. O cache de respostas exige `0700`/`0600`. Nenhuma chave foi instalada e nenhuma chamada DeepSeek foi executada nesta etapa. O CLI não roda como serviço. Leia `docs/LLM-REVIEW.md` antes de usar o modo externo.
+
 ## Operação segura
 
-Use apenas fontes próprias, forks locais ou programas com autorização explícita. Antes de analisar outro alvo, confirme o escopo. Nunca registre chave da API, senha ou chave SSH privada no repositório, nos argumentos de linha de comando ou nos logs. A integração DeepSeek depende de implementação futura e de um mecanismo de segredo no servidor. Não exponha `anvil` na rede pública.
+Use apenas fontes próprias, forks locais ou programas com autorização explícita. Antes de analisar outro alvo, confirme o escopo. Nunca registre chave da API, senha ou chave SSH privada no repositório, nos argumentos de linha de comando ou nos logs. A chave DeepSeek deverá ser injetada no ambiente apenas quando o uso externo for autorizado; ela não foi instalada. Não exponha `anvil` na rede pública.

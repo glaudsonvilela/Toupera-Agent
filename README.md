@@ -42,6 +42,8 @@ M4 now emits source-backed economic risk candidates for accounting, previews, ro
 
 M5 builds bounded, local context slices for those candidates. SHA-256 fingerprints of source, AST, functions, compiler, engine, and optional normalized runtime/Slither input drive a private content cache, so unchanged inputs skip repeated analysis. The CLI does not send code to an LLM. See [Context Package](docs/CONTEXT-PACKAGE.md).
 
+M6 prepares one structured review request per eligible, deduplicated slice. A provider interface and an opt-in DeepSeek adapter require a JSON hypothesis with assumptions, relevant paths, and a suggested local test; the candidate remains `UNVERIFIED`. Prompt response caching and provider token usage make repeat calls and spend visible. No API key or live model call was used during implementation. See [LLM Review](docs/LLM-REVIEW.md).
+
 ## Development
 
 ```sh

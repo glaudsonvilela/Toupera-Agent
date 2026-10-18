@@ -58,11 +58,13 @@ O M4 usa a IR source-first de um arquivo sem imports. Regras sintáticas não pr
 O M5 opera no recorte source-backed do M2/M4, um arquivo sem imports. Runtime opcional é só fingerprint; não é ligado ao source sem comparação exata. O cache privado guarda o pacote reduzido e invalida ao mudar entrada, compilador ou motor. Os limites e o formato estão em [Pacote de Contexto](CONTEXT-PACKAGE.md). Economia de tokens e taxa de acertos permanecem sem benchmark até a validação solicitada após a implementação completa.
 
 ### M6 — Hipóteses do LLM
-- [ ] Definir interface desacoplada do fornecedor.
-- [ ] Enviar somente contexto reduzido e estruturado.
-- [ ] Exigir hipótese, premissas, caminhos relevantes e teste sugerido.
-- [ ] Manter o achado como `UNVERIFIED`; LLM não confirma vulnerabilidade.
-- [ ] Medir chamadas/tokens e acionar IA apenas para candidatos deduplicados que ainda exigem interpretação.
+- [x] Definir interface Rust desacoplada do fornecedor e primeiro adaptador DeepSeek.
+- [x] Preparar somente contexto reduzido e estruturado, com envio externo explícito.
+- [x] Exigir hipótese, premissas, caminhos relevantes e teste sugerido, ou resposta de evidência insuficiente.
+- [x] Manter o achado como `UNVERIFIED`; LLM não confirma vulnerabilidade.
+- [x] Registrar chamadas/tokens, limitar candidatos e reaproveitar respostas válidas idênticas em cache privado.
+
+O M6 foi implementado no recorte de candidatos source-backed do M4/M5. Preparação offline e chamada externa são comandos distintos; a API não foi acionada nesta etapa. O custo estimado requer rate card local com tarifas atuais. Prompt, contrato de saída e limites em [Revisão com IA](LLM-REVIEW.md). Qualidade e economia de tokens seguem sem medição até a validação geral solicitada pelo usuário.
 
 ### M7 — Juiz Foundry
 - [ ] Gerar teste local reproduzível para cada hipótese priorizada.

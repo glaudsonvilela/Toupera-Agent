@@ -7,7 +7,7 @@ Construir um auditor de segurança econômica Solidity/EVM para vaults, oracles,
 Alvo autorizado → source/bytecode → reconstrução Rust com proveniência e incertezas → filtros determinísticos/Slither → context slicing → LLM → hipótese → teste local Foundry → evidência → revisão humana → relatório. Source e runtime EVM legado explícito já têm recortes de reconstrução separados. Nenhuma hipótese vira vulnerabilidade sem reprodução.
 
 ## Fase atual
-M0–M3 concluídos nos recortes documentados. M4 implementa triagem econômica source-backed, com calibração em fixtures adiada a pedido do usuário. M5 produz slices locais limitados e cache por conteúdo. O próximo marco é M6, integração desacoplada com LLM; ainda não existe envio a DeepSeek. O motor não atribui identidade de oracle/assets/shares apenas pelo bytecode.
+M0–M3 concluídos nos recortes documentados. M4 implementa triagem econômica source-backed, com calibração em fixtures adiada a pedido do usuário. M5 produz slices locais limitados e cache por conteúdo. M6 prepara requisições reduzidas e inclui adaptador DeepSeek opt-in, ainda sem chave ou chamada real. O próximo marco é M7, reprodução local com Foundry. O motor não atribui identidade de oracle/assets/shares apenas pelo bytecode.
 
 ## Decisões técnicas
 - Core Rust em workspace Cargo; `serde`/`serde_json` apenas para AST e IR JSON.
@@ -38,7 +38,7 @@ M2 liga base e derivado pelo AST, conserva identidade das chamadas herdadas e di
 Sem suporte a imports, herança em outros arquivos, CFG completo ou resolução de endereço de proxy fornecido na implantação. O suporte a bytecode é somente runtime legado conservador, não EOF/creation code nem decompilação completa. Loops de source têm aproximação de uma iteração com incerteza; chamadas desconhecidas não têm retorno presumido. Fluxo de valor não prova factibilidade de caminho. Modifiers ausentes da fonte ou com zero/múltiplos `_` ficam sem composição. `try`, assembly e ternários múltiplos/aninhados não têm fluxo completo.
 
 ## Próximo passo
-Implementar M6 sobre os slices M5, mantendo `UNVERIFIED` e sem enviar source privado a serviços externos até existir mecanismo de segredos e escopo explícito. Testes, fixtures e benchmark permanecem adiados a pedido do usuário até a implementação geral estar completa.
+Implementar M7 com juiz Foundry local para hipóteses priorizadas, mantendo o uso de API externa sujeito a escopo autorizado e chave por ambiente. Testes, fixtures e benchmark permanecem adiados a pedido do usuário até a implementação geral estar completa.
 
 ## Etapa M3 inicial (2026-10-18)
 - `crates/security-engine/src/bytecode.rs` analisa runtime EVM legado em hex. Remove metadados CBOR Solidity somente com estrutura completa e chave reconhecida; decodifica `PUSH` sem confundir dados imediatos com opcodes, cria blocos, resolve apenas saltos literais a `JUMPDEST`, reconhece candidatos de dispatch direto `PUSH4/EQ/PUSH/JUMPI` (`Inferred` só com `DUP1` anterior e alcance conhecido) e observa storage/transient storage/chamadas/criação/autodestruição por PC.
@@ -77,7 +77,7 @@ Implementar M6 sobre os slices M5, mantendo `UNVERIFIED` e sem enviar source pri
 - `cargo fmt --all` e `cargo check -p security-engine --offline` executados durante a implementação. Nenhum teste foi adicionado ou executado nesta etapa.
 
 ## Pendências
-Detectores econômicos M4, deduplicação, LLM e juiz Foundry permanecem planejados. Nunca armazenar secrets ou executar exploração em produção.
+Calibração M4–M6, juiz Foundry M7 e entrega M8 permanecem pendentes. Nunca armazenar secrets ou executar exploração em produção.
 
 ## Complemento M3 — EVMole como evidência independente (2026-10-18)
 - Dependência Rust `evmole = =0.9.4`, com recursos padrão desligados, integra a análise de runtime legado já normalizado em `crates/security-engine/src/bytecode_evmole.rs`. `BytecodeAnalysis.evmole` registra selectors ABI/fallback, tipos prováveis de argumentos, mutabilidade, layout de storage persistente/transitório, CFG, versão, confiança e divergências. O processamento é local; não há consulta a rede durante a análise.
@@ -105,3 +105,9 @@ Detectores econômicos M4, deduplicação, LLM e juiz Foundry permanecem planeja
 - `--context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>]` devolve JSON local com candidato `UNVERIFIED`, função e trechos relacionados limitados, evidências, storage, aritmética, oracle, chamadas, perguntas de invariantes, incertezas e `truncated`. O hash opcional de runtime não liga bytecode a source. Não há chamada à IA nem envio de repositório.
 - Documentação em `docs/CONTEXT-PACKAGE.md`; roadmap, README, documentação M4/VPS e `codex/agent.md` atualizados. `cargo fmt --all`, `cargo check --locked --offline -p security-engine` e `git diff --check` executados; nenhuma fixture, teste automatizado ou benchmark executado, conforme pedido do usuário.
 - Revisão de código M5 `acd4d48` enviada ao GitHub privado, sincronizada no VPS e compilada em release com `cargo build --release --locked -p security-engine` sob `toupera`. O marcador `.deployed-commit` recebeu essa revisão antes do complemento documental final.
+
+## M6 — hipóteses de IA estruturadas (2026-10-18)
+- `llm_review.rs` oferece `HypothesisProvider`, adaptador DeepSeek HTTPS e `CachingProvider`. `--llm-plan <context.json>` só prepara requisições locais; `--llm-review` requer `--provider deepseek`, `--allow-external`, `--review-cache` privado e chave `TOUPERA_DEEPSEEK_API_KEY` no ambiente. Não inserir chave em argumentos, arquivos do projeto ou logs.
+- Seleção exige candidato `UNVERIFIED`, evidência, perguntas de invariantes e função com trecho. Deduplica por contrato/função/categoria/hash e monta payload apenas de campos permitidos do slice. O modelo devolve JSON com hipótese, premissas, caminhos e teste sugerido ou evidência insuficiente; parser valida a forma, não a verdade. Todo item continua `UNVERIFIED` até M7.
+- Métricas de chamadas e tokens vêm da resposta da API; rate card local opcional permite estimativa de custo sem preço fixado em código. Respostas válidas idênticas são reaproveitadas em cache `0700`/`0600`. Limite padrão de 5 candidatos, máximo 20 por execução; sem retry automático.
+- Documentação em `docs/LLM-REVIEW.md`, roadmap/README/arquitetura/VPS e `codex/agent.md` atualizados. `cargo fmt --all`, `cargo +1.93.0 check --locked --offline -p security-engine` e `git diff --check` usados. Nenhum teste, fixture, chamada DeepSeek ou benchmark executado, conforme pedido do usuário. Publicação e build release no VPS devem ser registrados após sincronização.

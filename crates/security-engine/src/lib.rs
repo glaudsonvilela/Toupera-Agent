@@ -10,6 +10,7 @@ mod context_package;
 mod dataflow;
 mod economic_analysis;
 mod ir;
+mod llm_review;
 mod source;
 
 use serde::Serialize;
@@ -42,6 +43,11 @@ pub use ir::{
     ModifierArgumentBinding, ProxyRelation, ReachabilityPath, ReachabilityTerminal,
     ResolvedFunction, SourceSpan, StorageId, Uncertainty, UncertaintyKind, ValueFlow, ValueOrigin,
     ValueSink,
+};
+pub use llm_review::{
+    CachingProvider, DeepSeekProvider, HypothesisProvider, ModelConclusion, PreparedRequest,
+    ProviderReply, RateCard, ReviewItem, ReviewMetrics, ReviewPlan, ReviewReport, TokenUsage,
+    prepare_review_plan, run_review,
 };
 pub use source::{
     compile_source_ast_file, compile_source_ast_text, reconstruct_from_ast_json,

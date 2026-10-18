@@ -1,4 +1,5 @@
 /target/
+/private-output/
 .env
 .env.*
 !.env.example

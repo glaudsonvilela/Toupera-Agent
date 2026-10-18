@@ -4,16 +4,17 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use security_engine::{
-    CompanionAnalysis, analyze_economic_functions, compare_with_solc_contract,
-    import_gigahorse_tac, import_heimdall_abi, load_or_build_context_package,
-    reconstruct_bytecode_hex, reconstruct_source_file,
+    CachingProvider, CompanionAnalysis, DeepSeekProvider, RateCard, analyze_economic_functions,
+    compare_with_solc_contract, import_gigahorse_tac, import_heimdall_abi,
+    load_or_build_context_package, prepare_review_plan, reconstruct_bytecode_hex,
+    reconstruct_source_file, run_review,
 };
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
+            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
         );
         return ExitCode::FAILURE;
     };
@@ -184,6 +185,145 @@ fn main() -> ExitCode {
                 eprintln!("{error}");
                 ExitCode::FAILURE
             }
+        };
+    }
+    if source == "--llm-plan" || source == "--llm-review" {
+        let arguments: Vec<_> = args.collect();
+        if arguments.is_empty() {
+            eprintln!("usage: security-engine {source} <context.json> [review options]");
+            return ExitCode::FAILURE;
+        }
+        let input = match fs::read_to_string(&arguments[0])
+            .map_err(|error| format!("cannot read {}: {error}", arguments[0]))
+            .and_then(|text| {
+                serde_json::from_str::<serde_json::Value>(&text)
+                    .map_err(|error| format!("invalid M5 package JSON: {error}"))
+            })
+            .and_then(|value| prepare_review_plan(&value))
+        {
+            Ok(plan) => plan,
+            Err(error) => {
+                eprintln!("{error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        if source == "--llm-plan" {
+            if arguments.len() != 1 {
+                eprintln!("usage: security-engine --llm-plan <context.json>");
+                return ExitCode::FAILURE;
+            }
+            if let Err(error) = serde_json::to_writer(std::io::stdout(), &input) {
+                eprintln!("cannot write LLM plan: {error}");
+                return ExitCode::FAILURE;
+            }
+            println!();
+            return ExitCode::SUCCESS;
+        }
+        let mut provider_name = None;
+        let mut model = "deepseek-flash".to_owned();
+        let mut max_candidates = 5_usize;
+        let mut rate_card_path = None;
+        let mut review_cache_path = None;
+        let mut allow_external = false;
+        let mut index = 1;
+        while index < arguments.len() {
+            match arguments[index].as_str() {
+                "--allow-external" if !allow_external => {
+                    allow_external = true;
+                    index += 1;
+                }
+                "--provider" if provider_name.is_none() && index + 1 < arguments.len() => {
+                    provider_name = Some(arguments[index + 1].as_str());
+                    index += 2;
+                }
+                "--model" if index + 1 < arguments.len() => {
+                    model = arguments[index + 1].clone();
+                    index += 2;
+                }
+                "--max-candidates" if index + 1 < arguments.len() => {
+                    max_candidates = match arguments[index + 1].parse::<usize>() {
+                        Ok(value) if (1..=20).contains(&value) => value,
+                        _ => {
+                            eprintln!("--max-candidates must be 1..=20");
+                            return ExitCode::FAILURE;
+                        }
+                    };
+                    index += 2;
+                }
+                "--rate-card" if rate_card_path.is_none() && index + 1 < arguments.len() => {
+                    rate_card_path = Some(arguments[index + 1].as_str());
+                    index += 2;
+                }
+                "--review-cache" if review_cache_path.is_none() && index + 1 < arguments.len() => {
+                    review_cache_path = Some(arguments[index + 1].as_str());
+                    index += 2;
+                }
+                _ => {
+                    eprintln!("unknown or repeated LLM option: {}", arguments[index]);
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        if provider_name != Some("deepseek") || !allow_external {
+            eprintln!("external LLM review requires --provider deepseek --allow-external");
+            return ExitCode::FAILURE;
+        }
+        let Some(review_cache_path) = review_cache_path else {
+            eprintln!("external LLM review requires --review-cache <private-dir>");
+            return ExitCode::FAILURE;
+        };
+        let rate_card = match rate_card_path
+            .map(|path| {
+                fs::read_to_string(path)
+                    .map_err(|error| format!("cannot read rate card {path}: {error}"))
+                    .and_then(|text| {
+                        serde_json::from_str::<RateCard>(&text)
+                            .map_err(|error| format!("invalid rate card: {error}"))
+                    })
+                    .and_then(|card| {
+                        card.validate()?;
+                        Ok(card)
+                    })
+            })
+            .transpose()
+        {
+            Ok(card) => card,
+            Err(error) => {
+                eprintln!("{error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let key = match env::var("TOUPERA_DEEPSEEK_API_KEY") {
+            Ok(key) if !key.trim().is_empty() => key,
+            _ => {
+                eprintln!("TOUPERA_DEEPSEEK_API_KEY is not set");
+                return ExitCode::FAILURE;
+            }
+        };
+        let provider = match DeepSeekProvider::new(key, model) {
+            Ok(provider) => provider,
+            Err(error) => {
+                eprintln!("{error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let provider = match CachingProvider::new(provider, Path::new(review_cache_path)) {
+            Ok(provider) => provider,
+            Err(error) => {
+                eprintln!("{error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let report = run_review(&input, &provider, max_candidates, rate_card.as_ref());
+        if let Err(error) = serde_json::to_writer(std::io::stdout(), &report) {
+            eprintln!("cannot write LLM report: {error}");
+            return ExitCode::FAILURE;
+        }
+        println!();
+        return if report.stopped_after_error {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
         };
     }
     if source == "--compare-bytecode" {

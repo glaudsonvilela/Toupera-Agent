@@ -407,7 +407,7 @@ pub fn build_context_package(
 }
 
 #[cfg(unix)]
-fn ensure_private_cache(dir: &Path) -> Result<(), String> {
+pub(crate) fn ensure_private_cache(dir: &Path) -> Result<(), String> {
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     if !dir.exists() {
         let mut builder = fs::DirBuilder::new();
@@ -425,11 +425,11 @@ fn ensure_private_cache(dir: &Path) -> Result<(), String> {
 }
 
 #[cfg(not(unix))]
-fn ensure_private_cache(_dir: &Path) -> Result<(), String> {
+pub(crate) fn ensure_private_cache(_dir: &Path) -> Result<(), String> {
     Err("M5 cache currently requires Unix filesystem permissions".into())
 }
 
-fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
     let temp = path.with_extension(format!("{}.tmp", std::process::id()));
