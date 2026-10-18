@@ -7,7 +7,7 @@ Construir um auditor de segurança econômica Solidity/EVM para vaults, oracles,
 Alvo autorizado → source/bytecode → reconstrução Rust com proveniência e incertezas → filtros determinísticos/Slither → context slicing → LLM → hipótese → teste local Foundry → evidência → revisão humana → relatório. Source e runtime EVM legado explícito já têm recortes de reconstrução separados. Nenhuma hipótese vira vulnerabilidade sem reprodução.
 
 ## Fase atual
-M0, M1 e M2 concluídos no recorte source-first de um arquivo sem imports. M3 concluído no recorte conservador de runtime EVM legado explícito, com CFG de destinos constantes, fluxo abstrato de stack/memória por palavras, dependências genéricas de valor e comparação opcional com runtime compilado local. O motor não atribui identidade de oracle/assets/shares apenas pelo bytecode.
+M0, M1 e M2 concluídos no recorte source-first de um arquivo sem imports. M3 concluído no recorte conservador de runtime EVM legado explícito, com CFG de destinos constantes, fluxo abstrato de stack/memória por palavras, dependências genéricas de valor e comparação opcional com runtime compilado local. EVMole 0.9.4 fornece uma segunda leitura local de selectors, ABI, storage e CFG em relatório separado. O motor não atribui identidade de oracle/assets/shares apenas pelo bytecode.
 
 ## Decisões técnicas
 - Core Rust em workspace Cargo; `serde`/`serde_json` apenas para AST e IR JSON.
@@ -78,3 +78,10 @@ Próximo marco M4: detectores econômicos determinísticos sobre as IRs existent
 
 ## Pendências
 Detectores econômicos M4, deduplicação, LLM e juiz Foundry permanecem planejados. Nunca armazenar secrets ou executar exploração em produção.
+
+## Complemento M3 — EVMole como evidência independente (2026-10-18)
+- Dependência Rust `evmole = =0.9.4`, com recursos padrão desligados, integra a análise de runtime legado já normalizado em `crates/security-engine/src/bytecode_evmole.rs`. `BytecodeAnalysis.evmole` registra selectors ABI/fallback, tipos prováveis de argumentos, mutabilidade, layout de storage persistente/transitório, CFG, versão, confiança e divergências. O processamento é local; não há consulta a rede durante a análise.
+- Propostas do EVMole não entram automaticamente em `control_edges`, `effects` nem `value_flows` nativos. Selector só é aceito se sua entrada aponta a um `JUMPDEST` decodificado; tipos, storage e arestas são `Tentative`. Slots EVMole só ganham `corroborating_access_pcs` quando um efeito nativo com slot literal e selector alcançável coincide. Ausência de PC de corroboração não prova ausência do acesso.
+- `compare_with_solc_contract` pode considerar selector ABI exclusivo do EVMole; `recovered_by` mostra `native`, `evmole` ou ambos. EVMole exclusivo e divergência de destino mantêm confiança `Tentative`; rótulo econômico pelo nome do método exige igualdade do runtime compilado normalizado. A comparação agora normaliza o runtime do solc sem reexecutar toda a análise.
+- O companion registra motivo de omissão acima de 24.576 bytes e preserva a análise nativa caso o EVMole falhe. Heimdall e Gigahorse não foram integrados. EVMole não confirma vulnerabilidades nem prova ABI/layout.
+- `cargo check -p security-engine --offline` e `cargo fmt --all` foram usados para compilação e formatação. Nenhum teste automatizado foi adicionado ou executado nesta etapa.

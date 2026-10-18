@@ -6,5 +6,6 @@ license = "UNLICENSED"
 description = "Foundational types for Toupera Agent's EVM economic security engine"
 
 [dependencies]
+evmole = { version = "=0.9.4", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

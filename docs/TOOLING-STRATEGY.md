@@ -1,6 +1,6 @@
 # Ferramentas de análise para o recorte econômico
 
-Avaliação em 2026-10-18. Esta é uma decisão de arquitetura, não um resultado de benchmark nem uma integração já executada. O M2 atual reconstrói um arquivo Solidity sem imports. Os CLIs e contêineres foram instalados posteriormente no VPS (inventário em `VPS-SETUP.md`), mas ainda não estão integrados ao Toupera Agent.
+Avaliação iniciada em 2026-10-18. Não há benchmark de redução de IA ou detecção de bugs. O M2 reconstrói um arquivo Solidity sem imports; o M3 reconstrói runtime EVM legado. EVMole foi integrado como biblioteca local de segunda leitura de bytecode. Os demais CLIs e contêineres instalados no VPS (inventário em `VPS-SETUP.md`) ainda não estão orquestrados pelo Toupera Agent.
 
 ## Decisão
 
@@ -8,6 +8,7 @@ Manter a IR econômica Rust como índice de funções, evidências e incertezas.
 
 | Ferramenta | Utilidade no escopo vault/oracle | Adoção | Papel no fluxo |
 | --- | --- | --- | --- |
+| [EVMole](https://github.com/cdump/evmole) | Amplia candidatos de selectors, ABI, storage e CFG no bytecode sem source. | Integrado como companion Rust M3, versão fixada | Evidência `Tentative` separada; comparar com PCs e resultados nativos antes de usar em análise econômica. |
 | [Slither](https://github.com/crytic/slither) | Alta para estrutura, herança, chamadas, dependência de dados e detectores customizados; não substitui invariantes econômicas. | Primeira integração | Triagem source e enriquecimento da IR, com resultados deduplicados por localização e categoria. |
 | [Mythril](https://github.com/ConsenSysDiligence/mythril) | Complementar para problemas EVM genéricos e caminhos de bytecode; menor precisão para lógica econômica específica. | Piloto seletivo após M3 | Examinar candidatos de bytecode ou caminhos que o source não esclareceu, com limite de tempo. |
 | [Securify2](https://github.com/eth-sri/securify2) | Sobreposição com scanners existentes; a documentação limita a entrada a contratos sem imports e o Docker fixa `solc` 0.5.12 por padrão. | Não integrar ao fluxo principal | Comparação experimental somente se fixtures modernas e custo de manutenção justificarem. |
@@ -51,6 +52,7 @@ Registrar por alvo: funções analisadas, candidatos por ferramenta, sobreposiç
 
 ## Fontes primárias
 
+- [EVMole e API Rust](https://github.com/cdump/evmole).
 - [Slither e detectores customizados](https://github.com/crytic/slither); [Mythril](https://github.com/ConsenSysDiligence/mythril); [Securify2](https://github.com/eth-sri/securify2); [Manticore arquivado](https://github.com/trailofbits/manticore).
 - [Foundry: invariant testing](https://getfoundry.sh/forge/invariant-testing); [Echidna](https://github.com/crytic/echidna); [Medusa](https://github.com/crytic/medusa); [propriedades Crytic ERC-4626](https://github.com/crytic/properties).
 - [Halmos](https://github.com/a16z/halmos); [Kontrol](https://docs.runtimeverification.com/kontrol); [Certora CVL](https://docs.certora.com/en/latest/docs/cvl/index.html) e [execução remota](https://docs.certora.com/en/latest/docs/user-guide/running.html).

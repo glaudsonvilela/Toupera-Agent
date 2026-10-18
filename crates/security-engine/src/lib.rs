@@ -1,6 +1,7 @@
 //! Foundational types for focused Solidity/EVM economic security analysis.
 
 mod bytecode;
+mod bytecode_evmole;
 mod bytecode_flow;
 mod callgraph;
 mod cfg;
@@ -15,6 +16,9 @@ pub use bytecode::{
     BytecodeInstruction, BytecodeMetadata, BytecodeMethodMatch, BytecodeSelector,
     BytecodeSourceComparison, BytecodeValueFlow, BytecodeValueOrigin, BytecodeValueOriginKind,
     BytecodeValueSinkKind, compare_with_solc_contract, reconstruct_bytecode_hex,
+};
+pub use bytecode_evmole::{
+    EvmoleControlEdgeEvidence, EvmoleReport, EvmoleSelectorEvidence, EvmoleStorageEvidence,
 };
 pub use ir::{
     AppliedModifier, ArithmeticExpression, BasicBlockId, BytecodePc, CallTarget, Confidence,

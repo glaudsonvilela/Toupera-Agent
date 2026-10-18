@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::bytecode_evmole::{EvmoleReport, analyze_with_evmole};
 use crate::bytecode_flow::analyze_value_flow;
 use crate::{
     BasicBlockId, BytecodePc, Confidence, ControlEdge, ControlEdgeKind, EconomicOperation,
@@ -121,6 +122,7 @@ pub struct BytecodeMethodMatch {
     pub destination_pc: BytecodePc,
     /// Name-based label from a byte-for-byte matching local compiler runtime.
     pub economic_operation: Option<EconomicOperation>,
+    pub recovered_by: String,
     pub confidence: Confidence,
 }
 
@@ -151,6 +153,7 @@ pub struct BytecodeAnalysis {
     pub effects: Vec<BytecodeEffect>,
     pub value_flows: Vec<BytecodeValueFlow>,
     pub entry_summaries: Vec<BytecodeEntrySummary>,
+    pub evmole: EvmoleReport,
     pub unresolved: Vec<Uncertainty>,
 }
 
@@ -161,6 +164,58 @@ pub fn reconstruct_bytecode_hex(artifact: &str, input: &str) -> Result<BytecodeA
     if artifact.is_empty() {
         return Err("bytecode artifact identity cannot be empty".into());
     }
+    let (raw, metadata) = decode_runtime_hex(input)?;
+    let code_size = metadata.as_ref().map_or(raw.len(), |item| item.start_pc);
+    let code = &raw[..code_size];
+    let mut unresolved = Vec::new();
+    let instructions = disassemble(code, artifact, &mut unresolved);
+    let mut blocks = basic_blocks(&instructions, code_size);
+    let mut control_edges = control_edges(&instructions, &blocks, artifact);
+    let value_flows = analyze_value_flow(
+        &instructions,
+        &blocks,
+        &mut control_edges,
+        artifact,
+        &mut unresolved,
+    );
+    mark_reachable(&mut blocks, &control_edges);
+    let selectors = selectors(&instructions, &blocks, artifact, &mut unresolved);
+    let effects = effects(&instructions, &blocks, artifact);
+    let entry_summaries = entry_summaries(
+        &selectors,
+        &blocks,
+        &control_edges,
+        &effects,
+        &value_flows,
+        &unresolved,
+    );
+    let evmole = analyze_with_evmole(
+        code,
+        artifact,
+        &instructions,
+        &selectors,
+        &control_edges,
+        &entry_summaries,
+    );
+    Ok(BytecodeAnalysis {
+        artifact: artifact.to_owned(),
+        raw_size: raw.len(),
+        code_size,
+        normalized_hex: encode_hex(code),
+        metadata,
+        instructions,
+        blocks,
+        control_edges,
+        selectors,
+        effects,
+        value_flows,
+        entry_summaries,
+        evmole,
+        unresolved,
+    })
+}
+
+fn decode_runtime_hex(input: &str) -> Result<(Vec<u8>, Option<BytecodeMetadata>), String> {
     let compact: String = input.chars().filter(|c| !c.is_ascii_whitespace()).collect();
     let hex = compact
         .strip_prefix("0x")
@@ -187,44 +242,7 @@ pub fn reconstruct_bytecode_hex(artifact: &str, input: &str) -> Result<BytecodeA
     if code_size == 0 {
         return Err("runtime code is empty after removing recognized metadata".into());
     }
-    let code = &raw[..code_size];
-    let mut unresolved = Vec::new();
-    let instructions = disassemble(code, artifact, &mut unresolved);
-    let mut blocks = basic_blocks(&instructions, code_size);
-    let mut control_edges = control_edges(&instructions, &blocks, artifact);
-    let value_flows = analyze_value_flow(
-        &instructions,
-        &blocks,
-        &mut control_edges,
-        artifact,
-        &mut unresolved,
-    );
-    mark_reachable(&mut blocks, &control_edges);
-    let selectors = selectors(&instructions, &blocks, artifact, &mut unresolved);
-    let effects = effects(&instructions, &blocks, artifact);
-    let entry_summaries = entry_summaries(
-        &selectors,
-        &blocks,
-        &control_edges,
-        &effects,
-        &value_flows,
-        &unresolved,
-    );
-    Ok(BytecodeAnalysis {
-        artifact: artifact.to_owned(),
-        raw_size: raw.len(),
-        code_size,
-        normalized_hex: encode_hex(code),
-        metadata,
-        instructions,
-        blocks,
-        control_edges,
-        selectors,
-        effects,
-        value_flows,
-        entry_summaries,
-        unresolved,
-    })
+    Ok((raw, metadata))
 }
 
 /// Compares recovered selectors and normalized runtime bytes with explicitly
@@ -259,8 +277,13 @@ pub fn compare_with_solc_contract(
         .pointer("/evm/deployedBytecode/object")
         .and_then(Value::as_str)
     {
-        Some(hex) => match reconstruct_bytecode_hex("compiler-runtime", hex) {
-            Ok(compiled) => Some(compiled.normalized_hex == analysis.normalized_hex),
+        Some(hex) => match decode_runtime_hex(hex) {
+            Ok((compiled, metadata)) => {
+                let code_size = metadata
+                    .as_ref()
+                    .map_or(compiled.len(), |item| item.start_pc);
+                Some(encode_hex(&compiled[..code_size]) == analysis.normalized_hex)
+            }
             Err(_) => {
                 unresolved.push(Uncertainty {
                     kind: UncertaintyKind::MissingInput,
@@ -299,23 +322,50 @@ pub fn compare_with_solc_contract(
                 "0x{}",
                 selector.trim_start_matches("0x").to_ascii_lowercase()
             );
-            if let Some(recovered) = analysis
+            let native = analysis
                 .selectors
                 .iter()
-                .find(|item| item.selector == selector)
+                .find(|item| item.selector == selector);
+            let companion = analysis
+                .evmole
+                .selectors
+                .iter()
+                .find(|item| item.selector == selector && item.dispatch == "abi");
+            if let Some(destination_pc) = native
+                .map(|item| item.destination_pc.clone())
+                .or_else(|| companion.map(|item| item.destination_pc.clone()))
             {
+                let disagreement = native
+                    .zip(companion)
+                    .is_some_and(|(left, right)| left.destination_pc.pc != right.destination_pc.pc);
+                if disagreement {
+                    unresolved.push(Uncertainty {
+                        kind: UncertaintyKind::AmbiguousSemantics,
+                        detail: format!(
+                            "native and EVMole disagree on destination of selector {selector}"
+                        ),
+                        location: Some(EvidenceLocation::Bytecode(destination_pc.clone())),
+                    });
+                }
                 matched_selector_values.insert(selector.clone());
                 matched_methods.push(BytecodeMethodMatch {
                     signature: signature.clone(),
                     selector,
-                    destination_pc: recovered.destination_pc.clone(),
+                    destination_pc,
                     economic_operation: if normalized_runtime_match == Some(true) {
                         operation_from_signature(signature)
                     } else {
                         None
                     },
-                    confidence: if normalized_runtime_match == Some(true) {
-                        recovered.confidence
+                    recovered_by: match (native, companion) {
+                        (Some(_), Some(_)) => "native+evmole",
+                        (Some(_), None) => "native",
+                        (None, Some(_)) => "evmole",
+                        (None, None) => unreachable!(),
+                    }
+                    .into(),
+                    confidence: if normalized_runtime_match == Some(true) && !disagreement {
+                        native.map_or(Confidence::Tentative, |item| item.confidence)
                     } else {
                         Confidence::Tentative
                     },
@@ -332,12 +382,20 @@ pub fn compare_with_solc_contract(
         });
     }
     let unmatched_bytecode_selectors = if methods.is_some() {
-        analysis
+        let all: BTreeSet<_> = analysis
             .selectors
             .iter()
-            .filter(|item| !matched_selector_values.contains(&item.selector))
             .map(|item| item.selector.clone())
-            .collect()
+            .chain(
+                analysis
+                    .evmole
+                    .selectors
+                    .iter()
+                    .filter(|item| item.dispatch == "abi")
+                    .map(|item| item.selector.clone()),
+            )
+            .collect();
+        all.difference(&matched_selector_values).cloned().collect()
     } else {
         Vec::new()
     };
@@ -371,7 +429,7 @@ fn operation_from_signature(signature: &str) -> Option<EconomicOperation> {
     })
 }
 
-fn encode_hex(bytes: &[u8]) -> String {
+pub(crate) fn encode_hex(bytes: &[u8]) -> String {
     let mut output = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
         use std::fmt::Write;
