@@ -8,14 +8,14 @@ use security_engine::{
     compare_with_solc_contract, finalize_evidence_bundle, import_gigahorse_tac,
     import_heimdall_abi, judge_foundry_case, load_or_build_context_package,
     prepare_evidence_bundle, prepare_foundry_cases, prepare_review_plan, reconstruct_bytecode_hex,
-    reconstruct_source_file, run_review,
+    reconstruct_source_file, reject_foundry_case, run_review,
 };
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
+            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --foundry-reject <case-dir> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
         );
         return ExitCode::FAILURE;
     };
@@ -52,7 +52,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    if source == "--foundry-plan" || source == "--foundry-run" {
+    if source == "--foundry-plan" || source == "--foundry-run" || source == "--foundry-reject" {
         let arguments: Vec<_> = args.collect();
         let result = if source == "--foundry-plan" {
             if arguments.len() != 4 {
@@ -77,7 +77,7 @@ fn main() -> ExitCode {
                     .and_then(|plan| serde_json::to_value(plan).map_err(|error| error.to_string()))
                 })
             })
-        } else {
+        } else if source == "--foundry-run" {
             if arguments.len() != 3 {
                 eprintln!("usage: security-engine --foundry-run <case-dir> <forge-bin> <solc-bin>");
                 return ExitCode::FAILURE;
@@ -88,6 +88,13 @@ fn main() -> ExitCode {
                 Path::new(&arguments[2]),
             )
             .and_then(|report| serde_json::to_value(report).map_err(|error| error.to_string()))
+        } else {
+            if arguments.len() != 1 {
+                eprintln!("usage: security-engine --foundry-reject <case-dir>");
+                return ExitCode::FAILURE;
+            }
+            reject_foundry_case(Path::new(&arguments[0]))
+                .and_then(|report| serde_json::to_value(report).map_err(|error| error.to_string()))
         };
         return match result {
             Ok(value) => {

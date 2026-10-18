@@ -66,6 +66,30 @@ pub struct HarnessApproval {
     pub boundaries_covered: bool,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct RejectionReview {
+    pub reviewed: bool,
+    pub reviewer: String,
+    pub scope_reference: String,
+    pub reason: String,
+    pub assumptions_checked: bool,
+    pub valid_inputs_checked: bool,
+    pub failed_assertion_reviewed: bool,
+    pub target_calls_reviewed: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct FoundryRejection {
+    pub schema: String,
+    pub candidate_key: String,
+    pub status: String,
+    pub source_sha256: String,
+    pub harness_sha256: String,
+    pub result_sha256: String,
+    pub review_sha256: String,
+    pub reason: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct FoundryPlan {
     pub schema: String,
@@ -252,6 +276,10 @@ pub fn prepare_foundry_cases(
                 valid_calls_observed: false,
                 boundaries_covered: false,
             })?,
+        )?;
+        write_private(
+            &dir.join("rejection-review.json"),
+            &json_bytes(&RejectionReview::default())?,
         )?;
         directories.push(dir.display().to_string());
     }
@@ -440,6 +468,9 @@ pub fn judge_foundry_case(
 ) -> Result<FoundryResult, String> {
     require_absolute_executable(forge_bin)?;
     require_absolute_executable(solc_bin)?;
+    let case_dir = fs::canonicalize(case_dir)
+        .map_err(|error| format!("cannot resolve M7 case directory: {error}"))?;
+    ensure_private_cache(&case_dir)?;
     let case: FoundryCase = read_private_json(&case_dir.join("case.json"))?;
     if case.schema != CASE_SCHEMA || case.required_tests != REQUIRED_TESTS {
         return Err("unsupported M7 case schema or required tests".into());
@@ -505,10 +536,10 @@ pub fn judge_foundry_case(
             .arg("--json-file")
             .arg(&json_path)
             .arg("-vvvv")
-            .current_dir(case_dir)
+            .current_dir(&case_dir)
             .env_clear()
             .env("PATH", "/usr/bin:/bin")
-            .env("HOME", case_dir)
+            .env("HOME", &case_dir)
             .env("FOUNDRY_FFI", "false")
             .env("FOUNDRY_OFFLINE", "true");
         let exit_success = run_bounded(command, Duration::from_secs(180), &trace_path)?;
@@ -533,20 +564,25 @@ pub fn judge_foundry_case(
             trace_path: trace_path.display().to_string(),
         });
     }
+    let fuzz_passed = runs.iter().all(|run| {
+        run.test_statuses
+            .get("testFuzzBoundaries(uint256)")
+            .is_some_and(|status| status == "Success")
+            && run
+                .fuzz_runs_observed
+                .is_some_and(|observed| observed >= fuzz_runs as u64)
+    });
     let tests_passed = runs.iter().all(|run| {
         run.exit_success
             && run.test_statuses.len() >= REQUIRED_TESTS.len()
             && run.test_statuses.values().all(|status| status == "Success")
-            && run
-                .fuzz_runs_observed
-                .is_some_and(|observed| observed >= fuzz_runs as u64)
             && REQUIRED_TESTS.iter().all(|name| {
                 run.test_statuses
                     .get(*name)
                     .is_some_and(|status| status == "Success")
             })
     });
-    let coverage = if tests_passed {
+    let coverage = if fuzz_passed {
         let report_path = result_dir.join("coverage.info");
         let log_path = result_dir.join("coverage.trace.txt");
         let mut command = Command::new(forge_bin);
@@ -559,6 +595,8 @@ pub fn judge_foundry_case(
             .arg("--exclude-tests")
             .arg("--match-path")
             .arg(TEST_FILE)
+            .arg("--match-test")
+            .arg("^testFuzzBoundaries\\(uint256\\)$")
             .arg("--fuzz-seed")
             .arg(seed)
             .arg("--fuzz-runs")
@@ -566,10 +604,10 @@ pub fn judge_foundry_case(
             .arg("--offline")
             .arg("--use")
             .arg(solc_bin)
-            .current_dir(case_dir)
+            .current_dir(&case_dir)
             .env_clear()
             .env("PATH", "/usr/bin:/bin")
-            .env("HOME", case_dir)
+            .env("HOME", &case_dir)
             .env("FOUNDRY_FFI", "false")
             .env("FOUNDRY_OFFLINE", "true");
         let exit_success = run_bounded(command, Duration::from_secs(180), &log_path)?;
@@ -580,6 +618,7 @@ pub fn judge_foundry_case(
         None
     };
     let reproduced = tests_passed
+        && fuzz_passed
         && coverage
             .as_ref()
             .is_some_and(|metrics| metrics.exit_success && metrics.lines_hit > 0);
@@ -597,4 +636,126 @@ pub fn judge_foundry_case(
     };
     write_private(&result_dir.join("result.json"), &json_bytes(&report)?)?;
     Ok(report)
+}
+
+/// Record a narrowly scoped, human-reviewed negative reproduction. A failing
+/// test by itself is never evidence that a hypothesis is false.
+pub fn reject_foundry_case(case_dir: &Path) -> Result<FoundryRejection, String> {
+    let case_dir = fs::canonicalize(case_dir)
+        .map_err(|error| format!("cannot resolve M7 case directory: {error}"))?;
+    ensure_private_cache(&case_dir)?;
+    let case: FoundryCase = read_private_json(&case_dir.join("case.json"))?;
+    if case.schema != CASE_SCHEMA || case.required_tests != REQUIRED_TESTS {
+        return Err("unsupported M7 case schema or required tests".into());
+    }
+    let source = fs::read(case_dir.join("src/Target.sol"))
+        .map_err(|error| format!("cannot read target snapshot: {error}"))?;
+    if digest(&source) != case.source_sha256 {
+        return Err("target snapshot changed since M5".into());
+    }
+    let harness = fs::read(case_dir.join(TEST_FILE))
+        .map_err(|error| format!("cannot read Foundry harness: {error}"))?;
+    let result_path = case_dir.join("runs/result.json");
+    let result_bytes =
+        fs::read(&result_path).map_err(|error| format!("cannot read M7 result: {error}"))?;
+    let result: FoundryResult = serde_json::from_slice(&result_bytes)
+        .map_err(|error| format!("invalid M7 result: {error}"))?;
+    if result.schema != RESULT_SCHEMA
+        || result.state != "INCONCLUSIVE"
+        || result.candidate_key != case.candidate_key
+        || result.source_sha256 != case.source_sha256
+        || result.harness_sha256 != digest(&harness)
+        || result.runs.len() != 2
+        || result.fuzz_runs < 256
+    {
+        return Err("M7 result does not match this case or a negative reproduction".into());
+    }
+    for (index, run) in result.runs.iter().enumerate() {
+        let number = (index + 1) as u8;
+        let json_path = case_dir.join(format!("runs/run-{number}.json"));
+        let trace_path = case_dir.join(format!("runs/run-{number}.trace.txt"));
+        if run.run != number
+            || Path::new(&run.json_path) != json_path
+            || Path::new(&run.trace_path) != trace_path
+            || run.exit_success
+            || !trace_path.is_file()
+        {
+            return Err(format!("M7 run {number} has inconsistent provenance"));
+        }
+        let raw: Value = read_private_json(&json_path)?;
+        let tests = test_results(&raw);
+        let actual = statuses(&tests);
+        let (fuzz, calls, reverts) = observed_metrics(&tests);
+        if actual != run.test_statuses
+            || fuzz != run.fuzz_runs_observed
+            || calls != run.invariant_calls
+            || reverts != run.invariant_reverts
+            || fuzz.is_none_or(|count| count < result.fuzz_runs as u64)
+            || actual.get("testReproduce()") != Some(&"Failure".to_owned())
+            || actual.get("testFuzzBoundaries(uint256)") != Some(&"Success".to_owned())
+            || actual
+                .iter()
+                .any(|(name, status)| name != "testReproduce()" && status != "Success")
+        {
+            return Err(format!(
+                "M7 run {number} is not a clean negative reproduction"
+            ));
+        }
+    }
+    let coverage = result
+        .coverage
+        .as_ref()
+        .ok_or("negative case lacks coverage")?;
+    let report_path = case_dir.join("runs/coverage.info");
+    let log_path = case_dir.join("runs/coverage.trace.txt");
+    if !coverage.exit_success
+        || coverage.lines_hit == 0
+        || Path::new(&coverage.report_path) != report_path
+        || Path::new(&coverage.log_path) != log_path
+        || !log_path.is_file()
+    {
+        return Err("negative case has no valid target coverage".into());
+    }
+    let lcov = fs::read_to_string(&report_path)
+        .map_err(|error| format!("cannot read M7 coverage: {error}"))?;
+    let observed = target_coverage(&lcov, &report_path, &log_path, true)
+        .ok_or("coverage does not include target")?;
+    if observed.lines_found != coverage.lines_found
+        || observed.lines_hit != coverage.lines_hit
+        || observed.branches_found != coverage.branches_found
+        || observed.branches_hit != coverage.branches_hit
+    {
+        return Err("M7 coverage metrics differ from the LCOV artifact".into());
+    }
+    let review_path = case_dir.join("rejection-review.json");
+    let review_bytes =
+        fs::read(&review_path).map_err(|error| format!("cannot read rejection review: {error}"))?;
+    let review: RejectionReview = serde_json::from_slice(&review_bytes)
+        .map_err(|error| format!("invalid rejection review: {error}"))?;
+    if !review.reviewed
+        || review.reviewer.trim().is_empty()
+        || review.scope_reference.trim().is_empty()
+        || review.reason.trim().len() < 30
+        || !review.assumptions_checked
+        || !review.valid_inputs_checked
+        || !review.failed_assertion_reviewed
+        || !review.target_calls_reviewed
+    {
+        return Err("negative result requires a complete human review of scope, inputs, assumptions and assertion".into());
+    }
+    let rejection = FoundryRejection {
+        schema: "m7-foundry-rejection-v1".into(),
+        candidate_key: case.candidate_key,
+        status: "REJECTED".into(),
+        source_sha256: case.source_sha256,
+        harness_sha256: digest(&harness),
+        result_sha256: digest(&result_bytes),
+        review_sha256: digest(&review_bytes),
+        reason: review.reason,
+    };
+    write_private(
+        &case_dir.join("runs/rejection.json"),
+        &json_bytes(&rejection)?,
+    )?;
+    Ok(rejection)
 }
