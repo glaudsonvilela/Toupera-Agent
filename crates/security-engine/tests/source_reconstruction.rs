@@ -1,5 +1,6 @@
 use security_engine::{
-    Confidence, EconomicOperation, Evidence, EvidenceLocation, reconstruct_from_ast_json,
+    Confidence, ControlEdge, ControlEdgeKind, EconomicOperation, Evidence, EvidenceLocation,
+    reconstruct_from_ast_json,
 };
 
 const VAULT_SOURCE: &str = include_str!("../../../tests/fixtures/VaultWithOracle.sol");
@@ -15,6 +16,15 @@ fn source_text<'a, T>(evidence: &Evidence<T>, source: &'a str, file: &str) -> &'
     };
     assert_eq!(span.file(), file);
     span.slice(source).expect("evidence must resolve to source")
+}
+
+fn edge_text<'a>(edge: &ControlEdge, source: &'a str, file: &str) -> &'a str {
+    let EvidenceLocation::Source(span) = &edge.location else {
+        panic!("source control edge must have source provenance");
+    };
+    assert_eq!(span.file(), file);
+    span.slice(source)
+        .expect("edge span must resolve to source")
 }
 
 #[test]
@@ -177,4 +187,100 @@ fn rejects_compiler_errors_and_mismatched_source_ids() {
     let error = reconstruct_from_ast_json(&output.to_string(), "VaultWithOracle.sol", VAULT_SOURCE)
         .unwrap_err();
     assert!(error.contains("source id does not match"));
+}
+
+#[test]
+fn control_graph_separates_returning_if_branches() {
+    let records = reconstruct_from_ast_json(FLOW_AST, "VaultFlowFixture.sol", FLOW_SOURCE)
+        .expect("flow fixture AST must be accepted");
+    let conversion = records
+        .iter()
+        .find(|item| item.function.0 == "convertToShares(uint256)")
+        .unwrap();
+    let edges = &conversion.control_edges;
+    assert!(
+        edges
+            .iter()
+            .all(|edge| !edge_text(edge, FLOW_SOURCE, "VaultFlowFixture.sol").is_empty())
+    );
+
+    let true_edge = edges
+        .iter()
+        .find(|edge| {
+            edge.kind == ControlEdgeKind::True
+                && edge_text(edge, FLOW_SOURCE, "VaultFlowFixture.sol") == "totalSupply == 0"
+        })
+        .unwrap();
+    let false_edge = edges
+        .iter()
+        .find(|edge| edge.kind == ControlEdgeKind::False && edge.from == true_edge.from)
+        .unwrap();
+    assert_eq!(
+        edge_text(false_edge, FLOW_SOURCE, "VaultFlowFixture.sol"),
+        "totalSupply == 0"
+    );
+    assert_ne!(true_edge.to, false_edge.to);
+    assert!(edges.iter().any(|edge| edge.from == true_edge.to
+        && edge.to.0 == "exit"
+        && edge.kind == ControlEdgeKind::Exit));
+    assert!(edges.iter().any(|edge| edge.from == false_edge.to
+        && edge.to.0 == "exit"
+        && edge.kind == ControlEdgeKind::Exit));
+    assert!(
+        !edges
+            .iter()
+            .any(|edge| edge.from == true_edge.to && edge.to == false_edge.to)
+    );
+}
+
+#[test]
+fn control_graph_models_require_failure_and_ternary_paths() {
+    let records = reconstruct_from_ast_json(VAULT_AST, "VaultWithOracle.sol", VAULT_SOURCE)
+        .expect("vault fixture AST must be accepted");
+    let deposit = records
+        .iter()
+        .find(|item| item.function.0 == "deposit(uint256)")
+        .unwrap();
+    let edges = &deposit.control_edges;
+    assert!(
+        edges
+            .iter()
+            .all(|edge| !edge_text(edge, VAULT_SOURCE, "VaultWithOracle.sol").is_empty())
+    );
+
+    let guard = edges
+        .iter()
+        .find(|edge| {
+            edge.kind == ControlEdgeKind::False
+                && edge.to.0 == "exit"
+                && edge_text(edge, VAULT_SOURCE, "VaultWithOracle.sol") == "price > 0"
+        })
+        .unwrap();
+    assert!(edges.iter().any(|edge| edge.from == guard.from
+        && edge.kind == ControlEdgeKind::True
+        && edge_text(edge, VAULT_SOURCE, "VaultWithOracle.sol") == "price > 0"));
+
+    let choice = edges
+        .iter()
+        .find(|edge| {
+            edge.kind == ControlEdgeKind::True
+                && edge_text(edge, VAULT_SOURCE, "VaultWithOracle.sol") == "totalSupply == 0"
+        })
+        .unwrap();
+    let alternative = edges
+        .iter()
+        .find(|edge| edge.from == choice.from && edge.kind == ControlEdgeKind::False)
+        .unwrap();
+    assert_ne!(choice.to, alternative.to);
+    assert_eq!(
+        edge_text(alternative, VAULT_SOURCE, "VaultWithOracle.sol"),
+        "totalSupply == 0"
+    );
+    let merge = edges
+        .iter()
+        .find(|edge| edge.from == choice.to && edge.kind == ControlEdgeKind::Next)
+        .unwrap();
+    assert!(edges.iter().any(|edge| edge.from == alternative.to
+        && edge.to == merge.to
+        && edge.kind == ControlEdgeKind::Next));
 }

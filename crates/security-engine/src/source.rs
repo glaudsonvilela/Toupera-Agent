@@ -8,6 +8,7 @@ use std::process::{Command, Stdio};
 
 use serde_json::{Map, Value, json};
 
+use crate::cfg::build_source_flow;
 use crate::{
     ArithmeticExpression, CallTarget, Confidence, ContractId, EconomicFunction, EconomicOperation,
     Evidence, EvidenceLocation, FunctionId, SourceSpan, StorageId, Uncertainty, UncertaintyKind,
@@ -212,6 +213,9 @@ pub fn reconstruct_from_ast_json(
                 ir: &mut ir,
             };
             walker.visit(body, Access::Read, false);
+            let (edges, uncertainties) = build_source_flow(body, source_name, source, source_id);
+            ir.control_edges = edges;
+            ir.unresolved.extend(uncertainties);
             functions.push(ir);
         }
     }
@@ -267,7 +271,12 @@ fn node_type(node: &Value) -> Option<&str> {
     node.get("nodeType").and_then(Value::as_str)
 }
 
-fn parse_span(src: &str, file: &str, source: &str, source_id: i64) -> Option<SourceSpan> {
+pub(crate) fn parse_span(
+    src: &str,
+    file: &str,
+    source: &str,
+    source_id: i64,
+) -> Option<SourceSpan> {
     let mut parts = src.split(':');
     let start = parts.next()?.parse::<usize>().ok()?;
     let length = parts.next()?.parse::<usize>().ok()?;

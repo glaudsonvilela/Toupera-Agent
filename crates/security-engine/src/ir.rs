@@ -3,9 +3,27 @@
 use crate::{ContractId, EconomicOperation, FunctionId};
 use serde::Serialize;
 
-/// Identity reserved for future control-flow reconstruction.
+/// Identity of a source-level control block or a future EVM basic block.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 pub struct BasicBlockId(pub String);
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize)]
+pub enum ControlEdgeKind {
+    Next,
+    True,
+    False,
+    LoopBack,
+    Exit,
+}
+
+/// A directed edge in a function's source-level control graph.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ControlEdge {
+    pub from: BasicBlockId,
+    pub to: BasicBlockId,
+    pub kind: ControlEdgeKind,
+    pub location: EvidenceLocation,
+}
 
 /// Byte offsets into a source file, with an exclusive end.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
@@ -111,6 +129,7 @@ pub struct EconomicFunction {
     pub oracle_dependencies: Vec<Evidence<CallTarget>>,
     pub arithmetic: Vec<Evidence<ArithmeticExpression>>,
     pub control_conditions: Vec<Evidence<String>>,
+    pub control_edges: Vec<ControlEdge>,
     pub delegatecall_targets: Vec<Evidence<CallTarget>>,
     pub modifiers: Vec<Evidence<String>>,
     pub related_functions: Vec<Evidence<FunctionId>>,
@@ -133,6 +152,7 @@ impl EconomicFunction {
             oracle_dependencies: Vec::new(),
             arithmetic: Vec::new(),
             control_conditions: Vec::new(),
+            control_edges: Vec::new(),
             delegatecall_targets: Vec::new(),
             modifiers: Vec::new(),
             related_functions: Vec::new(),

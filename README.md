@@ -34,7 +34,7 @@ See the [build and audit checklist](docs/ROADMAP-CHECKLIST.md) for the path from
 
 ## Status
 
-M2 — Source reconstruction in progress. The Rust `security-engine` crate now compiles one Solidity file locally with solc and extracts economic IR from its AST. It captures direct storage access, calls, arithmetic, branch conditions, and tentative oracle/proxy relationships. See [Source Reconstruction](docs/SOURCE-RECONSTRUCTION.md), [Economic IR](docs/ECONOMIC-IR.md), and [agente.md](agente.md) for coverage and limits.
+M2 — Source reconstruction in progress. The Rust `security-engine` crate now compiles one Solidity file locally with solc and extracts economic IR from its AST. It captures direct storage access, calls, arithmetic, a partial source control graph, and tentative oracle/proxy relationships. See [Source Reconstruction](docs/SOURCE-RECONSTRUCTION.md), [Economic IR](docs/ECONOMIC-IR.md), and [agente.md](agente.md) for coverage and limits.
 
 ## Development
 
