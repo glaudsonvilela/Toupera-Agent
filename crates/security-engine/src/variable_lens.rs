@@ -35,6 +35,7 @@ pub struct VariableRecord {
     pub name: String,
     pub declaring_contract: String,
     pub scope: String,
+    pub declaration_role: String,
     pub category: String,
     pub type_name: String,
     pub mutability: String,
@@ -80,6 +81,7 @@ pub struct VariableLensReport {
     pub local_coverage_sha256: String,
     pub variable_count: usize,
     pub category_counts: BTreeMap<String, usize>,
+    pub declaration_role_counts: BTreeMap<String, usize>,
     pub dependency_edge_count: usize,
     pub variables_without_observed_use: usize,
     pub variables_with_read_without_writer: usize,
@@ -261,7 +263,7 @@ pub fn build_variable_lens(
         contract: String::new(),
         function: String::new(),
     };
-    walker.collect_declarations(ast, &root);
+    walker.collect_declarations(ast, &root, "");
     walker.attach_layout(&solc);
     walker.walk(ast, &root, "read");
     let mut report = walker.finish(
@@ -333,7 +335,7 @@ impl Walker<'_> {
         result
     }
 
-    fn collect_declarations(&mut self, node: &Value, parent: &Context) {
+    fn collect_declarations(&mut self, node: &Value, parent: &Context, parent_type: &str) {
         let current = Self::context(node, parent);
         if node["nodeType"] == "VariableDeclaration" {
             if let Some(id) = node["id"].as_i64() {
@@ -364,6 +366,14 @@ impl Walker<'_> {
                         name: node["name"].as_str().unwrap_or("").into(),
                         declaring_contract: current.contract.clone(),
                         scope: current.function.clone(),
+                        declaration_role: if parent_type == "ParameterList" {
+                            "parameter"
+                        } else if parent_type == "StructDefinition" {
+                            "struct_member"
+                        } else {
+                            "variable"
+                        }
+                        .into(),
                         category: category.into(),
                         type_name: node["typeDescriptions"]["typeString"]
                             .as_str()
@@ -382,8 +392,9 @@ impl Walker<'_> {
                 );
             }
         }
+        let kind = node["nodeType"].as_str().unwrap_or("");
         for child in Self::children(node) {
-            self.collect_declarations(child, &current);
+            self.collect_declarations(child, &current, kind);
         }
     }
 
@@ -642,6 +653,7 @@ impl Walker<'_> {
                 .insert(edge.from_ast_id);
         }
         let mut category_counts = BTreeMap::new();
+        let mut declaration_role_counts = BTreeMap::new();
         let mut without_use = 0;
         let mut read_without_writer = 0;
         for (id, record) in &mut self.declarations {
@@ -657,6 +669,9 @@ impl Walker<'_> {
             record.upstream_variable_ids = closure(*id, &backward);
             record.downstream_variable_ids = closure(*id, &forward);
             *category_counts.entry(record.category.clone()).or_insert(0) += 1;
+            *declaration_role_counts
+                .entry(record.declaration_role.clone())
+                .or_insert(0) += 1;
             if record.uses.is_empty() {
                 without_use += 1;
             }
@@ -667,8 +682,11 @@ impl Walker<'_> {
             }
             let mut score = 0u8;
             if record.category == "persistent_state" {
-                score += 10;
+                score += 35;
                 record.priority_reasons.push("persistent_state".into());
+            } else if record.category == "immutable" {
+                score += 25;
+                record.priority_reasons.push("immutable_state".into());
             }
             if has_write {
                 score += 15;
@@ -708,6 +726,7 @@ impl Walker<'_> {
             local_coverage_sha256: coverage_sha,
             variable_count: self.declarations.len(),
             category_counts,
+            declaration_role_counts,
             dependency_edge_count: self.edges.len(),
             variables_without_observed_use: without_use,
             variables_with_read_without_writer: read_without_writer,
@@ -887,7 +906,8 @@ fn pc_hints(
         }
         let range = map_by_pc.get(&pc).copied().flatten();
         let mut ids = BTreeSet::new();
-        if let Some(range) = range {
+        let too_broad = range.is_some_and(|item| item.end.saturating_sub(item.start) > 256);
+        if let Some(range) = range.filter(|_| !too_broad) {
             for (id, reference) in &references {
                 if reference.file_id == range.file_id
                     && reference.start >= range.start
@@ -918,6 +938,8 @@ fn pc_hints(
             verified_variable_names: names.into_iter().collect(),
             confidence: if range.is_none() {
                 "unmapped"
+            } else if too_broad {
+                "broad_source_range"
             } else {
                 "tentative_source_range"
             }
