@@ -45,6 +45,7 @@ pub struct ScenarioCase {
     pub step: usize,
     pub operation: String,
     pub amount: String,
+    pub expectation: String,
     pub preview: Option<String>,
     pub status: String,
     pub transaction_hash: Option<String>,
@@ -428,12 +429,14 @@ fn run_case(
     amount: U256,
     sequence: String,
     step: usize,
+    expectation: &str,
 ) -> ScenarioCase {
     let mut case = ScenarioCase {
         sequence,
         step,
         operation: operation.name().into(),
         amount: amount.to_string(),
+        expectation: expectation.into(),
         preview: None,
         status: "not_started".into(),
         transaction_hash: None,
@@ -499,6 +502,10 @@ fn run_case(
         _ => "receipt_status_missing",
     }
     .into();
+    if expectation == "above_reported_limit" && case.status == "completed" {
+        case.discrepancies
+            .push("operation completed above the reported limit; review limit semantics".into());
+    }
     match trace_steps(rpc, &hash) {
         Ok((steps, jumps, outcomes)) => {
             case.trace_steps = Some(steps);
@@ -514,7 +521,8 @@ fn run_case(
         Ok(after) => {
             if case.status == "completed" {
                 if let Some(preview) = preview {
-                    case.discrepancies = compare_state(operation, amount, preview, &before, &after);
+                    case.discrepancies
+                        .extend(compare_state(operation, amount, preview, &before, &after));
                 } else {
                     case.limitations
                         .push("completed operation has no preview for exact comparison".into());
@@ -693,12 +701,14 @@ pub fn run_local_scenarios(
     let mut all_jumps = BTreeSet::new();
     let mut all_outcomes = BTreeSet::new();
     let asset_amounts = [
+        U256::ZERO,
         U256::from(1),
         U256::from(7),
         asset_unit,
         asset_unit * U256::from(100),
     ];
     let share_amounts = [
+        U256::ZERO,
         U256::from(1),
         U256::from(7),
         U256::from(1_000_000),
@@ -725,6 +735,7 @@ pub fn run_local_scenarios(
                 amount,
                 format!("isolated:{}:{amount}", operation.name()),
                 1,
+                "state_comparison",
             );
             all_jumps.extend(case.observed_jump_sites.iter().cloned());
             all_outcomes.extend(case.observed_branch_outcomes.iter().cloned());
@@ -741,6 +752,67 @@ pub fn run_local_scenarios(
             }
         }
     }
+    let mut scenario_limitations = Vec::new();
+    let mut limit_cases = Vec::new();
+    match view_u256(
+        &local,
+        &identity.vault,
+        &calldata("maxWithdraw(address)", None, &[&identity.actor]),
+    ) {
+        Ok(limit) => match limit.checked_add(U256::from(1)) {
+            Some(above) => limit_cases.push((Operation::Withdraw, above)),
+            None => scenario_limitations
+                .push("maxWithdraw is uint256 max; no higher input exists".into()),
+        },
+        Err(error) => scenario_limitations.push(format!(
+            "maxWithdraw unavailable for boundary sample: {error}"
+        )),
+    }
+    match view_u256(
+        &local,
+        &identity.vault,
+        &calldata("maxRedeem(address)", None, &[&identity.actor]),
+    ) {
+        Ok(shares) => match shares.checked_add(U256::from(1)) {
+            Some(above) => limit_cases.push((Operation::Redeem, above)),
+            None => {
+                scenario_limitations.push("maxRedeem is uint256 max; no higher input exists".into())
+            }
+        },
+        Err(error) => scenario_limitations.push(format!(
+            "maxRedeem unavailable for boundary sample: {error}"
+        )),
+    }
+    for (operation, amount) in limit_cases {
+        let snapshot = local.call("evm_snapshot", json!([]))?;
+        let snapshot = snapshot
+            .as_str()
+            .ok_or("local snapshot ID missing")?
+            .to_owned();
+        let case = run_case(
+            &local,
+            &identity.vault,
+            &identity.asset,
+            &identity.actor,
+            operation,
+            amount,
+            format!("above_limit:{}:{amount}", operation.name()),
+            1,
+            "above_reported_limit",
+        );
+        all_jumps.extend(case.observed_jump_sites.iter().cloned());
+        all_outcomes.extend(case.observed_branch_outcomes.iter().cloned());
+        if case.trace_steps.is_none() {
+            trace_limitations.push(format!(
+                "{} boundary {amount}: local trace missing",
+                operation.name()
+            ));
+        }
+        cases.push(case);
+        if local.call("evm_revert", json!([snapshot]))? != Value::Bool(true) {
+            return Err("local fork boundary snapshot could not be restored".into());
+        }
+    }
     let round_trip_before = read_state(&local, &identity.vault, &identity.asset, &identity.actor)?;
     let deposit = run_case(
         &local,
@@ -751,6 +823,7 @@ pub fn run_local_scenarios(
         asset_unit,
         "deposit_then_redeem".into(),
         1,
+        "state_comparison",
     );
     all_jumps.extend(deposit.observed_jump_sites.iter().cloned());
     all_outcomes.extend(deposit.observed_branch_outcomes.iter().cloned());
@@ -777,6 +850,7 @@ pub fn run_local_scenarios(
             minted,
             "deposit_then_redeem".into(),
             2,
+            "state_comparison",
         );
         all_jumps.extend(redeem.observed_jump_sites.iter().cloned());
         all_outcomes.extend(redeem.observed_branch_outcomes.iter().cloned());
@@ -848,9 +922,14 @@ pub fn run_local_scenarios(
         })
         .count();
     Ok(LocalScenarioReport {
-        schema: SCHEMA.into(), identity,
-        execution_scope: "child Anvil fork on 127.0.0.1; no transaction broadcast to source network".into(),
-        cases, completed_transactions, reverted_transactions, rpc_failures,
+        schema: SCHEMA.into(),
+        identity,
+        execution_scope:
+            "child Anvil fork on 127.0.0.1; no transaction broadcast to source network".into(),
+        cases,
+        completed_transactions,
+        reverted_transactions,
+        rpc_failures,
         unique_trace_jump_sites: all_jumps.len(),
         unique_branch_outcomes: all_outcomes.len(),
         jump_sites_with_both_outcomes,
@@ -859,7 +938,11 @@ pub fn run_local_scenarios(
         vault_branch_outcomes_observed: vault_outcomes.len(),
         vault_jump_sites_with_both_outcomes,
         trace_limitations,
-        round_trip_asset_delta, round_trip_discrepancies,
-        limitations: vec!["Aggregate (depth,pc) positions include vault and asset calls. Vault-only counts use depth 1 and exact runtime JUMPI PCs; the static denominator includes paths that may be unreachable, so this is not source-level or reachable-path coverage".into(),"Scenario actor is the vault owner from the base report; results depend on that account's snapshot balances and approvals".into()],
+        round_trip_asset_delta,
+        round_trip_discrepancies,
+        limitations: {
+            scenario_limitations.extend(["Aggregate (depth,pc) positions include vault and asset calls. Vault-only counts use depth 1 and exact runtime JUMPI PCs; the static denominator includes paths that may be unreachable, so this is not source-level or reachable-path coverage".into(),"Scenario actor is the vault owner from the base report; results depend on that account's snapshot balances and approvals".into()]);
+            scenario_limitations
+        },
     })
 }
