@@ -60,6 +60,18 @@ pub struct VariableEdge {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct PcSourceHint {
+    pub pc: usize,
+    pub observed_outcomes: Vec<String>,
+    pub verified_source_file: Option<String>,
+    pub source_start_byte: Option<usize>,
+    pub source_end_byte: Option<usize>,
+    pub verified_variable_ast_ids: Vec<i64>,
+    pub verified_variable_names: Vec<String>,
+    pub confidence: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct VariableLensReport {
     pub schema: String,
     pub identity: Value,
@@ -73,6 +85,8 @@ pub struct VariableLensReport {
     pub variables_with_read_without_writer: usize,
     pub observed_root_jump_sites: usize,
     pub observed_root_branch_outcomes: usize,
+    pub pc_hints_with_variables: usize,
+    pub pc_source_hints: Vec<PcSourceHint>,
     pub variables: Vec<VariableRecord>,
     pub edges: Vec<VariableEdge>,
     pub limitations: Vec<String>,
@@ -181,6 +195,24 @@ pub fn build_variable_lens(
         &coverage,
         &source_bytes,
     )?;
+    let (comparison_bytes, comparison) = read_json(&manifest.comparison_solc_json_path)?;
+    let runtime_text = fs::read_to_string(&manifest.runtime_path)
+        .map_err(|error| format!("cannot read runtime: {error}"))?;
+    let runtime_hex: String = runtime_text
+        .chars()
+        .filter(|c| !c.is_ascii_whitespace())
+        .collect();
+    let runtime_hex = runtime_hex.strip_prefix("0x").unwrap_or(&runtime_hex);
+    let runtime_bytes =
+        hex::decode(runtime_hex).map_err(|error| format!("invalid runtime hex: {error}"))?;
+    if forensic["identity"]["comparison_json_sha256"] != digest(&comparison_bytes)
+        || forensic["identity"]["runtime_sha256"] != digest(&runtime_bytes)
+        || (forensic["identity"]["exact_compiler_runtime"] != true
+            && forensic["identity"]["immutable_masked_compiler_runtime"] != true)
+    {
+        return Err("compiler output or runtime differs from the fixed report".into());
+    }
+    let pc_source_hints = pc_hints(&manifest, &comparison, &coverage, &runtime_bytes)?;
     let source = std::str::from_utf8(&source_bytes)
         .map_err(|error| format!("source is not UTF-8: {error}"))?;
     let source_name = manifest
@@ -232,13 +264,19 @@ pub fn build_variable_lens(
     walker.collect_declarations(ast, &root);
     walker.attach_layout(&solc);
     walker.walk(ast, &root, "read");
-    walker.finish(
+    let mut report = walker.finish(
         forensic["identity"].clone(),
         digest(&source_bytes),
         digest(&forensic_bytes),
         digest(&coverage_bytes),
         &coverage,
-    )
+    )?;
+    report.pc_hints_with_variables = pc_source_hints
+        .iter()
+        .filter(|hint| !hint.verified_variable_ast_ids.is_empty())
+        .count();
+    report.pc_source_hints = pc_source_hints;
+    Ok(report)
 }
 
 impl Walker<'_> {
@@ -675,12 +713,15 @@ impl Walker<'_> {
             variables_with_read_without_writer: read_without_writer,
             observed_root_jump_sites,
             observed_root_branch_outcomes,
+            pc_hints_with_variables: 0,
+            pc_source_hints: Vec::new(),
             variables: self.declarations.into_values().collect(),
             edges: self.edges,
             limitations: vec![
                 "Dependencies are syntactic AST paths; reachability and cross-call value propagation are not established".into(),
                 "The flattened analysis source is not the verified multifile deployment bundle; layout and variable names are source-backed but PC/slot correspondence to the deployed runtime is not asserted".into(),
-                "Runtime branch counts are context only; no individual PC is assigned to a Solidity variable or function".into(),
+                "Observed branch PCs have tentative verified-source range hints; a source range can include variables unrelated to the branch predicate".into(),
+                "Verified-source AST IDs and flattened-analysis AST IDs belong to separate compilations and are never merged by name alone".into(),
                 "Mapping keys and array indices are parameterized families, not an enumeration of every possible element".into(),
                 "Assembly, proxies, delegatecall, external effects and path feasibility require separate analysis".into(),
                 "Priority is an explainable review ordering, not a probability of a problem".into(),
@@ -702,4 +743,186 @@ fn closure(start: i64, edges: &BTreeMap<i64, BTreeSet<i64>>) -> Vec<i64> {
         }
     }
     found.into_iter().collect()
+}
+
+#[derive(Clone, Copy)]
+struct SourceRange {
+    start: usize,
+    end: usize,
+    file_id: i64,
+}
+
+fn raw_range(node: &Value) -> Option<SourceRange> {
+    let mut parts = node["src"].as_str()?.split(':');
+    let start = parts.next()?.parse::<usize>().ok()?;
+    let len = parts.next()?.parse::<usize>().ok()?;
+    let file_id = parts.next()?.parse::<i64>().ok()?;
+    Some(SourceRange {
+        start,
+        end: start.checked_add(len)?,
+        file_id,
+    })
+}
+
+fn verified_references(
+    node: &Value,
+    declarations: &mut BTreeMap<i64, String>,
+    references: &mut Vec<(i64, SourceRange)>,
+) {
+    match node["nodeType"].as_str() {
+        Some("VariableDeclaration") => {
+            if let (Some(id), Some(name)) = (node["id"].as_i64(), node["name"].as_str()) {
+                declarations.insert(id, name.into());
+            }
+        }
+        Some("Identifier" | "MemberAccess") => {
+            if let (Some(id), Some(range)) =
+                (node["referencedDeclaration"].as_i64(), raw_range(node))
+            {
+                references.push((id, range));
+            }
+        }
+        _ => {}
+    }
+    for child in Walker::children(node) {
+        verified_references(child, declarations, references);
+    }
+}
+
+fn decoded_source_map(text: &str) -> Result<Vec<Option<SourceRange>>, String> {
+    let mut start = 0i64;
+    let mut len = 0i64;
+    let mut file_id = -1i64;
+    let mut result = Vec::new();
+    for item in text.split(';') {
+        let fields: Vec<_> = item.split(':').collect();
+        for (index, target) in [&mut start, &mut len, &mut file_id].into_iter().enumerate() {
+            if let Some(value) = fields.get(index) {
+                if !value.is_empty() {
+                    *target = value
+                        .parse::<i64>()
+                        .map_err(|_| "invalid solc source map")?;
+                }
+            }
+        }
+        result.push(if start >= 0 && len > 0 && file_id >= 0 {
+            Some(SourceRange {
+                start: start as usize,
+                end: start.checked_add(len).ok_or("source map range overflow")? as usize,
+                file_id,
+            })
+        } else {
+            None
+        });
+    }
+    Ok(result)
+}
+
+fn instruction_pcs(bytes: &[u8]) -> Vec<usize> {
+    let mut pcs = Vec::new();
+    let mut pc = 0;
+    while pc < bytes.len() {
+        pcs.push(pc);
+        let opcode = bytes[pc];
+        pc += 1 + if (0x60..=0x7f).contains(&opcode) {
+            usize::from(opcode - 0x5f)
+        } else {
+            0
+        };
+    }
+    pcs
+}
+
+fn pc_hints(
+    manifest: &ForensicInput,
+    comparison: &Value,
+    coverage: &Value,
+    runtime_bytes: &[u8],
+) -> Result<Vec<PcSourceHint>, String> {
+    let deployed = &comparison["contracts"][&manifest.comparison_source_name]
+        [&manifest.contract_name]["evm"]["deployedBytecode"];
+    let compiled_hex = deployed["object"]
+        .as_str()
+        .ok_or("verified compiler runtime is missing")?;
+    let compiled = hex::decode(compiled_hex)
+        .map_err(|error| format!("verified runtime is not plain hex: {error}"))?;
+    if compiled.len() != runtime_bytes.len() {
+        return Err("compiler and fixed runtime lengths differ".into());
+    }
+    let map_text = deployed["sourceMap"]
+        .as_str()
+        .ok_or("verified compiler source map is missing")?;
+    let ranges = decoded_source_map(map_text)?;
+    let compiled_pcs = instruction_pcs(&compiled);
+    let onchain_pcs = instruction_pcs(runtime_bytes);
+    if ranges.len() > compiled_pcs.len() || compiled_pcs != onchain_pcs {
+        return Err("compiler and fixed runtime instruction positions differ".into());
+    }
+    let mut map_by_pc = BTreeMap::new();
+    for (index, range) in ranges.into_iter().enumerate() {
+        map_by_pc.insert(compiled_pcs[index], range);
+    }
+    let mut files = BTreeMap::new();
+    let mut declarations = BTreeMap::new();
+    let mut references = Vec::new();
+    let source_entries = comparison["sources"]
+        .as_object()
+        .ok_or("verified compiler AST sources are missing")?;
+    for (name, entry) in source_entries {
+        if let Some(id) = entry["id"].as_i64() {
+            files.insert(id, name.clone());
+        }
+        verified_references(&entry["ast"], &mut declarations, &mut references);
+    }
+    let observations = coverage["branch_observations"]
+        .as_array()
+        .ok_or("local coverage branch observations are missing")?;
+    let mut hints = Vec::new();
+    for observation in observations {
+        let pc = observation["pc"]
+            .as_u64()
+            .ok_or("invalid observed branch PC")? as usize;
+        if compiled.get(pc) != Some(&0x57) || runtime_bytes.get(pc) != Some(&0x57) {
+            return Err(format!("observed PC {pc} is not a JUMPI in both runtimes"));
+        }
+        let range = map_by_pc.get(&pc).copied().flatten();
+        let mut ids = BTreeSet::new();
+        if let Some(range) = range {
+            for (id, reference) in &references {
+                if reference.file_id == range.file_id
+                    && reference.start >= range.start
+                    && reference.end <= range.end
+                    && declarations.contains_key(id)
+                {
+                    ids.insert(*id);
+                }
+            }
+        }
+        let names: BTreeSet<String> = ids
+            .iter()
+            .filter_map(|id| declarations.get(id).cloned())
+            .collect();
+        let outcomes = observation["outcomes"]
+            .as_array()
+            .ok_or("branch observation has no outcomes")?
+            .iter()
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect();
+        hints.push(PcSourceHint {
+            pc,
+            observed_outcomes: outcomes,
+            verified_source_file: range.and_then(|item| files.get(&item.file_id).cloned()),
+            source_start_byte: range.map(|item| item.start),
+            source_end_byte: range.map(|item| item.end),
+            verified_variable_ast_ids: ids.into_iter().collect(),
+            verified_variable_names: names.into_iter().collect(),
+            confidence: if range.is_none() {
+                "unmapped"
+            } else {
+                "tentative_source_range"
+            }
+            .into(),
+        });
+    }
+    Ok(hints)
 }
