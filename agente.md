@@ -19,6 +19,11 @@ Registrar progresso em `docs/ROADMAP-CHECKLIST.md` e neste arquivo a cada etapa.
 - Job transitório `toupera-forensic-replay-20261018.service` executado como `toupera` no VPS, com limites de 8 GiB RAM, 200% CPU e 900 s. O script validou chain ID, hash do bloco e SHA-256 do runtime e rodou `cast run --no-bal` nas três transações históricas selecionadas.
 - Resultado: 3/3 rastros com `Transaction successfully executed`, zero timeout/falha; serviço terminou `Result=success`. Deploy, depósito e distribuição de yield constam dos rastros. Evidência só em `/srv/toupera-agent/private-output/real-targets/yield-vault/replay-vps-20261018/`. Nenhuma transação foi transmitida à rede. Não foram medidas sequências inéditas em fork ou cobertura de ramos; esse gate permanece aberto.
 
+## Etapa atual — cenários locais em Rust (2026-10-18 local)
+
+- `--local-scenarios` abre Anvil filho em loopback após conferir chain/bloco/runtime/asset contra relatório base. O motor Rust executa deposit/mint/withdraw/redeem em snapshots isolados e depósito→resgate em sequência, com saldos e previews antes/depois, recibos e pontos `JUMPI` observados. Apenas o Anvil local recebe transações; o RPC de origem serve leitura de estado.
+- O código compilou localmente; execução no VPS e interpretação de resultados ainda pendentes neste registro. `docs/LOCAL-SCENARIOS.md` descreve o formato e os limites. A contagem de `(depth,PC)` mistura vault e asset e não constitui percentual de cobertura. Diferenças observadas precisam ser vinculadas à quarentena antes de alimentar M5.
+
 ## Etapa mais recente — mapa forense e quarentena (2026-10-18)
 
 - Pedido do usuário: o **código Rust** deve refazer o mapa de pontos fracos, isolar variável/caminho questionável em um segundo motor para auditoria mais profunda e devolver o resultado ao primeiro motor para reavaliação completa. Implementado em `crates/security-engine/src/forensic_probe.rs`, CLI `--forensic-probe`, integração M5 `--forensic` e documentação `docs/FORENSIC-QUARANTINE.md`.

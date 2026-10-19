@@ -119,7 +119,8 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 - [x] Reconstruir deltas de supply, assets, cap e permissões por bloco/transação, conferindo snapshots históricos e separando questões de semântica do token.
 - [x] Conferir invariantes de oferta e balanço em blocos com eventos e entradas de borda no bloco fixado; enviar divergências observadas à quarentena.
 - [x] Reproduzir no VPS transações históricas selecionadas sem transmissão à rede, com identidade fixa, timeout e rastros privados; 3/3 replays do YieldVault concluíram.
-- [ ] Gerar sequências de operações em fork local e medir ramos/reverts cobertos, com premissas e limites explícitos.
+- [x] Implementar cenários locais em fork Anvil para deposit/mint/withdraw/redeem e sequência deposit→redeem, com snapshots, valores de borda, reversões e pontos `JUMPI` observados; conferir execução no VPS antes de considerar a etapa validada.
+- [ ] Medir cobertura por função/ramo do vault com denominador confiável e ampliar sequências conforme lacunas observadas.
 - [x] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
 - [x] Publicar métricas de cobertura de blocos, eventos, transações, estados e chamadas de borda, com lacunas de rastro/bytecode explícitas.
 - [ ] Medir cobertura de caminhos e custo de RPC/IA em campanhas representativas.

@@ -34,6 +34,7 @@ See the [build and audit checklist](docs/ROADMAP-CHECKLIST.md) for the path from
 The [tooling strategy](docs/TOOLING-STRATEGY.md) compares static analyzers, fuzzers, and formal tools for this economic scope and explains when they can reduce LLM usage.
 The [VPS setup](docs/VPS-SETUP.md) records the verified development server, installed tools, and current deployment limits.
 The [forensic quarantine cycle](docs/FORENSIC-QUARANTINE.md) maps weak points, audits selected variables in a second pass, and rebuilds priorities before any candidate can reach M5.
+The [local scenarios](docs/LOCAL-SCENARIOS.md) run bounded vault operations on a loopback Anvil fork and record state changes and trace limits.
 
 ## Status
 
