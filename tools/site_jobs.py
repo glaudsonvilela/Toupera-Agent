@@ -28,6 +28,8 @@ SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
 
 def save(path, content):
     path = Path(path)
+    if path.is_symlink():
+        path = path.resolve()
     temp = path.with_name(path.name + ".tmp")
     with open(temp, "w", encoding="utf-8") as file:
         file.write(content)
@@ -242,6 +244,14 @@ def run_tools(job, source, runtime_path, block_number, holder=None, role_actors=
     save(config, config.read_text() + "[fuzz]\nruns = 32\n")
     forge_code = command(forge_args, forge_log, 180, env_extra=env_extra)
     forge_text = forge_log.read_text(encoding="utf-8", errors="replace")
+    for attempt in range(1, 3):
+        transient_rpc = bool(re.search(r"HTTP error (?:429|502|503|504)|(?:429|502|503|504) (?:Bad Gateway|Service Unavailable|Gateway Timeout)", forge_text))
+        if forge_code == 0 or not transient_rpc:
+            break
+        shutil.copyfile(forge_log, logs / ("foundry-attempt-" + str(attempt) + ".log"))
+        time.sleep(2 ** attempt)
+        forge_code = command(forge_args, forge_log, 180, env_extra=env_extra)
+        forge_text = forge_log.read_text(encoding="utf-8", errors="replace")
     passed = re.search(r"(\d+) tests passed, (\d+) failed", forge_text)
     passed_names = sorted(set(re.findall(r"\[PASS\] (\w+)\(", forge_text)))
     available_tests = re.findall(r"\bfunction\s+(test[A-Za-z0-9_]+)\s*\(",
@@ -779,7 +789,8 @@ class Handler(BaseHTTPRequestHandler):
                 save(ROOT / "smart.md", input_md)
                 save(job / "smart.md", input_md)
                 for old in ("result_smart.md", "end_smart_result.md"):
-                    (ROOT / old).unlink(missing_ok=True)
+                    old_path = ROOT / old
+                    (old_path.resolve() if old_path.is_symlink() else old_path).unlink(missing_ok=True)
                 with open(job / "worker.log", "w") as log:
                     process = subprocess.Popen([sys.executable, __file__, "worker", job_id],
                                                stdin=subprocess.DEVNULL, stdout=log, stderr=log,

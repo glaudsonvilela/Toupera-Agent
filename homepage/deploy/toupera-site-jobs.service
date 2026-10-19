@@ -13,6 +13,17 @@ Restart=always
 RestartSec=3
 NoNewPrivileges=true
 UMask=0077
+ProtectSystem=strict
+ReadWritePaths=/srv/toupera-agent/private-output /home/toupera/.cache /home/toupera/.foundry /home/toupera/.mythril /home/toupera/.halmos /home/toupera/.config /home/toupera/.solc-select /home/toupera/.solcx /home/toupera/.local/state /home/toupera/.local/share
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
 WantedBy=multi-user.target

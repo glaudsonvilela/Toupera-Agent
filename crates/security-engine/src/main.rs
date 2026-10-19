@@ -9,7 +9,7 @@ use security_engine::{
     build_variable_lens, compare_with_solc_contract, empty_review_report, filter_evidence,
     finalize_evidence_bundle, gate_review_plan, guard_wcop_job, import_gigahorse_tac,
     import_heimdall_abi, judge_foundry_case, load_or_build_context_package_with_forensic,
-    prepare_evidence_bundle, prepare_foundry_cases, prepare_review_plan, reassess_cached_map,
+    prepare_evidence_bundle_with_guard, prepare_foundry_cases, prepare_review_plan, reassess_cached_map,
     reconcile_trace, reconstruct_bytecode_hex, reconstruct_source_file, reject_foundry_case,
     run_forensic_probe, run_guided_scenarios, run_local_scenarios, run_review,
 };
@@ -386,11 +386,12 @@ fn main() -> ExitCode {
     if source == "--evidence-plan" || source == "--evidence-finalize" {
         let arguments: Vec<_> = args.collect();
         let result = if source == "--evidence-plan" {
-            if arguments.len() != 2 {
-                eprintln!("usage: security-engine --evidence-plan <case-dir> <private-output-dir>");
+            if arguments.len() != 2 && !(arguments.len() == 4 && arguments[2] == "--guard-job") {
+                eprintln!("usage: security-engine --evidence-plan <case-dir> <private-output-dir> [--guard-job <job-dir>]");
                 return ExitCode::FAILURE;
             }
-            prepare_evidence_bundle(Path::new(&arguments[0]), Path::new(&arguments[1])).and_then(
+            let guard = if arguments.len() == 4 { Some(Path::new(&arguments[3])) } else { None };
+            prepare_evidence_bundle_with_guard(Path::new(&arguments[0]), Path::new(&arguments[1]), guard).and_then(
                 |manifest| serde_json::to_value(manifest).map_err(|error| error.to_string()),
             )
         } else {

@@ -322,7 +322,11 @@ Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode 
 ### Entrega do guardião
 
 - Trabalho integrado 3932c3f9ca4e4faf: bloco 26228121, 34 ASTs, identidade válida e vínculo com ressalva para campos imutáveis. Cópias privadas confirmaram rebaixamento de AST alterada e fallback sem fonte.
-- [ ] Integrar decision.json ao pacote M8 de revisão.
-- [ ] Isolar compilação e ferramentas com permissões mais restritas.
+- [x] Integrar decision.json ao pacote M8, com opção --guard-job, hashes e verificação antes da finalização.
+- [x] Isolar o serviço por permissões, arquivos de trabalho separados e opções systemd. Falta isolamento por processo.
 - [ ] Medir a política em mais contratos autorizados.
 - Detalhes e limites: docs/GUARDIAO-EVIDENCIAS-2026-10-19.md.
+
+- [x] Repetir Foundry apenas em erro transitório do RPC, guardando logs das tentativas no VPS.
+
+- Rodada de fechamento `d59cb58cee084b10`: serviço restrito ativo, guardião vinculado e 18/18 cenários Foundry locais. Ver `docs/ISOLAMENTO-E-VINCULO-M8-2026-10-19.md`.

@@ -319,4 +319,22 @@ A última execução automática wCOP é `private-output/site-jobs/ba5146dd978d4
 - CLI Rust --wcop-guard valida manifesto, arquivos/AST, cópias de fonte, binários, slot EIP-1967, proxy, implementação e comparação recompilada. Saída por afirmação em decision.json; fonte divergente cai para bytecode_parcial.
 - tools/site_jobs.py reconfirma o bloco, cria manifesto e põe a decisão no início de end_smart_result.md; em falha, suspende relações de fonte. O modo bytecode-only foi conferido em cópia privada.
 - Trabalho integrado 3932c3f9ca4e4faf concluiu no VPS: 34 ASTs, identidade válida, vínculo masked_immutables com ressalva, relatório visível no painel. Faixa AST adulterada foi rebaixada em cópia privada; não houve transação pública nem conclusão de falha.
-- Ver docs/GUARDIAO-EVIDENCIAS-2026-10-19.md. Ainda faltam isolamento por permissões e ligação automática de decision.json ao pacote M8; não atribuir ao projeto provas matemáticas de seL4/CompCert.
+- Ver docs/GUARDIAO-EVIDENCIAS-2026-10-19.md. O isolamento por permissões e o vínculo opcional de decision.json com M8 foram concluídos nas etapas 3 e 4; não atribuir ao projeto provas matemáticas de seL4/CompCert.
+
+
+## Etapa 3: isolamento do serviço (2026-10-19)
+
+- O serviço do painel usa ProtectSystem=strict, PrivateTmp, sem capacidades adicionais e com gravação limitada a private-output e caches necessários. Código, scripts, binário e diretórios do projeto pertencem ao root e ficam somente para leitura do usuário toupera.
+- Os três arquivos Markdown da raiz continuam acessíveis por links para private-output/root-files; as escritas atômicas preservam esses links. Um processo de ferramenta não consegue alterar site_jobs.py ou security-engine pelo usuário do serviço.
+- A política foi aplicada e o serviço reiniciado. systemd-analyze security passou de 9.0 UNSAFE para 4.8 OK. Isolamento individual por namespace não está disponível neste VPS; ferramentas ainda compartilham o mesmo usuário e caches permitidos. Não declarar isolamento completo.
+
+
+## Etapa 4: vínculo do guardião com M8 (2026-10-19)
+
+- `security-engine --evidence-plan <case-dir> <output-dir> --guard-job <job-dir>` exige decisão atual idêntica ao decision.json salvo, identidade válida, fonte vinculada e hash da fonte principal igual ao M7. O pacote copia decisão, manifesto do trabalho e entrada do compilador com SHA-256.
+- `--evidence-finalize` confere de novo os hashes e a ligação entre decisão, endereço, bloco, implementação, manifesto e fonte antes da revisão humana. Casos M8 sem `--guard-job` continuam possíveis, com limitação explícita no manifesto; não recebem vínculo de contrato publicado.
+- Campos imutáveis mascarados são anotados como ressalva. O guardião não transforma um ensaio ou hipótese em resultado confirmado. A finalização permanece dependente dos dois resultados Foundry e da revisão humana já exigidos por M8.
+
+- A primeira rodada após o isolamento teve 17/18 cenários Foundry por HTTP 502 do RPC. O trabalhador agora repete somente respostas transitórias e preserva os logs no VPS.
+
+- Rodada posterior `d59cb58cee084b10`: 18/18 cenários Foundry locais, decisão vinculada à fonte com ressalva dos campos imutáveis e serviço restrito ativo. Ver `docs/ISOLAMENTO-E-VINCULO-M8-2026-10-19.md`.

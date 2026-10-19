@@ -55,7 +55,7 @@ pub use economic_analysis::{
 pub use evidence_filter::{FilterReport, filter_evidence, gate_review_plan};
 pub use evidence_package::{
     EvidenceFact, EvidenceManifest, EvidenceReady, HumanEvidenceReview, finalize_evidence_bundle,
-    prepare_evidence_bundle,
+    prepare_evidence_bundle, prepare_evidence_bundle_with_guard,
 };
 pub use forensic_plan::{ForensicPlan, SourceBenchRow, benchmark_sources, build_forensic_plan};
 pub use forensic_probe::{ForensicInput, ForensicReport, run_forensic_probe};

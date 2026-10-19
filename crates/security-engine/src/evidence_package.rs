@@ -10,6 +10,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::context_package::{ensure_private_cache, write_private};
+use crate::assurance::guard_wcop_job;
 use crate::foundry_judge::target_coverage;
 use crate::{FoundryCase, FoundryRejection, FoundryResult, RejectionReview};
 
@@ -296,11 +297,74 @@ fn verify_artifacts(bundle: &Path, manifest: &EvidenceManifest) -> Result<(), St
     Ok(())
 }
 
+const GUARD_ARTIFACTS: [&str; 3] = [
+    "guard/decision.json", "guard/job-manifest.json", "guard/compiler-input.json",
+];
+
+fn guard_main_source(input: &Value) -> Result<(&str, &str), String> {
+    let selection = input["settings"]["outputSelection"].as_object()
+        .ok_or("guard compiler selection missing")?;
+    let main = selection.keys().find(|name| name.as_str() != "*")
+        .ok_or("guard main source missing")?;
+    let content = input["sources"][main]["content"].as_str()
+        .ok_or("guard main source content missing")?;
+    Ok((main, content))
+}
+
+fn verify_guard_snapshot(bundle: &Path, manifest: &EvidenceManifest) -> Result<(), String> {
+    let present = GUARD_ARTIFACTS.iter()
+        .filter(|name| manifest.artifacts.contains_key(**name)).count();
+    if present == 0 {
+        return Ok(());
+    }
+    if present != GUARD_ARTIFACTS.len() {
+        return Err("incomplete guardian link".into());
+    }
+    let decision: Value = read_json(&bundle.join(GUARD_ARTIFACTS[0]))?;
+    let job: Value = read_json(&bundle.join(GUARD_ARTIFACTS[1]))?;
+    let input: Value = read_json(&bundle.join(GUARD_ARTIFACTS[2]))?;
+    let job_bytes = fs::read(bundle.join(GUARD_ARTIFACTS[1]))
+        .map_err(|error| error.to_string())?;
+    if decision["identity_ok"] != true
+        || decision["state"] != "escopo_vinculado"
+        || !matches!(decision["source_binding"].as_str(), Some("exact" | "masked_immutables"))
+        || decision["manifest_sha256"].as_str() != Some(digest(&job_bytes).as_str())
+        || decision["address"] != job["address"]
+        || decision["block_number"] != job["block_number"]
+        || decision["block_hash"] != job["block_hash"]
+        || decision["implementation"] != job["implementation"]
+        || !decision["claims"].as_array().is_some_and(|claims| claims.iter().any(|claim|
+            claim["id"] == "source"
+            && matches!(claim["state"].as_str(), Some("OBSERVADO" | "RELACIONADO_COM_RESSALVA"))
+        ))
+    {
+        return Err("guardian decision does not bind to the recorded target and source".into());
+    }
+    let (_, content) = guard_main_source(&input)?;
+    if digest(content.as_bytes()) != manifest.source_sha256 {
+        return Err("M7 source differs from guardian main source".into());
+    }
+    if job["artifacts"]["compiler-input.json"]["sha256"].as_str()
+        != manifest.artifacts.get(GUARD_ARTIFACTS[2]).map(String::as_str)
+    {
+        return Err("guardian compiler input differs from job manifest".into());
+    }
+    Ok(())
+}
+
 /// Copy a case into a private, content-addressed evidence snapshot. It may
 /// remain pending reproduction; planning never elevates the finding.
 pub fn prepare_evidence_bundle(
     case_dir: &Path,
     output_dir: &Path,
+) -> Result<EvidenceManifest, String> {
+    prepare_evidence_bundle_with_guard(case_dir, output_dir, None)
+}
+
+pub fn prepare_evidence_bundle_with_guard(
+    case_dir: &Path,
+    output_dir: &Path,
+    guard_job: Option<&Path>,
 ) -> Result<EvidenceManifest, String> {
     let case: FoundryCase = read_json(&case_dir.join("case.json"))?;
     if case.schema != "m7-foundry-case-v1"
@@ -317,6 +381,20 @@ pub fn prepare_evidence_bundle(
             "evidence bundle already exists: {}",
             output_dir.display()
         ));
+    }
+    if let Some(job) = guard_job {
+        let current = guard_wcop_job(job)?;
+        let saved: Value = read_json(&job.join("decision.json"))?;
+        if current != saved || current["identity_ok"] != true
+            || current["state"] != "escopo_vinculado"
+        {
+            return Err("guardian decision is stale or incomplete".into());
+        }
+        let input: Value = read_json(&job.join("compiler-input.json"))?;
+        let (_, content) = guard_main_source(&input)?;
+        if digest(content.as_bytes()) != case.source_sha256 {
+            return Err("M7 source differs from guardian main source".into());
+        }
     }
     ensure_private_cache(output_dir)?;
     let mut artifacts = BTreeMap::new();
@@ -443,6 +521,36 @@ pub fn prepare_evidence_bundle(
             });
         }
     }
+    let mut limitations = vec![
+        "The M5/M7 source-first workflow covers one Solidity file without imports".into(),
+        "Model hypotheses and successful Foundry tests require human semantic review".into(),
+        "No production exploit or economic impact is inferred automatically".into(),
+    ];
+    if let Some(job) = guard_job {
+        for (source, target) in [
+            ("decision.json", GUARD_ARTIFACTS[0]),
+            ("job-manifest.json", GUARD_ARTIFACTS[1]),
+            ("compiler-input.json", GUARD_ARTIFACTS[2]),
+        ] {
+            copy_artifact(&job.join(source), output_dir, target, &mut artifacts)?;
+        }
+        let decision: Value = read_json(&output_dir.join(GUARD_ARTIFACTS[0]))?;
+        facts.push(EvidenceFact {
+            statement: format!(
+                "Guardian linked Ethereum target {} at block {} ({}) with source binding {}",
+                decision["address"].as_str().unwrap_or("?"),
+                decision["block_number"].as_u64().unwrap_or(0),
+                decision["block_hash"].as_str().unwrap_or("?"),
+                decision["source_binding"].as_str().unwrap_or("?"),
+            ),
+            artifact: GUARD_ARTIFACTS[0].into(),
+        });
+        if decision["source_binding"] == "masked_immutables" {
+            limitations.push("Immutable values were masked for bytecode comparison; their values were not individually confirmed".into());
+        }
+    } else {
+        limitations.push("No guardian job is linked to this M8 evidence snapshot".into());
+    }
     let manifest = EvidenceManifest {
         schema: SCHEMA.into(),
         candidate_key: case.candidate_key,
@@ -451,12 +559,9 @@ pub fn prepare_evidence_bundle(
         artifacts,
         facts,
         assumptions: case.assumptions,
-        limitations: vec![
-            "The M5/M7 source-first workflow covers one Solidity file without imports".into(),
-            "Model hypotheses and successful Foundry tests require human semantic review".into(),
-            "No production exploit or economic impact is inferred automatically".into(),
-        ],
+        limitations,
     };
+    verify_guard_snapshot(output_dir, &manifest)?;
     write_private(&output_dir.join("manifest.json"), &encode(&manifest)?)?;
     write_private(
         &output_dir.join("review.json"),
@@ -564,6 +669,7 @@ pub fn finalize_evidence_bundle(bundle: &Path) -> Result<EvidenceReady, String> 
         return Err("evidence bundle has no verified reproduction ready for human review".into());
     }
     verify_artifacts(bundle, &manifest)?;
+    verify_guard_snapshot(bundle, &manifest)?;
     let case: FoundryCase = read_json(&bundle.join("case.json"))?;
     if case.candidate_key != manifest.candidate_key
         || case.source_sha256 != manifest.source_sha256
