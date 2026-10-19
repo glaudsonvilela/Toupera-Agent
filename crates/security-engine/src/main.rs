@@ -6,8 +6,8 @@ use std::process::ExitCode;
 use security_engine::{
     CachingProvider, CompanionAnalysis, DeepSeekProvider, ForensicInput, RateCard,
     analyze_economic_functions, analyze_recorded_scenarios, build_variable_lens,
-    compare_with_solc_contract, empty_review_report, finalize_evidence_bundle,
-    import_gigahorse_tac, import_heimdall_abi, judge_foundry_case,
+    compare_with_solc_contract, empty_review_report, filter_evidence, finalize_evidence_bundle,
+    gate_review_plan, import_gigahorse_tac, import_heimdall_abi, judge_foundry_case,
     load_or_build_context_package_with_forensic, prepare_evidence_bundle, prepare_foundry_cases,
     prepare_review_plan, reassess_cached_map, reconstruct_bytecode_hex, reconstruct_source_file,
     reject_foundry_case, run_forensic_probe, run_guided_scenarios, run_local_scenarios, run_review,
@@ -17,7 +17,7 @@ fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --forensic-probe <manifest.json> | --variable-lens <manifest.json> <forensic-report.json> <local-coverage.json> [slither-ssa.json] | --local-scenarios <forensic-report.json> <fork-rpc-url> <anvil-bin> | --guided-scenarios <forensic-report.json> <variable-lens.json> <prior-coverage.json> <fork-rpc-url> <anvil-bin> | --local-coverage <local-scenarios.json> | --cached-reassessment <forensic-report.json> <local-scenarios.json> | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>] [--forensic <report.json>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --foundry-reject <case-dir> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
+            "usage: security-engine <source.sol> [solc-path] | --forensic-probe <manifest.json> | --variable-lens <manifest.json> <forensic-report.json> <local-coverage.json> [slither-ssa.json] | --local-scenarios <forensic-report.json> <fork-rpc-url> <anvil-bin> | --guided-scenarios <forensic-report.json> <variable-lens.json> <prior-coverage.json> <fork-rpc-url> <anvil-bin> | --local-coverage <local-scenarios.json> | --evidence-filter <forensic.json> <lens.json> <scenarios.json> <coverage.json> <m5-context.json> | --cached-reassessment <forensic-report.json> <local-scenarios.json> | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>] [--forensic <report.json>] | --llm-plan <context.json> --evidence-filter <filter.json> | --llm-review <context.json> --evidence-filter <filter.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --foundry-reject <case-dir> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
         );
         return ExitCode::FAILURE;
     };
@@ -66,6 +66,35 @@ fn main() -> ExitCode {
             Ok(report) => {
                 if let Err(error) = serde_json::to_writer(std::io::stdout(), &report) {
                     eprintln!("cannot write variable lens report: {error}");
+                    return ExitCode::FAILURE;
+                }
+                println!();
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if source == "--evidence-filter" {
+        let arguments: Vec<_> = args.collect();
+        if arguments.len() != 5 {
+            eprintln!(
+                "usage: security-engine --evidence-filter <forensic.json> <variable-lens.json> <local-scenarios.json> <local-coverage.json> <m5-context.json>"
+            );
+            return ExitCode::FAILURE;
+        }
+        return match filter_evidence(
+            Path::new(&arguments[0]),
+            Path::new(&arguments[1]),
+            Path::new(&arguments[2]),
+            Path::new(&arguments[3]),
+            Path::new(&arguments[4]),
+        ) {
+            Ok(report) => {
+                if let Err(error) = serde_json::to_writer(std::io::stdout(), &report) {
+                    eprintln!("cannot write evidence filter: {error}");
                     return ExitCode::FAILURE;
                 }
                 println!();
@@ -446,12 +475,15 @@ fn main() -> ExitCode {
             eprintln!("usage: security-engine {source} <context.json> [review options]");
             return ExitCode::FAILURE;
         }
-        let input = match fs::read_to_string(&arguments[0])
-            .map_err(|error| format!("cannot read {}: {error}", arguments[0]))
-            .and_then(|text| {
-                serde_json::from_str::<serde_json::Value>(&text)
-                    .map_err(|error| format!("invalid M5 package JSON: {error}"))
-            })
+        let context_bytes = match fs::read(&arguments[0]) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                eprintln!("cannot read {}: {error}", arguments[0]);
+                return ExitCode::FAILURE;
+            }
+        };
+        let mut input = match serde_json::from_slice::<serde_json::Value>(&context_bytes)
+            .map_err(|error| format!("invalid M5 package JSON: {error}"))
             .and_then(|value| prepare_review_plan(&value))
         {
             Ok(plan) => plan,
@@ -461,8 +493,27 @@ fn main() -> ExitCode {
             }
         };
         if source == "--llm-plan" {
-            if arguments.len() != 1 {
-                eprintln!("usage: security-engine --llm-plan <context.json>");
+            if arguments.len() != 3 || arguments[1] != "--evidence-filter" {
+                eprintln!(
+                    "usage: security-engine --llm-plan <context.json> --evidence-filter <filter.json>"
+                );
+                return ExitCode::FAILURE;
+            }
+            let filter =
+                match fs::read(&arguments[2])
+                    .map_err(|e| e.to_string())
+                    .and_then(|bytes| {
+                        serde_json::from_slice::<serde_json::Value>(&bytes)
+                            .map_err(|e| e.to_string())
+                    }) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        eprintln!("cannot read evidence filter: {error}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+            if let Err(error) = gate_review_plan(&mut input, &context_bytes, &filter) {
+                eprintln!("{error}");
                 return ExitCode::FAILURE;
             }
             if let Err(error) = serde_json::to_writer(std::io::stdout(), &input) {
@@ -478,9 +529,16 @@ fn main() -> ExitCode {
         let mut rate_card_path = None;
         let mut review_cache_path = None;
         let mut allow_external = false;
+        let mut evidence_filter_path = None;
         let mut index = 1;
         while index < arguments.len() {
             match arguments[index].as_str() {
+                "--evidence-filter"
+                    if evidence_filter_path.is_none() && index + 1 < arguments.len() =>
+                {
+                    evidence_filter_path = Some(arguments[index + 1].as_str());
+                    index += 2;
+                }
                 "--allow-external" if !allow_external => {
                     allow_external = true;
                     index += 1;
@@ -516,6 +574,25 @@ fn main() -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             }
+        }
+        let Some(filter_path) = evidence_filter_path else {
+            eprintln!("M6 requires --evidence-filter <filter.json>");
+            return ExitCode::FAILURE;
+        };
+        let filter = match fs::read(filter_path)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| {
+                serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|e| e.to_string())
+            }) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!("cannot read evidence filter: {error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        if let Err(error) = gate_review_plan(&mut input, &context_bytes, &filter) {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
         }
         if input.requests.is_empty() {
             let report = empty_review_report(&input);

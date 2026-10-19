@@ -184,7 +184,8 @@ A grade ampliada final no VPS produziu 24 cenários: 22 concluídos, 2 reversõe
 - [ ] Mapear funções econômicas, chamadas, modificadores e dependências de storage.
 - [ ] Seguir oracle, preço, decimals, fees e rounding até mint/burn e accounting.
 - [ ] Verificar previews, operações opostas, primeiro depósito e doações diretas.
-- [ ] Marcar incertezas; reduzir candidatos deterministicamente antes do LLM.
+- [x] Marcar incertezas; exigir triagem local por identidade, cenários e diferença repetida antes do LLM. Ver `docs/EVIDENCE-FILTER.md`.
+- [ ] Automatizar novas rodadas de cenários a partir do feedback de cobertura, com orçamento e parada por platô; o modo guiado atual acrescenta até 16 valores próximos a escalas conhecidas e para por platô.
 
 ### 4. Hipótese e reprodução
 - [ ] Escrever hipótese específica com premissas e contexto mínimo.

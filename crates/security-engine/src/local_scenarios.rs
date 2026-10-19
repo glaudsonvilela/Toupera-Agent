@@ -130,6 +130,9 @@ pub struct GuidedScenarioEvidence {
     pub executed_sequences: Vec<String>,
     pub new_root_outcomes: Vec<String>,
     pub new_root_jump_sites: Vec<usize>,
+    pub feedback_case_budget: usize,
+    pub feedback_cases_executed: usize,
+    pub feedback_stop_reason: Option<String>,
 }
 
 struct Rpc {
@@ -879,6 +882,9 @@ fn run_scenarios(
             executed_sequences: Vec::new(),
             new_root_outcomes: Vec::new(),
             new_root_jump_sites: Vec::new(),
+            feedback_case_budget: 16,
+            feedback_cases_executed: 0,
+            feedback_stop_reason: None,
         }), prior_outcomes)
     } else if lens_path.is_none() && prior_coverage_path.is_none() {
         (None, BTreeSet::new())
@@ -1471,6 +1477,71 @@ fn run_scenarios(
                 );
             }
             revert_snapshot(&local, &id)?;
+        }
+        // Local feedback round: perturb amounts near observed economic scales.
+        // Snapshots keep every attempt independent; stop on a coverage plateau.
+        let asset_neighbors = [
+            asset_unit.saturating_sub(U256::from(1)),
+            asset_unit + U256::from(1),
+            asset_unit * U256::from(2) - U256::from(1),
+            asset_unit * U256::from(2) + U256::from(1),
+        ];
+        let share_scale = (supply / U256::from(1000)).max(U256::from(1));
+        let share_neighbors = [
+            share_scale.saturating_sub(U256::from(1)),
+            share_scale + U256::from(1),
+            share_scale * U256::from(2) - U256::from(1),
+            share_scale * U256::from(2) + U256::from(1),
+        ];
+        let mut plateau = 0_usize;
+        'feedback: for index in 0..4 {
+            for (operation, amount) in [
+                (Operation::Deposit, asset_neighbors[index]),
+                (Operation::Mint, share_neighbors[index]),
+                (Operation::Withdraw, asset_neighbors[index]),
+                (Operation::Redeem, share_neighbors[index]),
+            ] {
+                if focus.feedback_cases_executed >= focus.feedback_case_budget {
+                    focus.feedback_stop_reason = Some("case_budget_reached".into());
+                    break 'feedback;
+                }
+                let id = snapshot(&local)?;
+                let before_count = all_outcomes.len();
+                let case = run_case(
+                    &local,
+                    &identity.vault,
+                    &identity.asset,
+                    &identity.actor,
+                    operation,
+                    amount,
+                    format!("guided_feedback:{}:{amount}", operation.name()),
+                    1,
+                    "state_comparison",
+                );
+                append_guided_case(
+                    &mut cases,
+                    &mut all_jumps,
+                    &mut all_outcomes,
+                    &mut trace_limitations,
+                    focus,
+                    case,
+                );
+                focus.feedback_cases_executed += 1;
+                revert_snapshot(&local, &id)?;
+                plateau = if all_outcomes.len() > before_count {
+                    0
+                } else {
+                    plateau + 1
+                };
+                if plateau >= 8 {
+                    focus.feedback_stop_reason =
+                        Some("eight_cases_without_new_root_outcome".into());
+                    break 'feedback;
+                }
+            }
+        }
+        if focus.feedback_stop_reason.is_none() {
+            focus.feedback_stop_reason = Some("case_budget_reached".into());
         }
     }
     let completed_transactions = cases

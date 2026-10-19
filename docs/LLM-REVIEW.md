@@ -7,12 +7,13 @@ O M6 recebe o JSON local do M5 e prepara **uma pergunta por candidato econômico
 ```sh
 umask 077
 mkdir -m 700 -p private-output
-./target/release/security-engine --llm-plan private-output/context.json > private-output/llm-plan.json
+./target/release/security-engine --llm-plan private-output/context.json \
+  --evidence-filter private-output/filter.json > private-output/llm-plan.json
 ```
 
-O plano aceita o pacote M5 bruto ou o envelope `{cache_hit, cache_key, package}` do CLI. Só entram candidatos `UNVERIFIED` com evidência, perguntas de invariantes e trecho de função. Duplicatas com mesmo contrato, função, categoria e hash de source da função são removidas. O corpo enviado é reconstruído a partir de uma lista explícita de campos do slice: função, até três funções relacionadas, evidências, storage, aritmética, alvos de oracle, chamadas, perguntas e incertezas. O pacote M5 inteiro, outros arquivos e JSON bruto do Slither não são enviados. A saída do plano ainda contém trechos privados; proteja o arquivo.
+O plano aceita o pacote M5 bruto ou o envelope `{cache_hit, cache_key, package}` do CLI. Exige a [triagem local](EVIDENCE-FILTER.md), vinculada ao hash exato do pacote. Só entram candidatos `UNVERIFIED` com evidência, perguntas de invariantes, trecho de função e chave elegível do filtro. Duplicatas com mesmo contrato, função, categoria e hash de source da função são removidas. O corpo enviado é reconstruído a partir de uma lista explícita de campos do slice: função, até três funções relacionadas, evidências, storage, aritmética, alvos de oracle, chamadas, perguntas e incertezas. O pacote M5 inteiro, outros arquivos e JSON bruto do Slither não são enviados. A saída do plano ainda contém trechos privados; proteja o arquivo.
 
-Se a triagem M4 produzir zero candidatos, `--llm-review <context.json>` devolve um relatório vazio local (`provider=none`, zero chamadas/tokens) sem exigir provedor, chave ou permissão de envio. M7 recebe zero casos e M8 permanece sem entrada. Isso foi observado no [piloto Sepolia](REAL-EVM-PILOT.md) e não implica que o alvo esteja seguro.
+Se a triagem produzir zero candidatos elegíveis, `--llm-review <context.json> --evidence-filter <filter.json>` devolve um relatório vazio local (`provider=none`, zero chamadas/tokens) sem exigir provedor, chave ou permissão de envio. M7 recebe zero casos e M8 permanece sem entrada. Isso foi observado no [piloto Sepolia](REAL-EVM-PILOT.md) e não implica que o alvo esteja seguro.
 
 ## Chamada externa opcional
 
@@ -21,6 +22,7 @@ O comando abaixo **envia esses trechos privados à DeepSeek**. Use-o somente par
 ```sh
 umask 077
 ./target/release/security-engine --llm-review private-output/context.json \
+  --evidence-filter private-output/filter.json \
   --provider deepseek --allow-external \
   --review-cache private-output/llm-cache \
   --model deepseek-flash --max-candidates 5 > private-output/llm-review.json

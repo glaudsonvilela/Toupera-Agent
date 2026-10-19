@@ -10,6 +10,7 @@ mod cfg;
 mod context_package;
 mod dataflow;
 mod economic_analysis;
+mod evidence_filter;
 mod evidence_package;
 mod forensic_probe;
 mod foundry_judge;
@@ -46,6 +47,7 @@ pub use economic_analysis::{
     EconomicAnalysisMetrics, EconomicAnalysisReport, EconomicCandidate, SlitherSignal,
     analyze_economic_functions,
 };
+pub use evidence_filter::{FilterReport, filter_evidence, gate_review_plan};
 pub use evidence_package::{
     EvidenceFact, EvidenceManifest, EvidenceReady, HumanEvidenceReview, finalize_evidence_bundle,
     prepare_evidence_bundle,
