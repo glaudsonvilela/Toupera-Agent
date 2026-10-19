@@ -14,7 +14,7 @@ Rodada no VPS
 - Quatro sequências adicionais de ordem/estado.
 - Nenhum resultado novo de decisão, nenhuma falha de comunicação e nenhuma diferença de pré-checagem.
 - 50 de 110 posições estáticas observadas no estado desta rodada. Esse número não mede todos os caminhos alcançáveis.
-- Duas coincidências de posição de dados com o layout; um acesso indexado continua sem coincidência.
+- Duas coincidências de posição de dados com o layout; quatro acessos indexados continuam sem coincidência.
 - Zero pedidos à IA; nenhuma chamada externa de IA.
 
 O que ainda é desconhecido
