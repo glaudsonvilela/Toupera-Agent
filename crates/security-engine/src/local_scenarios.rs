@@ -258,10 +258,22 @@ fn expected_deltas(operation: Operation, amount: U256, preview: U256) -> [String
             shares.to_string(),
         ],
         Operation::Withdraw | Operation::Redeem => [
-            format!("-{assets}"),
-            format!("-{shares}"),
+            if assets == U256::ZERO {
+                "0".into()
+            } else {
+                format!("-{assets}")
+            },
+            if shares == U256::ZERO {
+                "0".into()
+            } else {
+                format!("-{shares}")
+            },
             assets.to_string(),
-            format!("-{shares}"),
+            if shares == U256::ZERO {
+                "0".into()
+            } else {
+                format!("-{shares}")
+            },
         ],
     }
 }

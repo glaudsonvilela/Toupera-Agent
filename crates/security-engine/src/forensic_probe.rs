@@ -42,6 +42,8 @@ pub struct ForensicInput {
     pub block_number: u64,
     pub block_hash: String,
     pub slither_json_path: Option<PathBuf>,
+    #[serde(default)]
+    pub local_scenario_report_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -246,7 +248,21 @@ pub struct ForensicCoverage {
     pub boundary_calls: usize,
     pub boundary_calls_succeeded: usize,
     pub bytecode_unresolved_items: usize,
+    pub local_scenario_completed: Option<usize>,
+    pub local_scenario_reverted: Option<usize>,
+    pub local_scenario_jump_sites: Option<usize>,
     pub evidence_gate: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LocalScenarioEvidence {
+    pub report_sha256: String,
+    pub completed_transactions: usize,
+    pub reverted_transactions: usize,
+    pub rpc_failures: usize,
+    pub unique_trace_jump_sites: usize,
+    pub review_flags_added: usize,
+    pub limitations: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -321,6 +337,7 @@ pub struct ForensicReport {
     pub asset_flow_history: Option<AssetFlowHistory>,
     pub transaction_evidence: Vec<TransactionEvidence>,
     pub historical_state_checks: Vec<HistoricalStateCheck>,
+    pub local_scenario_evidence: Option<LocalScenarioEvidence>,
     pub coverage: ForensicCoverage,
     pub unresolved: Vec<String>,
 }
@@ -2560,6 +2577,145 @@ fn replay_historical_state(
     checks
 }
 
+fn attach_local_scenario_evidence(
+    path: &Path,
+    chain_id: u64,
+    vault: &str,
+    block_number: u64,
+    block_hash: &str,
+    runtime_sha256: &str,
+    quarantine: &mut [QuarantineCase],
+) -> Result<LocalScenarioEvidence, String> {
+    let bytes =
+        fs::read(path).map_err(|error| format!("cannot read local scenario report: {error}"))?;
+    if bytes.len() > 2_000_000 {
+        return Err("local scenario report exceeds 2 MB limit".into());
+    }
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("invalid local scenario report: {error}"))?;
+    if value.get("schema").and_then(Value::as_str) != Some("local-scenarios-v1") {
+        return Err("expected local-scenarios-v1 report".into());
+    }
+    let identity = value
+        .get("identity")
+        .ok_or("local scenario identity missing")?;
+    let matching = identity.get("chain_id").and_then(Value::as_u64) == Some(chain_id)
+        && identity.get("block_number").and_then(Value::as_u64) == Some(block_number)
+        && identity
+            .get("vault")
+            .and_then(Value::as_str)
+            .is_some_and(|item| item.eq_ignore_ascii_case(vault))
+        && identity
+            .get("block_hash")
+            .and_then(Value::as_str)
+            .is_some_and(|item| item.eq_ignore_ascii_case(block_hash))
+        && identity.get("runtime_sha256").and_then(Value::as_str) == Some(runtime_sha256);
+    if !matching {
+        return Err("local scenario report does not match the fixed target identity".into());
+    }
+    let cases = value
+        .get("cases")
+        .and_then(Value::as_array)
+        .ok_or("local scenario cases missing")?;
+    if cases.len() > 128 {
+        return Err("local scenario report has too many cases".into());
+    }
+    let mut added = 0;
+    let mut limitations = Vec::new();
+    for item in cases {
+        if item.get("status").and_then(Value::as_str) != Some("completed") {
+            continue;
+        }
+        let Some(operation) = item.get("operation").and_then(Value::as_str) else {
+            continue;
+        };
+        if !["deposit", "mint", "withdraw", "redeem"].contains(&operation) {
+            continue;
+        }
+        let Some(discrepancies) = item.get("discrepancies").and_then(Value::as_array) else {
+            continue;
+        };
+        if discrepancies.is_empty() {
+            continue;
+        }
+        let matching_case = quarantine.iter_mut().find(|case| {
+            case.originating_function
+                .split("::")
+                .last()
+                .is_some_and(|name| name.starts_with(&format!("{operation}(")))
+        });
+        let Some(case) = matching_case else {
+            limitations.push(format!(
+                "no quarantine case maps local operation {operation}"
+            ));
+            continue;
+        };
+        for discrepancy in discrepancies.iter().take(8) {
+            if let Some(text) = discrepancy.as_str().filter(|text| text.len() <= 500) {
+                case.review_flags.push(format!(
+                    "local fork {operation} amount {}: {text}",
+                    item.get("amount").and_then(Value::as_str).unwrap_or("?")
+                ));
+                added += 1;
+            }
+        }
+        if case.anomalies.is_empty() && !case.review_flags.is_empty() {
+            case.status = "needs_deep_review".into();
+        }
+    }
+    if let Some(round_trip) = value
+        .get("round_trip_discrepancies")
+        .and_then(Value::as_array)
+    {
+        for discrepancy in round_trip.iter().take(8) {
+            let Some(text) = discrepancy.as_str().filter(|text| text.len() <= 500) else {
+                continue;
+            };
+            for operation in ["deposit", "redeem"] {
+                if let Some(case) = quarantine.iter_mut().find(|case| {
+                    case.originating_function
+                        .split("::")
+                        .last()
+                        .is_some_and(|name| name.starts_with(&format!("{operation}(")))
+                }) {
+                    case.review_flags.push(format!("local round trip: {text}"));
+                    if case.anomalies.is_empty() {
+                        case.status = "needs_deep_review".into();
+                    }
+                    added += 1;
+                }
+            }
+        }
+    }
+    let number =
+        |field: &str| -> usize { value.get(field).and_then(Value::as_u64).unwrap_or(0) as usize };
+    if let Some(items) = value.get("limitations").and_then(Value::as_array) {
+        limitations.extend(
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .take(8)
+                .map(str::to_owned),
+        );
+    }
+    if value
+        .get("trace_limitations")
+        .and_then(Value::as_array)
+        .is_some_and(|items| !items.is_empty())
+    {
+        limitations.push("at least one local execution trace is unavailable".into());
+    }
+    Ok(LocalScenarioEvidence {
+        report_sha256: sha256(&bytes),
+        completed_transactions: number("completed_transactions"),
+        reverted_transactions: number("reverted_transactions"),
+        rpc_failures: number("rpc_failures"),
+        unique_trace_jump_sites: number("unique_trace_jump_sites"),
+        review_flags_added: added,
+        limitations,
+    })
+}
+
 pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, String> {
     if input.schema != "forensic-input-v1" {
         return Err("expected forensic-input-v1 manifest".into());
@@ -2961,7 +3117,7 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
             .get("asset.code_sha256")
             .and_then(|value| value.decoded.as_deref()),
     );
-    let quarantine_cases = quarantine_cases(
+    let mut quarantine_cases = quarantine_cases(
         &initial_hotspots,
         &functions,
         &analysis,
@@ -2972,6 +3128,21 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
         &transaction_evidence,
         &historical_state_checks,
     );
+    let local_scenario_evidence = input
+        .local_scenario_report_path
+        .as_ref()
+        .map(|path| {
+            attach_local_scenario_evidence(
+                path,
+                chain,
+                &address,
+                input.block_number,
+                &block_hash,
+                &sha256(&runtime_bytes),
+                &mut quarantine_cases,
+            )
+        })
+        .transpose()?;
     let (mut hotspots, reassessment) = reevaluate_map(
         &functions,
         &comparison,
@@ -3093,6 +3264,15 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
             .filter(|item| item.result.error.is_none())
             .count(),
         bytecode_unresolved_items: analysis.unresolved.len(),
+        local_scenario_completed: local_scenario_evidence
+            .as_ref()
+            .map(|item| item.completed_transactions),
+        local_scenario_reverted: local_scenario_evidence
+            .as_ref()
+            .map(|item| item.reverted_transactions),
+        local_scenario_jump_sites: local_scenario_evidence
+            .as_ref()
+            .map(|item| item.unique_trace_jump_sites),
         evidence_gate: if !history_reconciled {
             "partial"
         } else if call_traces_available < receipts_inspected {
@@ -3144,6 +3324,7 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
         asset_flow_history,
         transaction_evidence,
         historical_state_checks,
+        local_scenario_evidence,
         coverage,
         unresolved,
     })
