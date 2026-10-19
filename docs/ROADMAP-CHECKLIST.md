@@ -307,3 +307,12 @@ Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode 
 - A etapa automática `Caminhos` concluiu 36 chamadas locais, incluindo 12 numa sequência com 10 passos gravados apenas na cópia. Não houve erro de leitura nem divergência de resultado esperado.
 - O Rust conferiu a identidade do código e registrou 2470/5377 PCs e 241/559 blocos observados; 235 transições coincidem com arestas estáticas e 61 transições observadas ainda não constam do mapa. Havia 202 dúvidas do motor em PCs visitados; nenhuma é falha confirmada por isso.
 - `docs/WCOP-CAMINHOS-RUNTIME-2026-10-19.md` resume casos, números, limites e próximos passos. Logs, PCs completos e ligação detalhada ficam no VPS privado. A medição não é cobertura total de estados ou de instruções alcançáveis.
+
+## Arquitetura de confiança (2026-10-19)
+
+- [x] Desenhar arquitetura, fronteiras, interfaces, estados e critérios antes da implementação. Ver docs/ARQUITETURA-CONFIANCA-2026-10-19.md.
+- [ ] Implementar manifesto e limites de entrada.
+- [ ] Implementar verificação de AST e fallback para bytecode.
+- [ ] Implementar decisão do guardião Rust por afirmação.
+- [ ] Ligar decisão ao relatório, ao painel e à revisão.
+- [ ] Medir o fluxo completo no wCOP com evidências privadas no VPS.

@@ -344,3 +344,9 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 - A etapa automática `Caminhos` concluiu 36 chamadas locais, incluindo 12 numa sequência com 10 passos gravados apenas na cópia. Não houve erro de leitura nem divergência de resultado esperado.
 - O Rust conferiu a identidade do código e registrou 2470/5377 PCs e 241/559 blocos observados; 235 transições coincidem com arestas estáticas e 61 transições observadas ainda não constam do mapa. Havia 202 dúvidas do motor em PCs visitados; nenhuma é falha confirmada por isso.
 - `docs/WCOP-CAMINHOS-RUNTIME-2026-10-19.md` resume casos, números, limites e próximos passos. Logs, PCs completos e ligação detalhada ficam no VPS privado. A medição não é cobertura total de estados ou de instruções alcançáveis.
+
+## Arquitetura de confiança proposta (2026-10-19)
+
+- A pedido do usuário, a arquitetura foi definida antes de qualquer nova implementação. Ver docs/ARQUITETURA-CONFIANCA-2026-10-19.md.
+- Fluxo previsto: identidade fixa → validação de fonte/AST e bytecode → núcleo Rust → ferramentas locais → guardião de evidências Rust → painel/revisão. O guardião classifica afirmações e preserva premissas; não controla transações na rede.
+- Estado desta etapa: somente documentação. Estão pendentes manifesto de identidade, verificador AST, decisão estruturada e ligação ao painel. Continuar a atualizar este arquivo, codex/agent.md e checklist a cada etapa. Código e artefatos privados permanecem no VPS.
