@@ -12,7 +12,12 @@ Registrar progresso em `docs/ROADMAP-CHECKLIST.md` e neste arquivo a cada etapa.
 - Na leitura já realizada de YieldVault Sepolia: 818.846 blocos inclusivos desde o deploy, 5 eventos do vault, 2 transferências do asset, 3 recibos e 1 bloco histórico com eventos verificado; 108 chamadas de borda, 103 retornaram. Não houve divergência observada nas relações conferidas. O RPC negou `debug_traceTransaction` com HTTP 429; `history_reconciled_trace_gaps` indica essa lacuna. Há 299 itens de bytecode não resolvidos. Isso não comprova segurança nem cobertura de caminhos.
 - Uma tentativa manual de replay anterior ao pedido mais recente terminou por timeout e não forneceu evidência. Não executar novas simulações nesta etapa. Sequências em fork, cobertura de ramos, M4 positivo e reprodução M7/M8 continuam pendentes. Formatação e compilação foram verificadas; testes não foram rodados nesta atualização.
 - Revisão de código `67de987` publicada no Git privado e compilada em release no VPS sob `toupera`; nenhum comando de simulação executado durante a implantação.
-- Após nova autorização do usuário, `scripts/run-forensic-replay.sh` foi preparado para replay de até três transações históricas no VPS, com identidade fixa, timeout, rastros e resumo privados. Seu resultado ainda deve ser registrado após a execução autônoma; não equiparar replay ao fechamento do scanner.
+- Após nova autorização do usuário, `scripts/run-forensic-replay.sh` foi preparado para replay de até três transações históricas no VPS, com identidade fixa, timeout, rastros e resumo privados. O resultado consta da etapa de replay abaixo; não equiparar replay ao fechamento do scanner.
+
+## Etapa mais recente — replay autônomo no VPS (2026-10-18 local)
+
+- Job transitório `toupera-forensic-replay-20261018.service` executado como `toupera` no VPS, com limites de 8 GiB RAM, 200% CPU e 900 s. O script validou chain ID, hash do bloco e SHA-256 do runtime e rodou `cast run --no-bal` nas três transações históricas selecionadas.
+- Resultado: 3/3 rastros com `Transaction successfully executed`, zero timeout/falha; serviço terminou `Result=success`. Deploy, depósito e distribuição de yield constam dos rastros. Evidência só em `/srv/toupera-agent/private-output/real-targets/yield-vault/replay-vps-20261018/`. Nenhuma transação foi transmitida à rede. Não foram medidas sequências inéditas em fork ou cobertura de ramos; esse gate permanece aberto.
 
 ## Etapa mais recente — mapa forense e quarentena (2026-10-18)
 

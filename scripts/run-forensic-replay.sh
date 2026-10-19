@@ -15,7 +15,7 @@ chmod 700 "$output_dir"
 exec 9>"$output_dir/.lock"
 flock -n 9 || { echo "replay already running in $output_dir" >&2; exit 3; }
 
-for command in jq cast timeout xxd sha256sum flock; do
+for command in jq cast timeout xxd sha256sum flock grep; do
   command -v "$command" >/dev/null || { echo "missing $command" >&2; exit 2; }
 done
 jq -e '.schema == "forensic-map-v1" and .identity.exact_onchain_runtime == true and .event_history.complete_from_deployment == true' "$report" >/dev/null
@@ -52,7 +52,8 @@ for tx_hash in "${transaction_hashes[@]}"; do
   set -e
   finished=$(date -u +%FT%TZ)
   trace_sha=$(sha256sum "$trace_path" | cut -d' ' -f1)
-  if (( exit_code == 0 )); then status=trace_generated
+  if (( exit_code == 0 )) && grep -q '^Transaction successfully executed\.$' "$trace_path"; then status=trace_generated
+  elif (( exit_code == 0 )); then status=trace_inconclusive
   elif (( exit_code == 124 || exit_code == 137 )); then status=timeout
   else status=replay_failed
   fi
@@ -63,6 +64,6 @@ for tx_hash in "${transaction_hashes[@]}"; do
     >>"$output_dir/results.ndjson"
 done
 jq -s --arg completed "$(date -u +%FT%TZ)" \
-  '{completed:$completed,transactions:.,trace_generated:(map(select(.status=="trace_generated"))|length),timeouts:(map(select(.status=="timeout"))|length),failures:(map(select(.status=="replay_failed"))|length)}' \
+    '{completed:$completed,transactions:.,trace_generated:(map(select(.status=="trace_generated"))|length),trace_inconclusive:(map(select(.status=="trace_inconclusive"))|length),timeouts:(map(select(.status=="timeout"))|length),failures:(map(select(.status=="replay_failed"))|length)}' \
   "$output_dir/results.ndjson" >"$output_dir/summary.json.tmp"
 mv "$output_dir/summary.json.tmp" "$output_dir/summary.json"

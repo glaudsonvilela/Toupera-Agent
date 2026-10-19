@@ -118,13 +118,16 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 - [x] Recuperar e vincular transações e recibos aos eventos; tentar rastros internos quando o RPC permitir e registrar indisponibilidade.
 - [x] Reconstruir deltas de supply, assets, cap e permissões por bloco/transação, conferindo snapshots históricos e separando questões de semântica do token.
 - [x] Conferir invariantes de oferta e balanço em blocos com eventos e entradas de borda no bloco fixado; enviar divergências observadas à quarentena.
+- [x] Reproduzir no VPS transações históricas selecionadas sem transmissão à rede, com identidade fixa, timeout e rastros privados; 3/3 replays do YieldVault concluíram.
 - [ ] Gerar sequências de operações em fork local e medir ramos/reverts cobertos, com premissas e limites explícitos.
 - [x] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
 - [x] Publicar métricas de cobertura de blocos, eventos, transações, estados e chamadas de borda, com lacunas de rastro/bytecode explícitas.
 - [ ] Medir cobertura de caminhos e custo de RPC/IA em campanhas representativas.
 - [ ] Validar o ramo positivo completo com alvo autorizado, reprodução Foundry e revisão M8 antes de declarar o scanner forense pronto.
 
-Etapa histórica 2026-10-18: `YieldVault` Sepolia teve 818.846 blocos de logs completos desde o deploy, 5 eventos do vault, 2 transferências do asset, 3 recibos, 1 bloco com eventos conferido e 108 chamadas de borda (103 retornaram). `history_reconciled_trace_gaps` registra a reconciliação dessas evidências e a ausência de rastros internos. Uma tentativa manual de replay terminou por timeout e não forneceu evidência; não houve nova tentativa após a instrução do usuário. O item de sequências em fork permanece aberto.
+Etapa histórica 2026-10-18: `YieldVault` Sepolia teve 818.846 blocos de logs completos desde o deploy, 5 eventos do vault, 2 transferências do asset, 3 recibos, 1 bloco com eventos conferido e 108 chamadas de borda (103 retornaram). `history_reconciled_trace_gaps` registra a reconciliação dessas evidências e a ausência de rastros internos do RPC. Uma tentativa manual de replay terminou por timeout e não forneceu evidência. O item de sequências em fork permanece aberto.
+
+Após autorização para simular no VPS, o job autônomo `toupera-forensic-replay-20261018.service` reproduziu as três transações históricas selecionadas, com rastros e mensagem de execução bem-sucedida, sem timeout. O resultado está somente no diretório privado do VPS; não houve transação enviada à rede. Isto não fecha o item de sequências inéditas em fork nem a cobertura de caminhos.
 
 
 ### 1. Autorização e escopo
