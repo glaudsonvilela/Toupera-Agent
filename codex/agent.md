@@ -5,6 +5,7 @@
 - O usuário exige que o Rust automatize a reconstrução histórica, a análise de transações e estado, invariantes, simulação e retorno da quarentena ao mapa, sem depender da IA para criar o contexto. O mapa/sondagem atual é triagem; não chamá-lo de scanner forense completo.
 - Atualizar `agente.md` e `docs/ROADMAP-CHECKLIST.md` ao concluir cada etapa. Marcar cobertura parcial e falhas de RPC explicitamente; artefatos de alvo em `private-output/`; preservar `web/` não rastreado.
 - Pedido vigente: executar simulações somente no VPS, em processo autônomo, e verificar o resultado. Não simular no ambiente local desta sessão nem confundir leitura histórica ou `eth_call` com replay de execução.
+- Preferência de comunicação vigente: usar termos simples e neutros com o usuário, como “cenários locais”, “checagem”, “mapa” e “diferença observada”, preservando precisão técnica sem linguagem alarmista.
 
 ## Etapa histórica concluída, 2026-10-18
 
@@ -18,6 +19,7 @@
 - Segunda execução VPS: 18/18, zero diferenças e zero reversões; o erro `-0` acabou. A passagem `--forensic-probe` anexou o relatório local mas ficou `partial` porque o RPC histórico devolveu HTTP 429 antes da leitura de logs. Não usar esse relatório como cronologia completa. `Rpc::call` ganhou espaçamento HTTPS e backoff limitado para 429; repetir no VPS. A leitura completa anterior permanece evidência separada.
 - Repetição com backoff concluída no VPS: 818.846 blocos, histórico do vault e asset completos, 3 recibos, 105/108 chamadas de borda, 18 cenários anexados, 29 zonas/19 quarentenas sem mudança de prioridade. `history_reconciled_trace_gaps` continua correto para rastros históricos do RPC. Novo código `--cached-reassessment` exige SHA-256 exato do relatório base e identidade completa, reaproveita a cronologia e reavalia todos os hotspots sem RPC. Métrica `taken`/`not_taken` de `JUMPI` adicionada ao cenário local; executar essas duas alterações no VPS antes de marcá-las verificadas.
 - Primeira execução de resultados `JUMPI` concluiu 18 cenários, mas decodificou só 12 resultados para 72 posições: palavras hex ímpares do stack não eram aceitas. Parser corrigido com zero à esquerda; repetir no VPS e não citar os 12 como medida final. Round trip segue `-1`, sem diferença de estado.
+- Execução final VPS: 18/18 cenários, zero reversões/falhas/diferenças, 72 posições `JUMPI`, 80 resultados, 8 posições nos dois sentidos; round trip `-1`. Contagens incluem vault+token e não são percentual de cobertura. `--cached-reassessment` validou SHA-256 do relatório base e identidade, reavaliou 29 zonas/19 quarentenas mantendo 818.846 blocos históricos e fez zero chamadas ao RPC; nenhuma prioridade mudou. Artefatos privados: `local-scenarios-v4/` e `cached-reassessment-v1/`. Próximos gates: cobertura por função/ramo com denominador, mais estados/atores, calibração M4 e ramo positivo M5–M8.
 
 ## Ciclo forense/quarentena, 2026-10-18
 

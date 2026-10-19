@@ -134,6 +134,8 @@ Após autorização para simular no VPS, o job autônomo `toupera-forensic-repla
 
 Os cenários locais no VPS concluíram 18/18 operações, sem reversão nem diferença de estado após corrigir a formatação de zero; depósito→resgate custou 1 unidade mínima do asset. A reavaliação integral com o relatório local percorreu novamente 818.846 blocos após espera para limite do RPC, preservou 29 zonas/19 quarentenas e não alterou prioridades. Ainda falta uma medida de cobertura por função/ramo com denominador confiável e o ramo positivo M4–M8.
 
+A medição final de cenários registrou 72 posições `JUMPI` no conjunto vault+token, 80 resultados e 8 posições vistas nos dois sentidos. Uma reavaliação com dados históricos salvos conservou 818.846 blocos, 29 zonas e 19 quarentenas, sem consultar o RPC nem mudar prioridades. As contagens de desvio não são percentual de cobertura do vault. Continuam abertos o denominador por função/ramo e a passagem positiva M4–M8.
+
 
 ### 1. Autorização e escopo
 - [ ] Confirmar propriedade, ambiente de laboratório ou autorização explícita do programa.
