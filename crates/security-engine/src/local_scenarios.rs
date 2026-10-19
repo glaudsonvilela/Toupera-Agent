@@ -78,12 +78,24 @@ pub struct ObservedSequenceTransition {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct AddressMappingSlotCandidate {
+    pub key_address: String,
+    pub base_slot: u64,
+    pub observed_slot: String,
+    pub read_cases: usize,
+    pub write_cases: usize,
+    pub evidence_class: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct LocalScenarioReport {
     pub schema: String,
     pub identity: LocalScenarioIdentity,
     pub execution_scope: String,
     pub cases: Vec<ScenarioCase>,
     pub observed_sequence_transitions: Vec<ObservedSequenceTransition>,
+    pub address_mapping_slot_candidates: Vec<AddressMappingSlotCandidate>,
+    pub mapping_slot_search_exclusive_limit: u64,
     pub completed_transactions: usize,
     pub reverted_transactions: usize,
     pub rpc_failures: usize,
@@ -242,6 +254,15 @@ fn word(value: U256) -> String {
 
 fn address_word(address: &str) -> String {
     format!("{:0>64}", &address[2..])
+}
+
+fn address_mapping_slot(address: &str, base_slot: u64) -> Result<String, String> {
+    let address = validate_address(address)?;
+    let mut preimage = [0u8; 64];
+    let key = hex::decode(&address[2..]).map_err(|error| error.to_string())?;
+    preimage[12..32].copy_from_slice(&key);
+    preimage[32..64].copy_from_slice(&U256::from(base_slot).to_be_bytes::<32>());
+    Ok(format!("0x{}", hex::encode(Keccak256::digest(preimage))))
 }
 
 fn calldata(signature: &str, amount: Option<U256>, addresses: &[&str]) -> String {
@@ -1516,6 +1537,34 @@ fn run_scenarios(
             })
         })
         .collect();
+    const MAPPING_SLOT_SEARCH_LIMIT: u64 = 64;
+    let actors: BTreeSet<_> = cases.iter().map(|case| case.actor.clone()).collect();
+    let mut address_mapping_slot_candidates = Vec::new();
+    for actor in actors {
+        for base_slot in 0..MAPPING_SLOT_SEARCH_LIMIT {
+            let observed_slot = address_mapping_slot(&actor, base_slot)?;
+            let read_cases = cases
+                .iter()
+                .filter(|case| case.root_storage_reads.contains(&observed_slot))
+                .count();
+            let write_cases = cases
+                .iter()
+                .filter(|case| case.root_storage_writes.contains(&observed_slot))
+                .count();
+            if read_cases + write_cases > 0 {
+                address_mapping_slot_candidates.push(AddressMappingSlotCandidate {
+                    key_address: actor.clone(),
+                    base_slot,
+                    observed_slot,
+                    read_cases,
+                    write_cases,
+                    evidence_class:
+                        "root_slot_matches_address_mapping_formula_not_source_variable_identity"
+                            .into(),
+                });
+            }
+        }
+    }
     let reverted_transactions = cases
         .iter()
         .filter(|case| case.status == "reverted")
@@ -1591,6 +1640,8 @@ fn run_scenarios(
             "child Anvil fork on 127.0.0.1; no transaction broadcast to source network".into(),
         cases,
         observed_sequence_transitions,
+        address_mapping_slot_candidates,
+        mapping_slot_search_exclusive_limit: MAPPING_SLOT_SEARCH_LIMIT,
         completed_transactions,
         reverted_transactions,
         rpc_failures,
