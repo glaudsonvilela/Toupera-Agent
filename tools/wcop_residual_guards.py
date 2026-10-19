@@ -15,6 +15,8 @@ from wcop_trace import (ANVIL, DEFAULT, RECEIVER, SLOT, TOKEN, UPSTREAM, WORK,
 ZERO = "0x" + "0" * 40
 WRONG_SLOT = "0x" + "00" * 18 + "beef"
 REVERTING = "0x" + "00" * 18 + "beee"
+EMPTY_REVERT = "0x" + "00" * 18 + "beed"
+DATA_REVERT = "0x" + "00" * 18 + "beec"
 
 
 def outcomes(cases):
@@ -73,6 +75,13 @@ def run(job_id):
             # Mock targets exist only in the isolated fork; neither changes mainnet.
             rpc(url, "anvil_setCode", [WRONG_SLOT, "0x600060005260206000f3"])
             rpc(url, "anvil_setCode", [REVERTING, "0x60006000fd"])
+            # Return the ERC-1967 slot for proxiableUUID; revert empty for other selectors.
+            empty_revert_code = ("0x6352d1902d5f3560e01c146011575f5ffd5b7f"
+                                 + SLOT.removeprefix("0x") + "5f5260205ff3")
+            rpc(url, "anvil_setCode", [EMPTY_REVERT, empty_revert_code])
+            data_revert_code = ("0x6352d1902d5f3560e01c14601a5763deadbeef5f526004601cfd5b7f"
+                                + SLOT.removeprefix("0x") + "5f5260205ff3")
+            rpc(url, "anvil_setCode", [DATA_REVERT, data_revert_code])
             specs = [
                 ("unpause_when_unpaused", actors["PAUSER_ROLE"], "0x3f4ba83a"),
                 ("upgrade_delegatecall_approve", upgrader, upgrade_data(implementation,
@@ -89,6 +98,10 @@ def run(job_id):
                 ("revoke_absent_role", admin, "0xd547741f" + role_hash + word_address(RECEIVER)),
                 ("upgrade_wrong_slot_local_mock", upgrader, upgrade_data(WRONG_SLOT)),
                 ("upgrade_reverting_local_mock", upgrader, upgrade_data(REVERTING)),
+                ("upgrade_delegatecall_empty_revert", upgrader,
+                 upgrade_data(EMPTY_REVERT, "0xdeadbeef")),
+                ("upgrade_delegatecall_data_revert", upgrader,
+                 upgrade_data(DATA_REVERT, "0xdeadbeef")),
             ]
             for name, sender, data in specs:
                 call = {"from": sender, "to": TOKEN, "data": data, "value": "0x0"}
@@ -97,11 +110,37 @@ def run(job_id):
                 expected_failure = name not in ("grant_existing_role", "revoke_absent_role", "upgrade_delegatecall_approve")
                 if bool(trace.get("failed")) != expected_failure:
                     raise ValueError("unexpected result for " + name)
+                returned = trace.get("returnValue", "").removeprefix("0x").lower()
+                if name == "upgrade_delegatecall_data_revert" and returned[:8] != "deadbeef":
+                    raise ValueError("delegatecall revert data was not bubbled")
                 jumps, incomplete, mismatched = jump_records(trace.get("structLogs") or [], source_by_pc)
                 cases.append({"case": name, "selector": data[:10], "failed": bool(trace.get("failed")),
                               "implementation_steps": sum(x.get("depth") == 2 for x in trace.get("structLogs") or []),
                               "incomplete_jump_events": incomplete, "next_pc_mismatches": mismatched,
+                              "revert_selector": returned[:8] if bool(trace.get("failed")) else None,
                               "jumps": jumps})
+            # A failed local transaction must roll back the ERC-1967 implementation slot.
+            snapshot = rpc(url, "evm_snapshot", [])
+            try:
+                rpc(url, "anvil_impersonateAccount", [upgrader])
+                rpc(url, "anvil_setBalance", [upgrader, hex(10**18)])
+                before = rpc(url, "eth_getStorageAt", [TOKEN, SLOT, "latest"])
+                tx = rpc(url, "eth_sendTransaction", [{"from": upgrader, "to": TOKEN,
+                    "data": upgrade_data(EMPTY_REVERT, "0xdeadbeef"), "gas": "0x989680"}])
+                receipt = None
+                for _ in range(30):
+                    receipt = rpc(url, "eth_getTransactionReceipt", [tx])
+                    if receipt is not None:
+                        break
+                    time.sleep(0.1)
+                after = rpc(url, "eth_getStorageAt", [TOKEN, SLOT, "latest"])
+                if receipt is None or receipt.get("status") != "0x0" or after != before:
+                    raise ValueError("failed local upgrade altered implementation slot")
+                cases[-1]["local_state_replay"] = {"receipt_status": "reverted",
+                    "implementation_slot_unchanged": True}
+            finally:
+                if rpc(url, "evm_revert", [snapshot]) is not True:
+                    raise RuntimeError("local upgrade snapshot restore failed")
         finally:
             process.terminate()
             try:

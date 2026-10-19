@@ -15,12 +15,12 @@ from wcop_trace import (ANVIL, UPSTREAM, TOKEN, SLOT, WORK, available_port,
 EXTRA_LIMIT = 65
 
 
-def jump_records(logs, source_by_pc):
+def jump_records(logs, source_by_pc, depth=2):
     counts = Counter()
     incomplete = 0
     mismatched = 0
     for i, row in enumerate(logs):
-        if row.get("depth") != 2 or row.get("op") != "JUMPI":
+        if row.get("depth") != depth or row.get("op") != "JUMPI":
             continue
         stack = row.get("stack") or []
         if len(stack) < 2:
@@ -29,7 +29,7 @@ def jump_records(logs, source_by_pc):
         pc = int(row["pc"])
         destination = int(stack[-1], 16)
         side = "taken" if int(stack[-2], 16) else "not_taken"
-        next_pc = int(logs[i + 1]["pc"]) if i + 1 < len(logs) and logs[i + 1].get("depth") == 2 else None
+        next_pc = int(logs[i + 1]["pc"]) if i + 1 < len(logs) and logs[i + 1].get("depth") == depth else None
         expected = destination if side == "taken" else pc + 1
         if next_pc is None:
             incomplete += 1

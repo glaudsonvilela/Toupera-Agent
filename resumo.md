@@ -28,21 +28,27 @@
 
 ## Triagem dos guardas residuais
 
-- `tools/wcop_residual_guards.py` executou 14 chamadas adicionais no fork local, incluindo endereços zero, papéis já concedidos/ausentes, `unpause` já despausado e dois alvos UUPS simulados somente no Anvil. As respostas foram as esperadas; 12 novos sentidos de `JUMPI` foram observados, sem divergência local ou falha confirmada.
-- O conjunto atual observa 155/169 PCs `JUMPI`: 66 nos dois sentidos, 89 em um sentido e 14 ainda não observados; são 221 pares PC/sentido. `tools/wcop_residual_classify.py` separa os 89 em 9 do dispatcher, 31 entradas sem ETH, 25 do utilitário ABI gerado e 24 guardas de execução. A classificação é estrutural e não demonstra alcançabilidade dos lados restantes. Ver `docs/WCOP-GUARDAS-RESIDUAIS-2026-10-19.md`.
+- `tools/wcop_residual_guards.py` executou 16 chamadas adicionais no fork local, incluindo endereços zero, papéis já concedidos/ausentes, `unpause` já despausado e dois alvos UUPS simulados somente no Anvil. As respostas foram as esperadas; 13 novos sentidos de `JUMPI` foram observados, sem divergência local ou falha confirmada.
+- O conjunto atual observa 155/169 PCs `JUMPI`: 67 nos dois sentidos, 88 em um sentido e 14 ainda não observados; são 222 pares PC/sentido. `tools/wcop_residual_classify.py` separa os 88 em 9 do dispatcher, 31 entradas sem ETH, 25 do utilitário ABI gerado e 23 guardas de execução. A classificação é estrutural e não demonstra alcançabilidade dos lados restantes. Ver `docs/WCOP-GUARDAS-RESIDUAIS-2026-10-19.md`.
+
+## Revisão clínica do contexto e de assinaturas
+
+- `tools/wcop_clinical_guards.py` mediu sete chamadas em contexto separado: `proxiableUUID()` direto retornou o slot ERC-1967; upgrade e inicialização diretos reverteram com erros UUPS e de inicialização. `permit` rejeitou assinatura nula, `v` inválido, signatário diferente e `s` alto com os seletores esperados. Os sentidos diretos não entram nas contagens do proxy.
+- O overload de ECDSA usado por `permit(v,r,s)` não produz `InvalidSignatureLength` segundo a fonte fixada. O upgrade simulado que passou pela checagem UUPS e falhou no delegatecall deixou o slot de implementação inalterado em transação local revertida. Ver `docs/WCOP-REVISAO-CLINICA-2026-10-19.md`.
 
 ## Evidência privada
 
 - `private-output/site-jobs/92273047cbf7439c/baseline-branch-replay.json`: 36 casos, SHA-256 `ff82321ad690aa3936433da544c73889a1ecb910f35395c72b651cd5b31aff8e`.
 - `private-output/site-jobs/92273047cbf7439c/branch-replay.json`: 38 casos salvos + 65 adicionais, SHA-256 `06d09f85ab6a592db2b10e124ab5427e2572a802a3e4376a15ebcdcba618e135`.
 - `private-output/site-jobs/92273047cbf7439c/targeted-guards.json`: 22 casos dirigidos, SHA-256 `47695f05e78e0e9317fa16450e446be26496b8a8fb23342bbe1c9403890b9611`.
-- `private-output/site-jobs/92273047cbf7439c/residual-guards.json`: 14 casos, SHA-256 `97aeeaf34acd3c32f1f4f931f570668dc0b8f5e8f9815c63d8944386b745e941`.
-- `private-output/site-jobs/92273047cbf7439c/residual-classification.json`: 89 desvios classificados, SHA-256 `870b834941cecf46de2dbd06fb50489bfa893c979e68353a230bee4aafbe9191`.
+- `private-output/site-jobs/92273047cbf7439c/residual-guards.json`: 16 casos, SHA-256 `efa0abf6fe8b5bfada5a18b2348f4c55cda67c9b4a885ed6f551493913647eb7`.
+- `private-output/site-jobs/92273047cbf7439c/residual-classification.json`: 88 desvios classificados, SHA-256 `61aedc14006b24f13acfa08474ca8ae9fdc2ca5e080b1017260eb0b45e95e148`.
+- `private-output/site-jobs/92273047cbf7439c/clinical-guards.json`: sete chamadas clínicas, SHA-256 `c0ee021c99f00061571a5f3b18ba45855201387c1eab0f39510a3bd05055796b`.
 - Os JSONs acima permanecem privados, modo `0600`, propriedade de `toupera`. Este resumo não contém calldata, endereços de atores nem credenciais.
 
 ## Próxima ação
 
-1. Examinar os 24 guardas de execução ainda vistos em um sentido, documentando pré-condição, alcance no proxy fixado e consequência de segurança; priorizar ECDSA e UUPS.
+1. Examinar os 23 guardas de execução ainda vistos em um sentido, documentando pré-condição, alcance no proxy fixado e consequência de segurança; priorizar ECDSA e UUPS.
 2. Examinar os 14 PCs ainda não observados em estados apropriados: inicialização fresca em ambiente local separado, strings longas e alternativas de EIP-712. Manter essas medidas separadas do proxy já inicializado e não supor alcançabilidade.
 3. Vincular resultados de `JUMPI` à semântica da fonte, mantendo separados os IDs de ramo LCOV da recompilação. O estado histórico antigo ainda não está disponível no RPC (403).
 

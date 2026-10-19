@@ -393,7 +393,8 @@ Ver `docs/WCOP-MAPA-LINHAS-2026-10-19.md`.
 - [x] Classificar o opcode terminal das 74 ligações fora do grafo: todas são `JUMP`; 68 têm marca de saída de função e seis de salto comum. Todas as 143 ligações observadas com `JUMPI` terminal constam no grafo estático.
 - [x] Repetir os casos locais com condição, destino e próximo PC de cada `JUMPI` por caso; 36 casos iniciais e 38 escolhas do Rust reproduziram os resumos salvos, e 65 candidatos restantes foram medidos. Ver `resumo.md`.
 - [x] Executar 22 casos dirigidos no Anvil com identidade fixada: 155/169 PCs `JUMPI` estáticos observados, 54 em ambos os sentidos, 101 em um; `permit` válido e repetição testados em snapshot. Ver `docs/WCOP-DESVIOS-DIRIGIDOS-2026-10-19.md`.
-- [x] Classificar os 101 PCs `JUMPI` com apenas um sentido e testar 14 entradas dirigidas no fork: 66 PCs agora têm ambos os sentidos, 89 têm um; dos 89, 24 são guardas de execução. Ver `docs/WCOP-GUARDAS-RESIDUAIS-2026-10-19.md`.
+- [x] Classificar os 101 PCs `JUMPI` com apenas um sentido e testar 16 entradas dirigidas no fork: 67 PCs agora têm ambos os sentidos, 88 têm um; dos 88, 23 são guardas de execução. Ver `docs/WCOP-GUARDAS-RESIDUAIS-2026-10-19.md`.
+- [x] Separar contexto direto da implementação e proxy, confirmar erros UUPS/ECDSA por seletor e rollback de upgrade após falha no delegatecall. Ver `docs/WCOP-REVISAO-CLINICA-2026-10-19.md`.
 - [ ] Ligar os resultados de `JUMPI` a um identificador de ramo LCOV com alinhamento semântico; 14 PCs `JUMPI` seguem não observados após os 22 casos dirigidos; a possibilidade de alcançá-los no proxy fixado não foi demonstrada.
 - [x] Medir uma nova rodada local: trabalho `92273047cbf7439c`, 38 escolhas e zero PCs após o mapa; total observado igual ao trabalho anterior. Não há ganho de cobertura demonstrado.
 

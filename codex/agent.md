@@ -443,4 +443,8 @@ A última execução automática wCOP é `private-output/site-jobs/ba5146dd978d4
 
 ## Triagem residual do runtime wCOP (2026-10-19)
 
-- Leia `docs/WCOP-GUARDAS-RESIDUAIS-2026-10-19.md` e `resumo.md`. Catorze casos locais adicionais elevaram a 66 os PCs `JUMPI` vistos nos dois sentidos: 155/169 PCs observados, 89 em um sentido, 14 ainda não vistos. Dos 89, 9 são dispatcher, 31 entrada não pagável, 25 utilitário ABI gerado e 24 guardas de execução. Nenhuma falha foi confirmada. JSONs privados no VPS; nenhuma transação na rede principal.
+- Leia `docs/WCOP-GUARDAS-RESIDUAIS-2026-10-19.md` e `resumo.md`. Dezesseis casos locais adicionais elevaram a 67 os PCs `JUMPI` vistos nos dois sentidos: 155/169 PCs observados, 88 em um sentido, 14 ainda não vistos. Dos 88, 9 são dispatcher, 31 entrada não pagável, 25 utilitário ABI gerado e 23 guardas de execução. Nenhuma falha foi confirmada. JSONs privados no VPS; nenhuma transação na rede principal.
+
+## Revisão clínica de UUPS e permit (2026-10-19)
+
+- Leia `docs/WCOP-REVISAO-CLINICA-2026-10-19.md`. Sete chamadas locais separaram implementação direta de proxy. A implementação direta aceitou `proxiableUUID()` e recusou upgrade/inicialização com seletores esperados; `permit` recusou assinaturas inválidas com erros distintos. Mock UUPS que passou pela checagem e reverteu no delegatecall não alterou o slot ERC-1967 em transação local revertida. Proxy: 67/155 PCs `JUMPI` observados nos dois sentidos, 88 em um, 14 não observados; 23 guardas de execução residuais. Nenhuma falha confirmada.
