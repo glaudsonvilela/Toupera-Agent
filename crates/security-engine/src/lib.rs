@@ -10,6 +10,7 @@ mod context_package;
 mod dataflow;
 mod economic_analysis;
 mod evidence_package;
+mod forensic_probe;
 mod foundry_judge;
 mod ir;
 mod llm_review;
@@ -34,7 +35,7 @@ pub use bytecode_evmole::{
 pub use context_package::{
     ArtifactDigests, CachedContextPackage, ContextPackage, ContextSlice, EvidenceExcerpt,
     FunctionDigest, FunctionExcerpt, build_context_package, load_or_build_context_package,
-    load_or_build_context_package_with_evm_version,
+    load_or_build_context_package_with_evm_version, load_or_build_context_package_with_forensic,
 };
 pub use economic_analysis::{
     EconomicAnalysisMetrics, EconomicAnalysisReport, EconomicCandidate, SlitherSignal,
@@ -44,6 +45,7 @@ pub use evidence_package::{
     EvidenceFact, EvidenceManifest, EvidenceReady, HumanEvidenceReview, finalize_evidence_bundle,
     prepare_evidence_bundle,
 };
+pub use forensic_probe::{ForensicInput, ForensicReport, run_forensic_probe};
 pub use foundry_judge::{
     FoundryCase, FoundryCoverage, FoundryPlan, FoundryRejection, FoundryResult, FoundryRun,
     HarnessApproval, RejectionReview, judge_foundry_case, prepare_foundry_cases,

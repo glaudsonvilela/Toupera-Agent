@@ -12,9 +12,10 @@ use sha2::{Digest, Sha256};
 
 use crate::source::{function_id, parse_span};
 use crate::{
-    ContractId, EconomicAnalysisMetrics, EconomicCandidate, EconomicFunction, EvidenceLocation,
-    FindingKind, FunctionId, SourceSpan, Uncertainty, analyze_economic_functions,
-    compile_source_ast_text_with_evm_version, normalized_runtime_hex, reconstruct_from_ast_json,
+    BytecodePc, Confidence, ContractId, EconomicAnalysisMetrics, EconomicCandidate,
+    EconomicFunction, EvidenceLocation, FindingKind, FunctionId, SourceSpan, Uncertainty,
+    analyze_economic_functions, compile_source_ast_text_with_evm_version, normalized_runtime_hex,
+    reconstruct_from_ast_json,
 };
 
 const PACKAGE_SCHEMA: &str = "m5-context-v1";
@@ -32,6 +33,8 @@ pub struct ArtifactDigests {
     pub ast_sha256: String,
     pub runtime_sha256: Option<String>,
     pub slither_json_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forensic_json_sha256: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evm_version: Option<String>,
 }
@@ -114,6 +117,145 @@ fn bounded(text: &str, limit: usize) -> (String, bool) {
         end -= 1;
     }
     (text[..end].to_owned(), true)
+}
+
+fn forensic_candidates(
+    json_text: &str,
+    source_name: &str,
+    source: &str,
+    runtime_hex: &str,
+) -> Result<Vec<EconomicCandidate>, String> {
+    let report: Value = serde_json::from_str(json_text)
+        .map_err(|error| format!("invalid forensic JSON: {error}"))?;
+    if report.get("schema").and_then(Value::as_str) != Some("forensic-map-v1") {
+        return Err("forensic import requires forensic-map-v1".into());
+    }
+    let identity = report
+        .get("identity")
+        .ok_or("forensic report has no identity")?;
+    let compact: String = runtime_hex
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace())
+        .collect();
+    let bytes = hex::decode(compact.strip_prefix("0x").unwrap_or(&compact))
+        .map_err(|error| format!("invalid runtime hex: {error}"))?;
+    if identity.get("analysis_source_name").and_then(Value::as_str) != Some(source_name)
+        || identity
+            .get("analysis_source_sha256")
+            .and_then(Value::as_str)
+            != Some(sha256(source.as_bytes()).as_str())
+        || identity.get("runtime_sha256").and_then(Value::as_str) != Some(sha256(&bytes).as_str())
+        || identity
+            .get("exact_onchain_runtime")
+            .and_then(Value::as_bool)
+            != Some(true)
+        || (identity
+            .get("exact_compiler_runtime")
+            .and_then(Value::as_bool)
+            != Some(true)
+            && identity
+                .get("immutable_masked_compiler_runtime")
+                .and_then(Value::as_bool)
+                != Some(true))
+    {
+        return Err("forensic report identity does not match this source and runtime".into());
+    }
+    let hotspots = report
+        .get("hotspots")
+        .and_then(Value::as_array)
+        .ok_or("forensic report has no hotspots")?;
+    let cases = report
+        .get("quarantine_cases")
+        .and_then(Value::as_array)
+        .ok_or("forensic report has no quarantine cases")?;
+    let mut output = Vec::new();
+    let mut seen = BTreeSet::new();
+    for case in cases {
+        if case.get("status").and_then(Value::as_str) != Some("anomaly_observed") {
+            continue;
+        }
+        let Some(identity) = case.get("originating_function").and_then(Value::as_str) else {
+            continue;
+        };
+        if !seen.insert(identity.to_owned()) {
+            continue;
+        }
+        let Some(hotspot) = hotspots.iter().find(|item| {
+            let contract = item
+                .get("declaring_contract")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let function = item.get("function").and_then(Value::as_str).unwrap_or("");
+            format!("{contract}::{function}") == identity
+        }) else {
+            continue;
+        };
+        let Some(span) = hotspot.get("source_span") else {
+            continue;
+        };
+        let (Some(file), Some(start), Some(end)) = (
+            span.get("file").and_then(Value::as_str),
+            span.get("start_byte").and_then(Value::as_u64),
+            span.get("end_byte").and_then(Value::as_u64),
+        ) else {
+            continue;
+        };
+        if file != source_name {
+            continue;
+        }
+        let (Ok(start), Ok(end)) = (usize::try_from(start), usize::try_from(end)) else {
+            continue;
+        };
+        if source.get(start..end).is_none() {
+            continue;
+        }
+        let Some(span) = SourceSpan::new(file, start, end) else {
+            continue;
+        };
+        let mut evidence = vec![EvidenceLocation::Source(span)];
+        if let Some(pc) = hotspot
+            .get("entry_pc")
+            .and_then(Value::as_u64)
+            .and_then(|pc| usize::try_from(pc).ok())
+        {
+            evidence.push(EvidenceLocation::Bytecode(BytecodePc {
+                artifact: "forensic-verified-runtime".into(),
+                pc,
+            }));
+        }
+        let reasons: Vec<String> = case
+            .get("anomalies")
+            .and_then(Value::as_array)
+            .map(|array| {
+                array
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if reasons.is_empty() {
+            continue;
+        }
+        let kind = if reasons.iter().any(|reason| {
+            reason.contains("preview") || reason.contains("shares") || reason.contains("convertTo")
+        }) {
+            FindingKind::RoundingAsymmetry
+        } else {
+            FindingKind::AccountingDrift
+        };
+        let Some(contract) = hotspot.get("declaring_contract").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(function) = hotspot.get("function").and_then(Value::as_str) else {
+            continue;
+        };
+        output.push(EconomicCandidate { contract: ContractId(contract.into()), function: FunctionId(function.into()), kind,
+            status: "UNVERIFIED".into(), confidence: Confidence::Tentative,
+            rules: vec!["forensic-quarantine-observed".into()], reasons,
+            assumptions: vec!["Read-only fixed-block observation; reproduce with a target-specific local harness before making a vulnerability claim".into()], evidence });
+    }
+    Ok(output)
 }
 
 fn source_functions(
@@ -346,6 +488,28 @@ pub fn build_context_package(
     slither_json: Option<&str>,
     runtime_hex: Option<&str>,
 ) -> Result<ContextPackage, String> {
+    build_context_package_with_forensic(
+        source_name,
+        source,
+        solc_json,
+        compiler_sha256,
+        engine_sha256,
+        slither_json,
+        runtime_hex,
+        None,
+    )
+}
+
+pub fn build_context_package_with_forensic(
+    source_name: &str,
+    source: &str,
+    solc_json: &str,
+    compiler_sha256: &str,
+    engine_sha256: &str,
+    slither_json: Option<&str>,
+    runtime_hex: Option<&str>,
+    forensic_json: Option<&str>,
+) -> Result<ContextPackage, String> {
     let output: Value =
         serde_json::from_str(solc_json).map_err(|error| format!("invalid solc JSON: {error}"))?;
     let source_entry = output
@@ -363,7 +527,14 @@ pub fn build_context_package(
         serde_json::to_vec(ast).map_err(|error| format!("cannot encode AST: {error}"))?;
     let functions = reconstruct_from_ast_json(solc_json, source_name, source)?;
     let records = source_functions(ast, source_id, source_name, source)?;
-    let analysis = analyze_economic_functions(&functions, source_name, source, slither_json)?;
+    let mut analysis = analyze_economic_functions(&functions, source_name, source, slither_json)?;
+    if let Some(forensic_json) = forensic_json {
+        let runtime_hex =
+            runtime_hex.ok_or("forensic import requires --bytecode for identity binding")?;
+        let imported = forensic_candidates(forensic_json, source_name, source, runtime_hex)?;
+        analysis.metrics.candidates_after_deduplication += imported.len();
+        analysis.candidates.extend(imported);
+    }
     let runtime_sha256 = runtime_hex
         .map(|value| {
             let normalized = normalized_runtime_hex(value)?;
@@ -379,6 +550,7 @@ pub fn build_context_package(
         ast_sha256: sha256(&ast_bytes),
         runtime_sha256,
         slither_json_sha256: slither_json.map(|value| sha256(value.as_bytes())),
+        forensic_json_sha256: forensic_json.map(|value| sha256(value.as_bytes())),
         evm_version: None,
     };
     let mut slices = Vec::new();
@@ -478,6 +650,26 @@ pub fn load_or_build_context_package_with_evm_version(
     runtime_hex: Option<&str>,
     evm_version: Option<&str>,
 ) -> Result<CachedContextPackage, String> {
+    load_or_build_context_package_with_forensic(
+        source_path,
+        solc_path,
+        cache_dir,
+        slither_json,
+        runtime_hex,
+        evm_version,
+        None,
+    )
+}
+
+pub fn load_or_build_context_package_with_forensic(
+    source_path: &Path,
+    solc_path: &Path,
+    cache_dir: &Path,
+    slither_json: Option<&str>,
+    runtime_hex: Option<&str>,
+    evm_version: Option<&str>,
+    forensic_json: Option<&str>,
+) -> Result<CachedContextPackage, String> {
     let source = fs::read_to_string(source_path)
         .map_err(|error| format!("cannot read {}: {error}", source_path.display()))?;
     let source_name = source_path
@@ -506,14 +698,16 @@ pub fn load_or_build_context_package_with_evm_version(
         })
         .transpose()?;
     let slither_sha256 = slither_json.map(|value| sha256(value.as_bytes()));
+    let forensic_sha256 = forensic_json.map(|value| sha256(value.as_bytes()));
     let key = sha256(
         format!(
-            "{PACKAGE_SCHEMA}\n{}\n{compiler_sha256}\n{engine_sha256}\n{}\n{}\n{}\n{}",
+            "{PACKAGE_SCHEMA}\n{}\n{compiler_sha256}\n{engine_sha256}\n{}\n{}\n{}\n{}\n{}",
             source_name,
             sha256(source.as_bytes()),
             slither_sha256.as_deref().unwrap_or("-"),
             runtime_sha256.as_deref().unwrap_or("-"),
-            evm_version.unwrap_or("-")
+            evm_version.unwrap_or("-"),
+            forensic_sha256.as_deref().unwrap_or("-")
         )
         .as_bytes(),
     );
@@ -562,6 +756,10 @@ pub fn load_or_build_context_package_with_evm_version(
                         .pointer("/digests/evm_version")
                         .and_then(Value::as_str)
                         == evm_version
+                    && package
+                        .pointer("/digests/forensic_json_sha256")
+                        .and_then(Value::as_str)
+                        == forensic_sha256.as_deref()
                 {
                     return Ok(CachedContextPackage {
                         cache_hit: true,
@@ -576,7 +774,7 @@ pub fn load_or_build_context_package_with_evm_version(
     }
     let solc_json =
         compile_source_ast_text_with_evm_version(source_name, &source, solc_path, evm_version)?;
-    let mut built = build_context_package(
+    let mut built = build_context_package_with_forensic(
         source_name,
         &source,
         &solc_json,
@@ -584,6 +782,7 @@ pub fn load_or_build_context_package_with_evm_version(
         &engine_sha256,
         slither_json,
         runtime_hex,
+        forensic_json,
     )?;
     built.digests.evm_version = evm_version.map(str::to_owned);
     let package = serde_json::to_value(&built)
@@ -596,4 +795,35 @@ pub fn load_or_build_context_package_with_evm_version(
         cache_key: key,
         package,
     })
+}
+
+#[cfg(test)]
+mod forensic_import_tests {
+    use super::{forensic_candidates, sha256};
+    use serde_json::json;
+
+    #[test]
+    fn anomaly_reenters_m5_as_unverified_candidate_only_when_identity_matches() {
+        let source = "contract Vault {}";
+        let runtime = "0x6000";
+        let report = json!({
+            "schema": "forensic-map-v1",
+            "identity": {
+                "analysis_source_name": "Vault.sol",
+                "analysis_source_sha256": sha256(source.as_bytes()),
+                "runtime_sha256": sha256(&[0x60,0x00]),
+                "exact_onchain_runtime": true,
+                "exact_compiler_runtime": true,
+                "immutable_masked_compiler_runtime": false
+            },
+            "hotspots": [{"declaring_contract":"Vault","function":"deposit()","source_span":{"file":"Vault.sol","start_byte":0,"end_byte":8},"entry_pc":0}],
+            "quarantine_cases": [{"status":"anomaly_observed","originating_function":"Vault::deposit()","anomalies":["positive deposit previews zero shares"]}]
+        });
+        let candidates =
+            forensic_candidates(&report.to_string(), "Vault.sol", source, runtime).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].status, "UNVERIFIED");
+        assert_eq!(candidates[0].rules, ["forensic-quarantine-observed"]);
+        assert!(forensic_candidates(&report.to_string(), "Vault.sol", "other", runtime).is_err());
+    }
 }

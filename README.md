@@ -33,6 +33,7 @@ The Rust engine reconstructs a partial economic model from source and a bounded 
 See the [build and audit checklist](docs/ROADMAP-CHECKLIST.md) for the path from repository foundation through evidence review and final report.
 The [tooling strategy](docs/TOOLING-STRATEGY.md) compares static analyzers, fuzzers, and formal tools for this economic scope and explains when they can reduce LLM usage.
 The [VPS setup](docs/VPS-SETUP.md) records the verified development server, installed tools, and current deployment limits.
+The [forensic quarantine cycle](docs/FORENSIC-QUARANTINE.md) maps weak points, audits selected variables in a second pass, and rebuilds priorities before any candidate can reach M5.
 
 ## Status
 
@@ -51,6 +52,8 @@ M8 snapshots a case into a private evidence bundle. A report can reach `REPORT_R
 The M7 judge records observed fuzz runs and target LCOV coverage; optional invariant handler calls/reverts remain separate from verified economic calls to the target. The synthetic pilot measured these outputs. The M4 candidate selector did not flag that fixture, so the pilot cases were prepared manually and the full M4–M7 path remains unvalidated.
 
 A [real Sepolia pilot](docs/REAL-EVM-PILOT.md) connected verified multi-file source and deployed runtime for an ERC-4626 vault through M1–M6. The compiler's two constructor immutables explain the runtime differences; M4 found no eligible candidate, so M7 correctly created no case and M8 had no evidence to package. This validates the empty path on a real EVM target, while the positive candidate path still needs calibration and an authorized case.
+
+The Rust forensic cycle now runs automatically from one manifest. It verifies a fixed-block runtime, scores source/bytecode hotspots, quarantines selected variables for deeper crosschecks and read-only boundary probes, then rebuilds the map. Only observed anomalies tied to the same source and runtime may become `UNVERIFIED` M5 candidates. The Sepolia run found no sampled anomaly; that is not a security clearance.
 
 ## Development
 

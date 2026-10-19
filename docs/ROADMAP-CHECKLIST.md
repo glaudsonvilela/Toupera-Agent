@@ -101,6 +101,10 @@ O M8 está implementado no recorte de um arquivo source-first, com reprodução 
 - [x] Registrar plano M6 vazio e provar que nenhuma chamada DeepSeek foi necessária.
 - [x] Confirmar que M7 gera zero casos e que M8 não libera relatório sem caso.
 - [ ] Validar o ramo automático **com candidato** M4→M5→M6→M7→M8 em alvo autorizado ou fixture calibrada; o contrato Sepolia não produziu candidato.
+- [x] Reconstruir mapa forense de zonas sensíveis e priorizar caminhos com justificativas de source, runtime e incertezas.
+- [x] Encaminhar zonas prioritárias a uma segunda passagem de quarentena com leitores/escritores, fluxos, PCs e sondagens `eth_call` no bloco fixado.
+- [x] Refazer o mapa após a quarentena e conectar anomalias observadas ao M5 somente com vínculo de identidade; no alvo real nenhuma anomalia foi observada.
+- [ ] Validar em alvo autorizado o ramo de quarentena **com anomalia real**, hipótese M6, reprodução M7 e revisão M8.
 
 Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero candidatos é parada correta para este alvo, não uma avaliação de segurança completa nem prova de conexão do ramo positivo.
 

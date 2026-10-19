@@ -1,5 +1,11 @@
 # Instruções para futuras sessões do Codex
 
+## Ciclo forense/quarentena, 2026-10-18
+
+- `forensic_probe.rs` implementa: manifesto `forensic-input-v1` → source/runtime/Slither + RPC de bloco fixado verificado → mapa de zonas com score explicável → até 24 quarentenas de variáveis/caminhos → segunda sondagem read-only e cruzamento de evidências → reconstrução integral do mapa. Anomalia observada pode entrar em M5 como `UNVERIFIED` por `--forensic`; M5 rejeita source/runtime divergentes e inclui relatório na chave de cache. Consultar `docs/FORENSIC-QUARANTINE.md`.
+- YieldVault Sepolia: 29 zonas, 19 quarentenas, 78 sondagens, 15 relações, zero anomalias nas amostras; M5/M6 zero candidatos/requests. Histórico de eventos parcial. Não chamar `sampled_no_anomaly_observed` de ausência de bugs. Sem transações ou DeepSeek. Testes Rust: 27 passaram. Próximo gate é anomalia real autorizada → hipótese M6 → Foundry M7 → revisão M8.
+- O fallback `sepolia.gateway.tenderly.co` foi aceito depois de validar chain ID, bloco e runtime; o RPC primário ficou indisponível para estado histórico. Preservar `web/` não rastreado, e manter artefatos de alvo em `private-output/` ignorado.
+
 1. Leia primeiro `/agente.md`.
 2. Trabalhe em etapas pequenas.
 3. Não faça grandes refactors sem necessidade.

@@ -2,6 +2,8 @@
 
 O CLI constrói um pacote local por arquivo Solidity explícito. Ele executa o `solc` local, reconstrói a IR do M2, aplica a triagem M4 e produz um slice por candidato deduplicado. O recorte continua limitado a um arquivo sem imports. Candidatos são `UNVERIFIED`; o pacote não confirma vulnerabilidades nem chama uma IA.
 
+O parâmetro opcional `--forensic <report.json>` importa apenas anomalias observadas por `--forensic-probe`, depois de conferir identidade do source e runtime, e as mantém `UNVERIFIED`. O hash do relatório entra na chave do cache. Amostras sem anomalia não geram candidato. Veja [Mapa forense e quarentena](FORENSIC-QUARANTINE.md).
+
 ```sh
 umask 077
 mkdir -m 700 -p private-output

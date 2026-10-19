@@ -1,5 +1,12 @@
 # Memória operacional — Toupera Agent
 
+## Etapa mais recente — mapa forense e quarentena (2026-10-18)
+
+- Pedido do usuário: o **código Rust** deve refazer o mapa de pontos fracos, isolar variável/caminho questionável em um segundo motor para auditoria mais profunda e devolver o resultado ao primeiro motor para reavaliação completa. Implementado em `crates/security-engine/src/forensic_probe.rs`, CLI `--forensic-probe`, integração M5 `--forensic` e documentação `docs/FORENSIC-QUARANTINE.md`.
+- Motor 1 pontua 29 zonas no YieldVault Sepolia; motor 2 abriu 19 casos, fez 78 consultas read-only de borda e cruzou source spans, leitores/escritores, fluxos, storage, PCs, estado e eventos; motor 1 refez o mapa. Nenhuma anomalia observada nas amostras; M5/M6 mantiveram zero candidatos/pedidos. Não inferir segurança. A janela de eventos foi apenas 20.000 blocos; a cronologia desde o deploy está incompleta.
+- Identidade fixa: chain 11155111, bloco 11944548, hash `0x069c69928bac2b458e7e253512ae23919065b6fb8c94eb2a4b8f66864ef5d46a`, runtime SHA-256 `ee2630d13cdc5b0f2e8b12f512cdafff283015058f10a96322662441a3cff1f7`. Fallback RPC só depois de verificar chain, bloco e bytecode; source achatado não equivale ao bundle implantado, que foi recompilado com duas faixas `immutable`.
+- Unitários passaram (27 testes) e execução real do novo CLI e M5/M6 concluíram. O ramo `anomaly_observed` → M5 tem teste sintético de vínculo de identidade, mas precisa de validação real com hipótese, harness e revisão antes de alegar pipeline positivo completo. Preservar `web/` não rastreado e artefatos brutos em `private-output/`.
+
 ## Objetivo atual
 Construir um auditor de segurança econômica Solidity/EVM para vaults, oracles, accounting, shares/assets, pricing, fees e rounding. O motor Rust deve reconstruir o modelo econômico do contrato antes de formular hipóteses.
 

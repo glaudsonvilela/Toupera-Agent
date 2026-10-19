@@ -4,22 +4,50 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use security_engine::{
-    CachingProvider, CompanionAnalysis, DeepSeekProvider, RateCard, analyze_economic_functions,
-    compare_with_solc_contract, empty_review_report, finalize_evidence_bundle,
-    import_gigahorse_tac, import_heimdall_abi, judge_foundry_case,
-    load_or_build_context_package_with_evm_version, prepare_evidence_bundle, prepare_foundry_cases,
+    CachingProvider, CompanionAnalysis, DeepSeekProvider, ForensicInput, RateCard,
+    analyze_economic_functions, compare_with_solc_contract, empty_review_report,
+    finalize_evidence_bundle, import_gigahorse_tac, import_heimdall_abi, judge_foundry_case,
+    load_or_build_context_package_with_forensic, prepare_evidence_bundle, prepare_foundry_cases,
     prepare_review_plan, reconstruct_bytecode_hex, reconstruct_source_file, reject_foundry_case,
-    run_review,
+    run_forensic_probe, run_review,
 };
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --foundry-reject <case-dir> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
+            "usage: security-engine <source.sol> [solc-path] | --forensic-probe <manifest.json> | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>] [--forensic <report.json>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --foundry-reject <case-dir> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
         );
         return ExitCode::FAILURE;
     };
+    if source == "--forensic-probe" {
+        let arguments: Vec<_> = args.collect();
+        if arguments.len() != 1 {
+            eprintln!("usage: security-engine --forensic-probe <manifest.json>");
+            return ExitCode::FAILURE;
+        }
+        let result = fs::read_to_string(&arguments[0])
+            .map_err(|error| format!("cannot read {}: {error}", arguments[0]))
+            .and_then(|text| {
+                serde_json::from_str::<ForensicInput>(&text)
+                    .map_err(|error| format!("invalid forensic manifest: {error}"))
+            })
+            .and_then(|input| run_forensic_probe(&input));
+        return match result {
+            Ok(report) => {
+                if let Err(error) = serde_json::to_writer(std::io::stdout(), &report) {
+                    eprintln!("cannot write forensic report: {error}");
+                    return ExitCode::FAILURE;
+                }
+                println!();
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if source == "--evidence-plan" || source == "--evidence-finalize" {
         let arguments: Vec<_> = args.collect();
         let result = if source == "--evidence-plan" {
@@ -228,47 +256,46 @@ fn main() -> ExitCode {
         let arguments: Vec<_> = args.collect();
         if arguments.len() < 3 || (arguments.len() - 3) % 2 != 0 {
             eprintln!(
-                "usage: security-engine --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>]"
+                "usage: security-engine --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>] [--forensic <report.json>]"
             );
             return ExitCode::FAILURE;
         }
         let mut slither_path = None;
         let mut runtime_path = None;
         let mut evm_version = None;
+        let mut forensic_path = None;
         for pair in arguments[3..].chunks_exact(2) {
             match pair[0].as_str() {
                 "--slither" if slither_path.is_none() => slither_path = Some(&pair[1]),
                 "--bytecode" if runtime_path.is_none() => runtime_path = Some(&pair[1]),
                 "--evm-version" if evm_version.is_none() => evm_version = Some(&pair[1]),
+                "--forensic" if forensic_path.is_none() => forensic_path = Some(&pair[1]),
                 _ => {
                     eprintln!("unknown or repeated context option: {}", pair[0]);
                     return ExitCode::FAILURE;
                 }
             }
         }
-        let result = slither_path
-            .map(|path| {
-                fs::read_to_string(path).map_err(|error| format!("cannot read {path}: {error}"))
-            })
-            .transpose()
-            .and_then(|slither| {
-                runtime_path
-                    .map(|path| {
-                        fs::read_to_string(path)
-                            .map_err(|error| format!("cannot read {path}: {error}"))
-                    })
-                    .transpose()
-                    .and_then(|runtime| {
-                        load_or_build_context_package_with_evm_version(
-                            Path::new(&arguments[0]),
-                            Path::new(&arguments[2]),
-                            Path::new(&arguments[1]),
-                            slither.as_deref(),
-                            runtime.as_deref(),
-                            evm_version.map(String::as_str),
-                        )
-                    })
-            });
+        let result = (|| -> Result<_, String> {
+            let read_optional = |path: Option<&String>| {
+                path.map(|path| {
+                    fs::read_to_string(path).map_err(|error| format!("cannot read {path}: {error}"))
+                })
+                .transpose()
+            };
+            let slither = read_optional(slither_path)?;
+            let runtime = read_optional(runtime_path)?;
+            let forensic = read_optional(forensic_path)?;
+            load_or_build_context_package_with_forensic(
+                Path::new(&arguments[0]),
+                Path::new(&arguments[2]),
+                Path::new(&arguments[1]),
+                slither.as_deref(),
+                runtime.as_deref(),
+                evm_version.map(String::as_str),
+                forensic.as_deref(),
+            )
+        })();
         return match result {
             Ok(package) => {
                 if let Err(error) = serde_json::to_writer(std::io::stdout(), &package) {
