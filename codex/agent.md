@@ -408,3 +408,15 @@ A última execução automática wCOP é `private-output/site-jobs/ba5146dd978d4
 - O provedor respondeu 403 para estado de bloco antigo. O coletor agora grava essa lacuna, usa o estado atual do trabalho e deixa o Rust classificar a linha como limitada.
 - A aplicação retrospectiva `7011fcd042db41e5` encontrou uma troca registrada, dois blocos de interesse, uma leitura histórica indisponível e concordância entre a última implementação registrada e a atual.
 - O trabalho integrado foi reiniciado após corrigir a preparação do diretório de logs. Nenhum trabalho incompleto é apresentado como resultado final.
+
+## Rodada integrada após as novas etapas (2026-10-19)
+
+- Trabalho `7d78331aa23a4592` concluído no VPS, bloco `26228635`, 236 registros de rede reconciliados. O Rust ordenou 33 entradas e 74 ligações, o ciclo fez 38 escolhas com +544 PCs e parou por platô.
+- Mapa final: 2478/3014 PCs observados receberam local do compilador, incluindo 541 de arquivos internos. O resultado não mede todos os caminhos alcançáveis.
+- Linha de versões `LIMITADO` por estado antigo indisponível; código atual e último registro concordam. Guardião conferiu identidade e mapa; filtro final ficou em `local_review`, zero itens para IA e zero diferenças locais registradas.
+- Ver `docs/WCOP-RODADA-7d78331aa23a4592.md`.
+
+## Continuação do mapa — 2026-10-19
+
+- Leia `docs/WCOP-FOCO-MAPA-2026-10-19.md` e `agente.md` antes de ampliar o planejador. O fim do mapa do compilador é validado pelo Rust; posições posteriores ficam fora da prioridade, mas continuam nas contagens brutas.
+- A conferência feita nesta etapa reaproveitou arquivos privados do VPS. Não confunda o orçamento estimado do planejador com cobertura alcançável ou com nova observação do contrato.

@@ -55,6 +55,15 @@ pub fn plan_wcop_focus(engine: &Value, map: &Value, base: &Value, extra: Option<
     if map["source_assigned_pcs"].as_u64() != Some(locations.len() as u64) {
         return Err("line count differs".into());
     }
+    let map_end = map["last_compiler_mapped_pc"].as_u64().ok_or("map end missing")?;
+    if !all_pcs.contains(&map_end)
+        || map["positions_after_compiler_map"].as_u64()
+            != Some(all_pcs.iter().filter(|pc| **pc > map_end).count() as u64)
+        || map["observed_positions_after_compiler_map"].as_u64()
+            != Some(seen.iter().filter(|pc| **pc > map_end).count() as u64)
+        || locations.keys().any(|pc| *pc > map_end) {
+        return Err("compiler map boundary differs from runtime".into());
+    }
     let mut block_for = HashMap::<u64, String>::new();
     let mut block_pcs = HashMap::<String, Vec<u64>>::new();
     for row in engine["blocks"].as_array().ok_or("blocks missing")? {
@@ -154,6 +163,9 @@ pub fn plan_wcop_focus(engine: &Value, map: &Value, base: &Value, extra: Option<
     }
     Ok(json!({"format": 1, "contract": address, "block": block,
         "engine_code_sha256": code_hash, "observed_pcs": seen.len(),
+        "last_compiler_mapped_pc": map_end,
+        "positions_after_compiler_map": map["positions_after_compiler_map"],
+        "observed_positions_after_compiler_map": map["observed_positions_after_compiler_map"],
         "open_links": open_links.len(), "selector_focus": selector_focus,
         "ranked_links": ranked, "limit": "rank orders local reading; it is not a finding"}))
 }

@@ -48,9 +48,17 @@ pub fn plan_adaptive_step(engine: &Value, state: &Value) -> Result<Value, String
     if !seen.is_subset(&all_pcs) || !baseline.is_subset(&seen) {
         return Err("PCs fora do runtime".into());
     }
+    let map_end = state["focus_last_compiler_mapped_pc"].as_u64();
+    if map_end.is_some_and(|end| !all_pcs.contains(&end))
+        || (state["focus_engine_code_sha256"].is_string() && map_end.is_none()) {
+        return Err("limite do mapa fora do runtime".into());
+    }
+    let selection_gain = |row: &Value, key: &str, mapped_key: &str| {
+        row[if map_end.is_some() { mapped_key } else { key }].as_u64().unwrap_or(0)
+    };
     let plateau = attempts.iter().rev().take_while(|row|
-        row["new_pcs"].as_u64().unwrap_or(0) == 0
-        && row["new_edges"].as_u64().unwrap_or(0) == 0
+        selection_gain(row, "new_pcs", "new_within_map_pcs") == 0
+        && selection_gain(row, "new_edges", "new_within_map_edges") == 0
     ).count();
     let max_attempts = state["max_attempts"].as_u64().unwrap_or(32).clamp(1, 40) as usize;
     let untried_promising = candidates.iter().any(|candidate| {
@@ -89,7 +97,9 @@ pub fn plan_adaptive_step(engine: &Value, state: &Value) -> Result<Value, String
         .map(|(_, block)| block.clone()).collect();
     let frontier_sources: HashSet<String> = graph.iter()
         .filter(|(from, next)| seen_blocks.contains(*from)
-            && next.iter().any(|to| !seen_blocks.contains(to)))
+            && next.iter().any(|to| !seen_blocks.contains(to)
+                && block_pcs.get(to).is_some_and(|pcs| pcs.iter().any(|pc|
+                    !seen.contains(pc) && map_end.is_none_or(|end| *pc <= end)))))
         .map(|(from, _)| from.clone()).collect();
     let mut entries = HashMap::<String, u64>::new();
     for selector in engine["selectors"].as_array().ok_or("seletores ausentes")? {
@@ -110,9 +120,9 @@ pub fn plan_adaptive_step(engine: &Value, state: &Value) -> Result<Value, String
         }
         if let Some(family) = row["family"].as_str() {
             *family_n.entry(family.to_owned()).or_default() += 1;
-            let reward = (row["new_pcs"].as_u64().unwrap_or(0).min(80) as f64) * 0.45
-                + (row["new_edges"].as_u64().unwrap_or(0).min(24) as f64) * 1.8
-                + (row["new_uncertain_pcs"].as_u64().unwrap_or(0).min(15) as f64) * 0.7
+            let reward = (selection_gain(row, "new_pcs", "new_within_map_pcs").min(80) as f64) * 0.45
+                + (selection_gain(row, "new_edges", "new_within_map_edges").min(24) as f64) * 1.8
+                + (selection_gain(row, "new_uncertain_pcs", "new_within_map_uncertain_pcs").min(15) as f64) * 0.7
                 + if row["repeatable_deviation"] == true { 60.0 } else { 0.0 };
             *family_reward.entry(family.to_owned()).or_default() += reward;
         }
@@ -160,7 +170,7 @@ pub fn plan_adaptive_step(engine: &Value, state: &Value) -> Result<Value, String
                 while let Some(block) = queue.pop_front() {
                     if !reached.insert(block.clone()) || reached.len() > 600 { continue; }
                     count += block_pcs.get(&block).into_iter().flatten()
-                        .filter(|pc| !seen.contains(pc)).count();
+                        .filter(|pc| !seen.contains(pc) && map_end.is_none_or(|end| **pc <= end)).count();
                     if frontier_sources.contains(&block) { frontiers += 1; }
                     if let Some(next) = graph.get(&block) { queue.extend(next.iter().cloned()); }
                 }
@@ -174,8 +184,8 @@ pub fn plan_adaptive_step(engine: &Value, state: &Value) -> Result<Value, String
         let setup_len = candidate["setup"].as_array().map(|steps| steps.len()).unwrap_or(0);
         let followed_gain = candidate["derived_from"].as_str().is_some_and(|parent|
             attempts.iter().any(|row| row["id"].as_str() == Some(parent)
-                && (row["new_pcs"].as_u64().unwrap_or(0) > 0
-                    || row["new_edges"].as_u64().unwrap_or(0) > 0)));
+                && (selection_gain(row, "new_pcs", "new_within_map_pcs") > 0
+                    || selection_gain(row, "new_edges", "new_within_map_edges") > 0)));
         let focus = &state["focus_by_selector"][selector];
         let focus_score = focus["score"].as_f64().unwrap_or(0.0).clamp(0.0, 50.0);
         let focus_main = focus["unseen_main_pcs"].as_u64().unwrap_or(0).min(60);
@@ -204,5 +214,7 @@ pub fn plan_adaptive_step(engine: &Value, state: &Value) -> Result<Value, String
         "score": (score * 100.0).round() / 100.0, "reachable_unseen_pcs": reachable,
         "reachable_frontiers": frontiers, "frontier_blocks_total": frontier_sources.len(),
         "attempts": attempts.len(), "plateau": plateau,
-        "policy": "ganho observado, saídas adjacentes ainda abertas e sequências curtas locais"}))
+        "selection_map_end_pc": map_end,
+        "unmapped_tail_pcs": map_end.map(|end| all_pcs.iter().filter(|pc| **pc > end).count()),
+        "policy": "ganho observado até o fim do mapa, saídas adjacentes e sequências curtas locais"}))
 }

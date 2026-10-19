@@ -378,3 +378,17 @@ Ver `docs/WCOP-MAPA-LINHAS-2026-10-19.md`.
 - [x] Ligar registros de troca a blocos fixos e conferir código, posição, oferta e contas vistas em cada versão.
 
 - [x] Criar filtro Rust de revisão: só permitir contexto compacto com diferença local repetida e vínculos observados.
+
+- [x] Concluir uma rodada integrada após mapa, ordem Rust, linha de versões e filtro; ver `docs/WCOP-RODADA-7d78331aa23a4592.md`.
+- [ ] Conferir estado da troca em bloco antigo por provedor que disponibilize esse histórico; atual provedor respondeu 403.
+- [ ] Expandir leitura para condições ainda não observadas; 38 escolhas pararam por platô, sem diferença local registrada.
+
+## Continuação do mapa — limite do compilador (2026-10-19)
+
+- [x] Conferir no Rust o fim do mapa contra runtime e leituras.
+- [x] Separar os PCs posteriores do ganho que orienta a próxima escolha, preservando as contagens totais.
+- [x] Conferir offline no VPS: 37 PCs após o mapa, zero observados no trabalho `7d78331aa23a4592`.
+- [ ] Classificar posições sem linha dentro do mapa e ligar novas passagens do runtime à medição de ramos da fonte.
+- [ ] Medir o efeito numa nova rodada local antes de afirmar mudança de cobertura.
+
+Ver `docs/WCOP-FOCO-MAPA-2026-10-19.md`.

@@ -365,8 +365,13 @@ def run(job_id):
                           or focus.get("engine_code_sha256") != code_hash
                           or focus.get("observed_pcs") != len(set(baseline["pcs"]))):
                 raise ValueError("mapa inicial fora do bloco")
+            map_end = focus.get("last_compiler_mapped_pc") if focus else None
+            if focus and (not isinstance(map_end, int) or isinstance(map_end, bool)
+                          or map_end not in instructions):
+                raise ValueError("limite do mapa inválido")
             state = {"format": 1, "address": TOKEN, "block": block,
                      "focus_engine_code_sha256": code_hash if focus else None,
+                     "focus_last_compiler_mapped_pc": map_end,
                      "focus_by_selector": focus.get("selector_focus") or {},
                      "engine_code_sha256": code_hash, "candidates": pool,
                      "baseline_pcs": sorted(set(baseline["pcs"])),
@@ -395,6 +400,11 @@ def run(job_id):
                 previous_edges = {tuple(edge) for edge in state["visited_edges"]}
                 new_pcs = known - previous_pcs
                 new_edges = edges - previous_edges
+                mapped_new_pcs = {pc for pc in new_pcs if map_end is None or pc <= map_end}
+                mapped_new_edges = {edge for edge in new_edges
+                                    if map_end is None or all(
+                                        node.startswith("pc:") and int(node[3:]) <= map_end
+                                        for node in edge)}
                 prior_blocks = {block_for[pc] for pc in previous_pcs if pc in block_for}
                 new_blocks = {block_for[pc] for pc in new_pcs if pc in block_for} - prior_blocks
                 frontier_crossings = {(left, right) for left, right in edges
@@ -413,15 +423,19 @@ def run(job_id):
                        "setup_steps": measured["setup_steps"], "setup_ok": measured["setup_ok"],
                        "blocks": sorted(set(block for block in measured["blocks"] if block)),
                        "new_pcs": len(new_pcs), "new_edges": len(new_edges),
+                       "new_within_map_pcs": len(mapped_new_pcs) if map_end is not None else None,
+                       "new_within_map_edges": len(mapped_new_edges) if map_end is not None else None,
                        "new_blocks": len(new_blocks),
                        "frontier_crossings": len(frontier_crossings),
                        "frontier_blocks_total": plan.get("frontier_blocks_total", 0),
                        "reachable_frontiers": plan.get("reachable_frontiers", 0),
                        "new_uncertain_pcs": len(new_pcs & uncertain),
+                       "new_within_map_uncertain_pcs": (len(mapped_new_pcs & uncertain)
+                                                        if map_end is not None else None),
                        "deviation": discrepancy, "repeatable_deviation": measured["repeatable"],
                        "score": plan["score"]}
                 state["attempts"].append(row)
-                grow_candidates(state, item, new_pcs, new_edges, discrepancy)
+                grow_candidates(state, item, mapped_new_pcs, mapped_new_edges, discrepancy)
                 trace_cases.append({"case": item["id"], "group": "adaptativo",
                                     "selector": item["selector"], "failed": measured["failed"],
                                     "steps": len(logs), "implementation_steps": len(pcs),
@@ -443,6 +457,12 @@ def run(job_id):
                        "baseline_pcs": len(set(baseline["pcs"])),
                        "combined_pcs": len(state["visited_pcs"]),
                        "new_pcs": len(set(state["visited_pcs"]) - set(baseline["pcs"])),
+                       "new_within_map_pcs": (sum(row["new_within_map_pcs"] for row in state["attempts"])
+                                                if map_end is not None else None),
+                       "new_tail_pcs": (sum(row["new_pcs"] - row["new_within_map_pcs"]
+                                            for row in state["attempts"])
+                                        if map_end is not None else None),
+                       "map_end_pc": map_end,
                        "new_edges": len(set(map(tuple, state["visited_edges"]))
                                         - set(map(tuple, baseline["observed_transitions"]))),
                        "setup_attempts": sum(bool(row["setup_steps"]) for row in state["attempts"]),

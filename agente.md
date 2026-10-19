@@ -449,3 +449,19 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 - O provedor respondeu 403 para estado de bloco antigo. O coletor agora grava essa lacuna, usa o estado atual do trabalho e deixa o Rust classificar a linha como limitada.
 - A aplicação retrospectiva `7011fcd042db41e5` encontrou uma troca registrada, dois blocos de interesse, uma leitura histórica indisponível e concordância entre a última implementação registrada e a atual.
 - O trabalho integrado foi reiniciado após corrigir a preparação do diretório de logs. Nenhum trabalho incompleto é apresentado como resultado final.
+
+## Rodada integrada após as novas etapas (2026-10-19)
+
+- Trabalho `7d78331aa23a4592` concluído no VPS, bloco `26228635`, 236 registros de rede reconciliados. O Rust ordenou 33 entradas e 74 ligações, o ciclo fez 38 escolhas com +544 PCs e parou por platô.
+- Mapa final: 2478/3014 PCs observados receberam local do compilador, incluindo 541 de arquivos internos. O resultado não mede todos os caminhos alcançáveis.
+- Linha de versões `LIMITADO` por estado antigo indisponível; código atual e último registro concordam. Guardião conferiu identidade e mapa; filtro final ficou em `local_review`, zero itens para IA e zero diferenças locais registradas.
+- Ver `docs/WCOP-RODADA-7d78331aa23a4592.md`.
+
+
+## Etapa: limite do mapa na escolha Rust (2026-10-19)
+
+- O Rust agora valida o fim do mapa do compilador e separa as posições posteriores do orçamento que orienta as escolhas. O executor mantém ganhos totais e ganhos dentro do intervalo do mapa em campos diferentes; posições finais continuam visíveis no relatório.
+- Conferência offline no VPS com o trabalho `7d78331aa23a4592`: PC final 8499, 37 posições posteriores e zero observadas. Ao marcar todos os PCs dentro do intervalo do mapa como vistos em um estado temporário, o orçamento de PCs dentro do intervalo do mapa ficou zero; as 37 posições permaneceram separadas.
+- `py_compile`, `cargo check --offline` e `cargo build --release --offline` passaram no VPS. A primeira compilação release como toupera encontrou um artefato de root sem permissão; a repetição como root concluiu.
+- Arquivos alterados: `wcop_focus.rs`, `adaptive_cycle.rs`, `wcop_adaptive.py`, este arquivo, `codex/agent.md`, checklist e `docs/WCOP-FOCO-MAPA-2026-10-19.md`.
+- Nenhuma nova rodada do contrato foi feita; a mudança não demonstra maior cobertura nem uma diferença confirmada. Próximo passo: separar posições internas sem linha e relacionar caminhos do runtime a ramos da fonte. Ver o documento da etapa.
