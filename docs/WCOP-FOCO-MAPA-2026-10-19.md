@@ -20,3 +20,8 @@
 - O mapa do compilador não demonstra que uma posição seja alcançável. A escolha também depende de candidatos e estados disponíveis.
 - A medição retrospectiva confirma separação contábil e de prioridade. Ela não mede aumento de cobertura nem confirma uma diferença no contrato.
 - Próxima etapa: classificar posições sem linha dentro do mapa e relacionar as novas passagens do runtime à medição de ramos da fonte, preservando denominadores distintos.
+
+## Rodada integrada posterior
+
+- Trabalho `92273047cbf7439c`, bloco `26228846`: 38 escolhas, 544 PCs novos dentro do mapa, zero depois do limite e parada por platô.
+- O total observado continuou em 3014/5377 PCs, igual ao trabalho anterior em outro bloco. A etapa melhorou a contabilidade da escolha; não houve ganho de cobertura demonstrado. Ver `WCOP-RODADA-92273047cbf7439c.md`.

@@ -465,3 +465,11 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 - `py_compile`, `cargo check --offline` e `cargo build --release --offline` passaram no VPS. A primeira compilação release como toupera encontrou um artefato de root sem permissão; a repetição como root concluiu.
 - Arquivos alterados: `wcop_focus.rs`, `adaptive_cycle.rs`, `wcop_adaptive.py`, este arquivo, `codex/agent.md`, checklist e `docs/WCOP-FOCO-MAPA-2026-10-19.md`.
 - Nenhuma nova rodada do contrato foi feita; a mudança não demonstra maior cobertura nem uma diferença confirmada. Próximo passo: separar posições internas sem linha e relacionar caminhos do runtime a ramos da fonte. Ver o documento da etapa.
+
+
+## Rodada após o ajuste do mapa (2026-10-19)
+
+- Trabalho `92273047cbf7439c` terminou no VPS no bloco `26228846`. O Rust validou o limite PC 8499; as 38 escolhas acrescentaram 544 PCs dentro do intervalo do mapa e zero nas 37 posições posteriores. Total observado 3014/5377 PCs; 2478 observados com local.
+- Fonte recompilada 38/213 ramos, 74 ligações observadas fora do mapa estático, filtro `local_review` com zero itens externos e zero diferenças locais repetidas. Estado histórico antigo permanece indisponível.
+- As contagens coincidem com a rodada anterior em bloco distinto; não há ganho de cobertura demonstrado. Os três Markdown e logs do trabalho permanecem privados no VPS. Código e documentação foram publicados no Git privado.
+- Ver `docs/WCOP-RODADA-92273047cbf7439c.md`. Próximo passo: posições sem linha dentro do mapa e vínculo entre runtime e ramos da fonte.

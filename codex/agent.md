@@ -420,3 +420,9 @@ A última execução automática wCOP é `private-output/site-jobs/ba5146dd978d4
 
 - Leia `docs/WCOP-FOCO-MAPA-2026-10-19.md` e `agente.md` antes de ampliar o planejador. O fim do mapa do compilador é validado pelo Rust; posições posteriores ficam fora da prioridade, mas continuam nas contagens brutas.
 - A conferência feita nesta etapa reaproveitou arquivos privados do VPS. Não confunda o orçamento estimado do planejador com cobertura alcançável ou com nova observação do contrato.
+
+
+## Rodada integrada após limite do mapa — 2026-10-19
+
+- Leia `docs/WCOP-RODADA-92273047cbf7439c.md`: 38 escolhas, 544 PCs novos dentro do intervalo do mapa, zero depois dele, sem diferença local repetida. A contagem total repetiu a rodada anterior em outro bloco; não alegar maior cobertura.
+- O próximo recorte é classificar posições sem linha dentro do intervalo e comparar passagens do runtime com ramos da fonte, sem misturar denominadores.

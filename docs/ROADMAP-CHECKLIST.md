@@ -389,6 +389,6 @@ Ver `docs/WCOP-MAPA-LINHAS-2026-10-19.md`.
 - [x] Separar os PCs posteriores do ganho que orienta a próxima escolha, preservando as contagens totais.
 - [x] Conferir offline no VPS: 37 PCs após o mapa, zero observados no trabalho `7d78331aa23a4592`.
 - [ ] Classificar posições sem linha dentro do mapa e ligar novas passagens do runtime à medição de ramos da fonte.
-- [ ] Medir o efeito numa nova rodada local antes de afirmar mudança de cobertura.
+- [x] Medir uma nova rodada local: trabalho `92273047cbf7439c`, 38 escolhas e zero PCs após o mapa; total observado igual ao trabalho anterior. Não há ganho de cobertura demonstrado.
 
 Ver `docs/WCOP-FOCO-MAPA-2026-10-19.md`.
