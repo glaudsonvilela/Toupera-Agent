@@ -22,7 +22,12 @@
 ## Primeiro recorte de variáveis executado no VPS
 
 - `--variable-lens` compila AST + storageLayout do source de análise, valida hashes/identidade do relatório forense e `local-coverage`, e produz grafo sintático de atribuições, usos e fatias transitivas. No VPS, `variable-lens-v4.json`: 742 declarações, 180 arestas, 7 estados persistentes, 2 `immutable`. `depositCap` recebe `cap_`/`newCap` e alimenta `cap` em `maxDeposit` na AST achatada.
-- O bundle verificado oferece source map dos PCs: 18/50 faixas amplas foram deliberadamente deixadas sem variável; 17/50 PCs têm referência candidata em faixa curta, marcada tentativa. Não misturar IDs da AST achatada e verificada nem afirmar que uma referência em faixa controla o PC. Sem novo fork/RPC/IA. Leia `docs/VARIABLE-LENS.md`; faltam SSA, fluxo entre funções e novos cenários guiados por estado no VPS. Atualizar ambos os arquivos de agente e o checklist depois de cada etapa. Preservar `web/` não rastreado.
+- O bundle verificado oferece source map dos PCs: 18/50 faixas amplas foram deliberadamente deixadas sem variável; 17/50 PCs têm referência candidata em faixa curta, marcada tentativa. Não misturar IDs da AST achatada e verificada nem afirmar que uma referência em faixa controla o PC. Sem novo fork/RPC/IA. Leia `docs/VARIABLE-LENS.md`; SSA consta abaixo, enquanto fluxo entre funções e novos cenários guiados por estado permanecem abertos. Atualizar ambos os arquivos de agente e o checklist depois de cada etapa. Preservar `web/` não rastreado.
+
+## SlithIR SSA integrado
+
+- `scripts/export-variable-ssa.py` exporta operações SSA com o Python do pipx Slither; `scripts/run-variable-lens.sh` produz SSA e relatório Rust em diretório privado. O Rust valida SHA-256 do source e faz correspondência por offset+nome de declaração. Arestas SSA têm `evidence_source=slither_ssa` e `confidence=inferred_ssa`; arestas AST permanecem separadas.
+- VPS `variable-lens-ssa-v1/`: 1.303 operações, 287 relações SSA, 467 relações totais, 42 operandos posicionados não vinculados. Sem RPC/fork/IA; permissões `0700`/`0600`. Próximos gates: entre funções, mappings/arrays, runtime/source forte e novos estados. Atualizar `agente.md` e este arquivo após cada etapa, mantendo `web/` fora dos commits.
 
 ## Etapa histórica concluída, 2026-10-18
 

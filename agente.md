@@ -23,7 +23,12 @@ Registrar progresso em `docs/ROADMAP-CHECKLIST.md` e neste arquivo a cada etapa.
 
 - `--variable-lens` valida manifesto/relatórios/hashes e executa offline no VPS. `variable-lens-v4.json` registrou 742 declarações do source achatado, 180 relações sintáticas, 7 variáveis de estado persistente, 2 `immutable`; 50 PCs `JUMPI` observados, 18 faixas amplas sem atribuição e 17 faixas curtas com referências candidatas. Não houve novo fork, RPC ou IA.
 - Exemplo de cadeia: `cap_`/`newCap` → `depositCap` → `cap` em `maxDeposit`, com spans e layout da compilação de análise (slot 6). Não atribuir esse slot ao runtime implantado sem validação específica. Fonte verificada e source achatado têm AST IDs diferentes; os PCs mantêm vínculo apenas tentativo por source map.
-- Leia `docs/VARIABLE-LENS.md`. Próximos gates: dependências SSA do Slither, fluxo entre funções/chaves, ligação forte source verificado→runtime e cenários novos de estado/ator/ordem no VPS. Atualizar `codex/agent.md` e checklist após a próxima etapa; preservar `web/`.
+- Leia `docs/VARIABLE-LENS.md`. A etapa SSA está registrada abaixo; próximos gates: fluxo entre funções/chaves, ligação forte source verificado→runtime e cenários novos de estado/ator/ordem no VPS. Atualizar `codex/agent.md` e checklist após a próxima etapa; preservar `web/`.
+
+## Complemento implementado — SlithIR SSA
+
+- `scripts/export-variable-ssa.py` usa Slither 0.11.6 local para exportar operações SSA; `scripts/run-variable-lens.sh` encadeia exportação e Rust em diretório privado. O Rust confere SHA-256 do source, associa operandos posicionados a declarações por nome+offset e adiciona arestas `inferred_ssa` sem misturá-las às `direct_syntax`.
+- Execução somente no VPS em `variable-lens-ssa-v1/`: 1.303 operações SlithIR, 287 relações SSA novas, 467 relações totais e 42 referências posicionadas sem correspondência exata. Arquivos `0600`, diretório `0700`. Sem fork, RPC, IA ou nova diferença econômica. Ainda faltam relações entre funções, chaves/índices e novos cenários de estado; ver `docs/VARIABLE-LENS.md`.
 
 ## Etapa mais recente — cronologia forense automática (2026-10-18)
 

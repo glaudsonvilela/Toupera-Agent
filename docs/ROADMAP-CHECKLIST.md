@@ -141,7 +141,8 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 - [x] Pesquisar e documentar o desenho da segunda leitura por variável, com AST/layout, SlithIR SSA, source map e fatias de dependência; ver [cadeia de variáveis](VARIABLE-LENS.md).
 - [x] Implementar primeiro inventário AST/layout de todas as declarações do source de análise, com leituras, escritas, guardas, atribuições e fatias transitivas por AST ID; execução offline no VPS: 742 declarações e 180 relações. Categorias não presentes no contrato continuam representadas quando declaradas.
 - [x] Alinhar PCs observados ao source map verificado com identidade de runtime conferida, sem unir ASTs distintas por nome; 18/50 faixas amplas ficam sem atribuição, 17/50 têm referências candidatas em faixa curta.
-- [ ] Cruzar SSA do Slither com o grafo Rust e resolver fluxo entre funções, chaves de mappings, arrays, assembly e efeitos externos com proveniência.
+- [x] Exportar SSA do Slither localmente e cruzar com o grafo Rust por nome e offset da declaração, preservando origem e confiança: 1.303 operações, 287 relações inferidas, 42 referências posicionadas sem vínculo no VPS.
+- [ ] Resolver fluxo entre funções, chaves de mappings, arrays, assembly e efeitos externos com proveniência e limites de caminho.
 - [ ] Ligar variáveis do source verificado ao runtime com identidade forte e usar limiares/estado/ator/ordem para gerar novos cenários no VPS; medir ganho de resultados observados.
 - [ ] Medir cobertura por função/ramo do vault com denominador confiável e ampliar sequências conforme lacunas observadas.
 - [x] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
