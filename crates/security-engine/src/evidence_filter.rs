@@ -391,7 +391,9 @@ pub fn filter_evidence(
             observed_jump_sites: observed,
             sites_with_both_outcomes: item["sites_with_both_outcomes"].as_u64().unwrap_or(0)
                 as usize,
-            not_observed_status: if mapped > observed {
+            not_observed_status: if mapped == 0 {
+                "no_unique_source_mapped_site"
+            } else if mapped > observed {
                 "unknown_reachability"
             } else {
                 "all_mapped_sites_observed_not_all_paths"
@@ -617,7 +619,19 @@ pub fn filter_evidence(
         source_numeric_boundaries,
         function_reach,
         mapping_relation_checks,
-        unresolved_indexed_accesses: indexed_ids.len().saturating_sub(matched_ids.len()),
+        unresolved_indexed_accesses: lens["indexed_accesses"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|access| {
+                !access["base_ast_ids"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_i64)
+                    .any(|id| matched_ids.contains(&id))
+            })
+            .count(),
         call_observations,
         static_runtime_sites: scenarios["vault_runtime_jump_sites"].as_u64().unwrap_or(0) as usize,
         observed_runtime_sites: scenarios["vault_jump_sites_observed"].as_u64().unwrap_or(0)

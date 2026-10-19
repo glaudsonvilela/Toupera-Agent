@@ -1,10 +1,24 @@
 TOUPERA — RESUMO DA ETAPA (2026-10-19)
 
-1. O motor Rust ganhou um filtro local entre a coleta de dados e a etapa de IA. Ele confere os hashes dos arquivos, o contrato, o bloco e as versões dos relatórios.
-2. As variáveis são ordenadas pelas relações com funções econômicas, percorrendo até quatro ligações de dependência. O relatório aponta pontos observados em apenas um sentido e sugere famílias de novas entradas.
-3. O modo de cenários no VPS passou a variar valores perto das escalas de asset e shares. Limite: 16 casos adicionais; parada antecipada depois de oito casos sem resultado novo.
-4. A etapa de IA passou a exigir o arquivo do filtro. Ela recebe uma candidata somente quando uma diferença concreta aparece em duas sequências distintas, com dados locais consistentes.
-5. Na rodada do VPS houve 44 casos: 40 concluídos e quatro reversões esperadas. As oito variações adicionais pararam pelo critério de platô. Não surgiu decisão nova nem diferença registrada. O filtro gerou zero candidatas elegíveis e zero pedidos à IA. Nenhuma chamada à API foi feita.
-6. O código foi formatado e compilado. A rodada local foi executada somente no VPS. Os arquivos detalhados permanecem privados no servidor.
+O que mudou
 
-Limite atual: o motor ainda não cria novas ordens e estados a partir da condição específica de cada ponto observado. O resultado desta rodada não determina que todos os comportamentos do contrato foram cobertos.
+1. O motor agora procura comparações numéricas no código e, quando elas não são aplicáveis à operação principal, observa mudanças nas funções de prévia para escolher valores próximos ao ponto de mudança.
+2. Ele também executa sequências limitadas com outra ordem de operações e com estados preparados no ambiente local do VPS. O número de tentativas e a parada por falta de resultado novo ficam registrados.
+3. O relatório separa o que foi observado por função do que permanece desconhecido. Ele confere coincidências entre posições de dados observadas e o layout, e registra alvos de chamadas junto às mudanças de saldo no mesmo caso. Coincidência não é prova de causa ou de todos os caminhos possíveis.
+4. A etapa de IA continua condicionada ao filtro local e exige uma diferença repetida com dados consistentes.
+
+Rodada no VPS
+
+- 50 casos: 46 concluídos e quatro reversões esperadas.
+- 68 consultas locais para localizar mudanças de prévia; seis entradas próximas a elas.
+- Quatro sequências adicionais de ordem/estado.
+- Nenhum resultado novo de decisão, nenhuma falha de comunicação e nenhuma diferença de pré-checagem.
+- 50 de 110 posições estáticas observadas no estado desta rodada. Esse número não mede todos os caminhos alcançáveis.
+- Duas coincidências de posição de dados com o layout; um acesso indexado continua sem coincidência.
+- Zero pedidos à IA; nenhuma chamada externa de IA.
+
+O que ainda é desconhecido
+
+Não há prova de alcance para as posições não observadas. O motor também não atribui automaticamente a causa de uma mudança de saldo a uma chamada específica nem resolve todos os índices dinâmicos. Esses itens ficam marcados como pendentes no relatório.
+
+Código e documentação: repositório privado Toupera-Agent. Arquivos completos da rodada: diretório privado do VPS, precision-v2.

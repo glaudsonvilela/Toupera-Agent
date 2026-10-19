@@ -185,7 +185,7 @@ A grade ampliada final no VPS produziu 24 cenários: 22 concluídos, 2 reversõe
 - [ ] Seguir oracle, preço, decimals, fees e rounding até mint/burn e accounting.
 - [ ] Verificar previews, operações opostas, primeiro depósito e doações diretas.
 - [x] Marcar incertezas; exigir triagem local por identidade, cenários e diferença repetida antes do LLM. Ver `docs/EVIDENCE-FILTER.md`.
-- [ ] Automatizar novas rodadas de cenários a partir do feedback de cobertura, com orçamento e parada por platô; o modo guiado atual acrescenta até 16 valores próximos a escalas conhecidas e para por platô.
+- [x] Automatizar rodadas limitadas de valores e sequências a partir do feedback observado, com orçamento e parada por platô; a seleção ainda cobre famílias conhecidas e não resolve condições arbitrárias.
 
 ### 4. Hipótese e reprodução
 - [ ] Escrever hipótese específica com premissas e contexto mínimo.
@@ -204,3 +204,8 @@ A grade ampliada final no VPS produziu 24 cenários: 22 concluídos, 2 reversõe
 `UNVERIFIED → REJECTED | REPRODUCED → CONFIRMED → REPORT_READY`
 
 Etapa de triagem 2026-10-19: o modo guiado executou oito variações próximas às escalas observadas, parou pelo platô e gerou 44 casos (40 concluídos, quatro reversões esperadas), zero decisões novas e zero diferenças. O filtro M4/lente/cenários/cobertura/M5 manteve zero chaves elegíveis e plano M6 vazio. Dependências são percorridas até quatro arestas para priorizar variáveis ligadas a usos econômicos; alcançar o limite não prova completude. Artefatos no VPS privado, sem API.
+
+Precisão v2: comparações diretas parâmetro/literal, transições locais de preview, sequências adicionais de ordem/estado, contadores por função, alvos de chamadas e coincidências de slot/layout foram implementados. Continua aberto obter prova de alcance para pontos não observados e resolver efeitos internos/aliases dinâmicos gerais; as novas saídas mantêm esses estados como desconhecidos.
+
+
+Rodada `precision-v2` no VPS (2026-10-19): serviço `toupera-precision-transition-20261019.service` terminou com status 0. A lente listou 12 comparações diretas em funções auxiliares, nenhuma aplicável diretamente às quatro operações principais. A escolha por mudança de preview fez 68 consultas locais e originou seis casos; a rodada de valores parou após oito casos sem resultado novo no ponto alvo. Quatro sequências de ordem/estado foram executadas antes do próprio platô. Total: 50 casos, 46 concluídos, quatro reversões esperadas, zero falhas RPC e zero diferenças de pré-checagem. O conjunto observado permaneceu em 50/110 PCs estáticos, sem resultado novo; 41 PCs têm origem única de source, 23 deles observados. O filtro registrou 25 resumos por função, duas coincidências de slot/layout, um acesso indexado sem coincidência, um alvo de chamada observado e zero pedidos de IA. Todas as contagens se limitam ao estado e às entradas da rodada.
