@@ -148,6 +148,17 @@ pub struct PcSourceHint {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct NumericBoundaryHint {
+    pub function: String,
+    pub variable_ast_id: i64,
+    pub variable_name: String,
+    pub comparison: String,
+    pub literal_value: String,
+    pub source_span: Option<SourceSpan>,
+    pub confidence: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct PcSourceOrigin {
     pub pc: usize,
     pub source_file: String,
@@ -211,6 +222,7 @@ pub struct VariableLensReport {
     pub cross_function_edge_count: usize,
     pub indexed_access_count: usize,
     pub indexed_accesses: Vec<IndexedAccess>,
+    pub numeric_boundaries: Vec<NumericBoundaryHint>,
     pub key_alias_relations: Vec<KeyAliasRelation>,
     pub key_alias_pairs_truncated: bool,
     pub state_transition_links: Vec<StateTransitionLink>,
@@ -437,6 +449,8 @@ pub fn build_variable_lens(
         digest(&coverage_bytes),
         &coverage,
     )?;
+    report.numeric_boundaries =
+        numeric_boundaries(ast, source_name, source, source_id, &report.variables);
     report.pc_hints_with_variables = pc_source_hints
         .iter()
         .filter(|hint| !hint.verified_variable_ast_ids.is_empty())
@@ -1402,6 +1416,7 @@ impl Walker<'_> {
             cross_function_edge_count: self.edges.iter().filter(|edge| edge.relation.starts_with("internal_")).count(),
             indexed_access_count: self.indexed_accesses.len(),
             indexed_accesses: self.indexed_accesses,
+            numeric_boundaries: Vec::new(),
             key_alias_relations,
             key_alias_pairs_truncated,
             state_transition_links,
@@ -1443,6 +1458,116 @@ impl Walker<'_> {
             ],
         })
     }
+}
+
+fn numeric_boundaries(
+    ast: &Value,
+    source_name: &str,
+    source: &str,
+    source_id: i64,
+    variables: &[VariableRecord],
+) -> Vec<NumericBoundaryHint> {
+    let parameters: BTreeMap<i64, &VariableRecord> = variables
+        .iter()
+        .filter(|variable| variable.declaration_role == "parameter")
+        .map(|variable| (variable.ast_id, variable))
+        .collect();
+    fn literal(node: &Value) -> Option<U256> {
+        (node["nodeType"] == "Literal" && node["kind"] == "number")
+            .then(|| node["value"].as_str()?.parse::<U256>().ok())
+            .flatten()
+    }
+    fn visit(
+        node: &Value,
+        parent: &Context,
+        parameters: &BTreeMap<i64, &VariableRecord>,
+        source_name: &str,
+        source: &str,
+        source_id: i64,
+        output: &mut Vec<NumericBoundaryHint>,
+    ) {
+        let current = Walker::context(node, parent);
+        if node["nodeType"] == "BinaryOperation" {
+            let operator = node["operator"].as_str().unwrap_or("");
+            if matches!(operator, "<" | "<=" | ">" | ">=" | "==" | "!=") {
+                let left = &node["leftExpression"];
+                let right = &node["rightExpression"];
+                let pair = if left["nodeType"] == "Identifier" {
+                    literal(right).map(|value| (left, value, operator))
+                } else if right["nodeType"] == "Identifier" {
+                    let reversed = match operator {
+                        "<" => ">",
+                        "<=" => ">=",
+                        ">" => "<",
+                        ">=" => "<=",
+                        other => other,
+                    };
+                    literal(left).map(|value| (right, value, reversed))
+                } else {
+                    None
+                };
+                if let Some((identifier, value, comparison)) = pair {
+                    if let Some(variable) = identifier["referencedDeclaration"]
+                        .as_i64()
+                        .and_then(|id| parameters.get(&id))
+                    {
+                        if variable.scope == current.function {
+                            output.push(NumericBoundaryHint {
+                                function: current.function.clone(),
+                                variable_ast_id: variable.ast_id,
+                                variable_name: variable.name.clone(),
+                                comparison: comparison.into(),
+                                literal_value: value.to_string(),
+                                source_span: node["src"].as_str().and_then(|span| {
+                                    parse_span(span, source_name, source, source_id)
+                                }),
+                                confidence:
+                                    "direct_parameter_literal_comparison_not_runtime_branch".into(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        for child in Walker::children(node) {
+            visit(
+                child,
+                &current,
+                parameters,
+                source_name,
+                source,
+                source_id,
+                output,
+            );
+        }
+    }
+    let mut output = Vec::new();
+    visit(
+        ast,
+        &Context {
+            contract: String::new(),
+            function: String::new(),
+        },
+        &parameters,
+        source_name,
+        source,
+        source_id,
+        &mut output,
+    );
+    output.sort_by(|a, b| {
+        a.function
+            .cmp(&b.function)
+            .then_with(|| a.variable_ast_id.cmp(&b.variable_ast_id))
+            .then_with(|| a.literal_value.cmp(&b.literal_value))
+    });
+    output.dedup_by(|a, b| {
+        a.function == b.function
+            && a.variable_ast_id == b.variable_ast_id
+            && a.literal_value == b.literal_value
+            && a.comparison == b.comparison
+    });
+    output.truncate(64);
+    output
 }
 
 fn anchor_ssa_operand(

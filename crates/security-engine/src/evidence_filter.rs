@@ -24,6 +24,35 @@ pub struct FocusVariable {
 }
 
 #[derive(Serialize)]
+pub struct FunctionReach {
+    pub function: String,
+    pub source_file: String,
+    pub mapped_static_jump_sites: usize,
+    pub observed_jump_sites: usize,
+    pub sites_with_both_outcomes: usize,
+    pub not_observed_status: String,
+}
+
+#[derive(Serialize)]
+pub struct MappingRelationCheck {
+    pub variable_ast_id: i64,
+    pub variable_name: String,
+    pub key_address: String,
+    pub observed_slot: String,
+    pub read_cases: usize,
+    pub write_cases: usize,
+    pub evidence_class: String,
+}
+
+#[derive(Serialize)]
+pub struct CallObservation {
+    pub target_address: String,
+    pub cases: usize,
+    pub target_kind: String,
+    pub source_boundary_status: String,
+}
+
+#[derive(Serialize)]
 pub struct FilterReport {
     pub schema: String,
     pub context_sha256: String,
@@ -36,6 +65,13 @@ pub struct FilterReport {
     pub variable_focus: Vec<FocusVariable>,
     pub one_sided_source_pcs: Vec<u64>,
     pub next_scenario_families: Vec<String>,
+    pub source_numeric_boundaries: usize,
+    pub function_reach: Vec<FunctionReach>,
+    pub mapping_relation_checks: Vec<MappingRelationCheck>,
+    pub unresolved_indexed_accesses: usize,
+    pub call_observations: Vec<CallObservation>,
+    pub static_runtime_sites: usize,
+    pub observed_runtime_sites: usize,
     pub observed_discrepancy_cases: usize,
     pub reproducible_discrepancies: Vec<String>,
     pub eligible_candidate_keys: Vec<String>,
@@ -316,6 +352,10 @@ pub fn filter_evidence(
     if one_sided.len() > 0 {
         families.insert("branch_boundary".to_owned());
     }
+    let source_numeric_boundaries = lens["numeric_boundaries"].as_array().map_or(0, Vec::len);
+    if source_numeric_boundaries > 0 {
+        families.insert("source_numeric_boundary".to_owned());
+    }
     if lens["state_transition_links"]
         .as_array()
         .is_some_and(|items| !items.is_empty())
@@ -335,6 +375,133 @@ pub fn filter_evidence(
         families.insert("asset_state_change".to_owned());
     }
 
+    let mut function_reach = Vec::new();
+    for item in lens["source_coverage"]["function_source_coverage"]
+        .as_array()
+        .ok_or("function source coverage missing")?
+    {
+        let mapped = item["mapped_static_jump_sites"].as_u64().unwrap_or(0) as usize;
+        let observed = item["observed_jump_sites"].as_u64().unwrap_or(0) as usize;
+        function_reach.push(FunctionReach {
+            function: item["function"].as_str().unwrap_or("").into(),
+            source_file: item["source_file"].as_str().unwrap_or("").into(),
+            mapped_static_jump_sites: mapped,
+            observed_jump_sites: observed,
+            sites_with_both_outcomes: item["sites_with_both_outcomes"].as_u64().unwrap_or(0)
+                as usize,
+            not_observed_status: if mapped > observed {
+                "unknown_reachability"
+            } else {
+                "all_mapped_sites_observed_not_all_paths"
+            }
+            .into(),
+        });
+    }
+    let mut layout_slots = BTreeMap::<i64, (String, u64)>::new();
+    for variable in lens["variables"]
+        .as_array()
+        .ok_or("variable list missing")?
+    {
+        let (Some(id), Some(name)) = (variable["ast_id"].as_i64(), variable["name"].as_str())
+        else {
+            continue;
+        };
+        for layout in variable["layout"].as_array().into_iter().flatten() {
+            let Some(raw) = layout["slot"].as_str() else {
+                continue;
+            };
+            let slot = raw
+                .parse::<u64>()
+                .ok()
+                .or_else(|| u64::from_str_radix(raw.strip_prefix("0x").unwrap_or(raw), 16).ok());
+            if let Some(slot) = slot {
+                layout_slots.insert(id, (name.into(), slot));
+            }
+        }
+    }
+    let mut indexed_ids = BTreeSet::new();
+    for access in lens["indexed_accesses"].as_array().into_iter().flatten() {
+        for id in access["base_ast_ids"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_i64)
+        {
+            indexed_ids.insert(id);
+        }
+    }
+    let mut matched_ids = BTreeSet::new();
+    let mut mapping_relation_checks = Vec::new();
+    let mut seen_mapping = BTreeSet::new();
+    for candidate in scenarios["address_mapping_slot_candidates"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        let Some(base_slot) = candidate["base_slot"].as_u64() else {
+            continue;
+        };
+        let Some(key_address) = candidate["key_address"].as_str() else {
+            continue;
+        };
+        let Some(observed_slot) = candidate["observed_slot"].as_str() else {
+            continue;
+        };
+        for id in &indexed_ids {
+            let Some((name, layout_slot)) = layout_slots.get(id) else {
+                continue;
+            };
+            if *layout_slot != base_slot
+                || !seen_mapping.insert((*id, key_address.to_owned(), observed_slot.to_owned()))
+            {
+                continue;
+            }
+            matched_ids.insert(*id);
+            mapping_relation_checks.push(MappingRelationCheck {
+                variable_ast_id: *id,
+                variable_name: name.clone(),
+                key_address: key_address.into(),
+                observed_slot: observed_slot.into(),
+                read_cases: candidate["read_cases"].as_u64().unwrap_or(0) as usize,
+                write_cases: candidate["write_cases"].as_u64().unwrap_or(0) as usize,
+                evidence_class:
+                    "observed_address_slot_formula_and_source_layout_not_unique_alias_proof".into(),
+            });
+        }
+    }
+    let mut target_cases = BTreeMap::<String, usize>::new();
+    for case in scenarios["cases"]
+        .as_array()
+        .ok_or("scenario cases missing")?
+    {
+        let mut seen = BTreeSet::new();
+        for target in case["root_call_targets"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+        {
+            if seen.insert(target) {
+                *target_cases.entry(target.into()).or_default() += 1;
+            }
+        }
+    }
+    let asset = scenarios["identity"]["asset"].as_str().unwrap_or("");
+    let call_observations = target_cases
+        .into_iter()
+        .map(|(target_address, cases)| CallObservation {
+            target_kind: if target_address.eq_ignore_ascii_case(asset) {
+                "recorded_asset"
+            } else {
+                "other_or_unknown"
+            }
+            .into(),
+            target_address,
+            cases,
+            source_boundary_status: "runtime_target_observed_source_callsite_unresolved".into(),
+        })
+        .collect();
+
     // A single differing case is an observation, never a reproducible result.
     let mut by_behavior: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
     let mut discrepancy_cases = 0;
@@ -343,7 +510,12 @@ pub fn filter_evidence(
         .as_array()
         .ok_or("scenario cases missing")?
     {
-        if case["status"] != "completed" || case["preflight"] != "call_completed" {
+        if case["status"] != "completed"
+            || case["preflight"] != "call_completed"
+            || case["trace_steps"].is_null()
+            || case["before"].is_null()
+            || case["after"].is_null()
+        {
             continue;
         }
         let Some(sequence) = case["sequence"].as_str() else {
@@ -424,6 +596,14 @@ pub fn filter_evidence(
         variable_focus: focus,
         one_sided_source_pcs: one_sided.into_iter().take(32).collect(),
         next_scenario_families: families.into_iter().collect(),
+        source_numeric_boundaries,
+        function_reach,
+        mapping_relation_checks,
+        unresolved_indexed_accesses: indexed_ids.len().saturating_sub(matched_ids.len()),
+        call_observations,
+        static_runtime_sites: scenarios["vault_runtime_jump_sites"].as_u64().unwrap_or(0) as usize,
+        observed_runtime_sites: scenarios["vault_jump_sites_observed"].as_u64().unwrap_or(0)
+            as usize,
         observed_discrepancy_cases: discrepancy_cases,
         reproducible_discrepancies: reproducible,
         eligible_candidate_keys: keys,

@@ -61,6 +61,8 @@ pub struct ScenarioCase {
     pub observed_branch_outcomes: Vec<String>,
     pub root_storage_reads: Vec<String>,
     pub root_storage_writes: Vec<String>,
+    pub root_call_targets: Vec<String>,
+    pub child_trace_steps: usize,
     pub discrepancies: Vec<String>,
     pub limitations: Vec<String>,
 }
@@ -95,6 +97,8 @@ pub struct LocalScenarioReport {
     pub cases: Vec<ScenarioCase>,
     pub observed_sequence_transitions: Vec<ObservedSequenceTransition>,
     pub address_mapping_slot_candidates: Vec<AddressMappingSlotCandidate>,
+    pub observed_root_call_targets: Vec<String>,
+    pub cases_with_child_trace: usize,
     pub mapping_slot_search_exclusive_limit: u64,
     pub completed_transactions: usize,
     pub reverted_transactions: usize,
@@ -133,6 +137,10 @@ pub struct GuidedScenarioEvidence {
     pub feedback_case_budget: usize,
     pub feedback_cases_executed: usize,
     pub feedback_stop_reason: Option<String>,
+    pub source_boundary_cases: usize,
+    pub state_order_sequences_executed: usize,
+    pub state_order_sequence_budget: usize,
+    pub state_order_stop_reason: Option<String>,
 }
 
 struct Rpc {
@@ -190,6 +198,16 @@ enum Operation {
 }
 
 impl Operation {
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "deposit" => Some(Self::Deposit),
+            "mint" => Some(Self::Mint),
+            "withdraw" => Some(Self::Withdraw),
+            "redeem" => Some(Self::Redeem),
+            _ => None,
+        }
+    }
+
     fn name(self) -> &'static str {
         match self {
             Self::Deposit => "deposit",
@@ -455,12 +473,29 @@ fn append_guided_case(
     cases.push(case);
 }
 
+fn observed_root_outcomes(outcomes: &BTreeSet<String>, target_pcs: &[usize]) -> usize {
+    outcomes
+        .iter()
+        .filter(|outcome| {
+            let Some(rest) = outcome.strip_prefix("1:") else {
+                return false;
+            };
+            let Some((pc, _)) = rest.split_once(':') else {
+                return false;
+            };
+            target_pcs.is_empty() || pc.parse::<usize>().is_ok_and(|pc| target_pcs.contains(&pc))
+        })
+        .count()
+}
+
 struct TraceEvidence {
     steps: usize,
     jumps: Vec<String>,
     outcomes: Vec<String>,
     root_storage_reads: Vec<String>,
     root_storage_writes: Vec<String>,
+    root_call_targets: Vec<String>,
+    child_steps: usize,
 }
 
 fn trace_steps(rpc: &Rpc, hash: &str) -> Result<TraceEvidence, String> {
@@ -476,10 +511,27 @@ fn trace_steps(rpc: &Rpc, hash: &str) -> Result<TraceEvidence, String> {
     let mut outcomes = BTreeSet::new();
     let mut root_storage_reads = BTreeSet::new();
     let mut root_storage_writes = BTreeSet::new();
+    let mut root_call_targets = BTreeSet::new();
+    let mut child_steps = 0_usize;
     for log in logs {
         let depth = log.get("depth").and_then(Value::as_u64).unwrap_or(0);
+        if depth > 1 {
+            child_steps += 1;
+        }
         if depth == 1 {
             if let Some(kind) = log.get("op").and_then(Value::as_str) {
+                if matches!(kind, "CALL" | "STATICCALL" | "DELEGATECALL" | "CALLCODE") {
+                    if let Some(target) = log
+                        .get("stack")
+                        .and_then(Value::as_array)
+                        .and_then(|stack| stack.iter().rev().nth(1))
+                        .and_then(Value::as_str)
+                        .and_then(|word| hex_u256_padded(word).ok())
+                    {
+                        let bytes = target.to_be_bytes::<32>();
+                        root_call_targets.insert(format!("0x{}", hex::encode(&bytes[12..])));
+                    }
+                }
                 if matches!(kind, "SLOAD" | "SSTORE") {
                     if let Some(slot) = log
                         .get("stack")
@@ -525,6 +577,8 @@ fn trace_steps(rpc: &Rpc, hash: &str) -> Result<TraceEvidence, String> {
         outcomes: outcomes.into_iter().collect(),
         root_storage_reads: root_storage_reads.into_iter().collect(),
         root_storage_writes: root_storage_writes.into_iter().collect(),
+        root_call_targets: root_call_targets.into_iter().collect(),
+        child_steps,
     })
 }
 
@@ -577,6 +631,8 @@ fn run_case(
         observed_branch_outcomes: Vec::new(),
         root_storage_reads: Vec::new(),
         root_storage_writes: Vec::new(),
+        root_call_targets: Vec::new(),
+        child_trace_steps: 0,
         discrepancies: Vec::new(),
         limitations: Vec::new(),
     };
@@ -661,6 +717,8 @@ fn run_case(
             case.observed_branch_outcomes = trace.outcomes;
             case.root_storage_reads = trace.root_storage_reads;
             case.root_storage_writes = trace.root_storage_writes;
+            case.root_call_targets = trace.root_call_targets;
+            case.child_trace_steps = trace.child_steps;
         }
         Err(error) => case
             .limitations
@@ -767,7 +825,7 @@ fn run_scenarios(
     {
         return Err("base report lacks exact onchain runtime identity".into());
     }
-    let (guidance, prior_outcomes) = if let (Some(path), Some(coverage_path)) =
+    let (guidance, prior_outcomes, source_boundaries) = if let (Some(path), Some(coverage_path)) =
         (lens_path, prior_coverage_path)
     {
         let lens_bytes =
@@ -870,6 +928,28 @@ fn run_scenarios(
         {
             families.insert("ordered_state".into());
         }
+        let mut source_boundaries = Vec::new();
+        for hint in lens["numeric_boundaries"].as_array().into_iter().flatten() {
+            let Some(operation) = hint["function"].as_str().and_then(Operation::from_name) else {
+                continue;
+            };
+            let Some(boundary) = hint["literal_value"]
+                .as_str()
+                .and_then(|text| text.parse::<U256>().ok())
+            else {
+                continue;
+            };
+            for (label, amount) in [
+                ("below", boundary.saturating_sub(U256::from(1))),
+                ("at", boundary),
+                ("above", boundary.saturating_add(U256::from(1))),
+            ] {
+                source_boundaries.push((operation, amount, label.to_owned()));
+            }
+        }
+        source_boundaries.sort_by(|a, b| a.0.name().cmp(b.0.name()).then_with(|| a.1.cmp(&b.1)));
+        source_boundaries.dedup_by(|a, b| a.0.name() == b.0.name() && a.1 == b.1);
+        source_boundaries.truncate(12);
         (Some(GuidedScenarioEvidence {
             variable_lens_sha256: hex::encode(Sha256::digest(&lens_bytes)),
             prior_coverage_sha256: coverage_sha,
@@ -885,9 +965,13 @@ fn run_scenarios(
             feedback_case_budget: 16,
             feedback_cases_executed: 0,
             feedback_stop_reason: None,
-        }), prior_outcomes)
+            source_boundary_cases: 0,
+            state_order_sequences_executed: 0,
+            state_order_sequence_budget: 8,
+            state_order_stop_reason: None,
+        }), prior_outcomes, source_boundaries)
     } else if lens_path.is_none() && prior_coverage_path.is_none() {
-        (None, BTreeSet::new())
+        (None, BTreeSet::new(), Vec::new())
     } else {
         return Err("guided scenarios require both variable lens and prior coverage".into());
     };
@@ -1494,6 +1578,54 @@ fn run_scenarios(
             share_scale * U256::from(2) + U256::from(1),
         ];
         let mut plateau = 0_usize;
+        for (operation, amount, label) in &source_boundaries {
+            if focus.feedback_cases_executed >= focus.feedback_case_budget || plateau >= 8 {
+                break;
+            }
+            let actor_budget = baseline
+                .actor_asset_balance
+                .parse::<U256>()
+                .unwrap_or(U256::ZERO);
+            let share_budget = (supply / U256::from(100)).max(U256::from(1));
+            let available = if matches!(operation, Operation::Deposit | Operation::Withdraw) {
+                actor_budget
+            } else {
+                share_budget
+            };
+            if *amount > available {
+                continue;
+            }
+            let id = snapshot(&local)?;
+            let before_count = observed_root_outcomes(&all_outcomes, &focus.target_source_pcs);
+            let case = run_case(
+                &local,
+                &identity.vault,
+                &identity.asset,
+                &identity.actor,
+                *operation,
+                *amount,
+                format!("guided_source:{}:{label}:{amount}", operation.name()),
+                1,
+                "state_comparison",
+            );
+            append_guided_case(
+                &mut cases,
+                &mut all_jumps,
+                &mut all_outcomes,
+                &mut trace_limitations,
+                focus,
+                case,
+            );
+            focus.feedback_cases_executed += 1;
+            focus.source_boundary_cases += 1;
+            revert_snapshot(&local, &id)?;
+            plateau =
+                if observed_root_outcomes(&all_outcomes, &focus.target_source_pcs) > before_count {
+                    0
+                } else {
+                    plateau + 1
+                };
+        }
         'feedback: for index in 0..4 {
             for (operation, amount) in [
                 (Operation::Deposit, asset_neighbors[index]),
@@ -1505,8 +1637,13 @@ fn run_scenarios(
                     focus.feedback_stop_reason = Some("case_budget_reached".into());
                     break 'feedback;
                 }
+                if plateau >= 8 {
+                    focus.feedback_stop_reason =
+                        Some("eight_cases_without_new_target_outcome".into());
+                    break 'feedback;
+                }
                 let id = snapshot(&local)?;
-                let before_count = all_outcomes.len();
+                let before_count = observed_root_outcomes(&all_outcomes, &focus.target_source_pcs);
                 let case = run_case(
                     &local,
                     &identity.vault,
@@ -1528,20 +1665,179 @@ fn run_scenarios(
                 );
                 focus.feedback_cases_executed += 1;
                 revert_snapshot(&local, &id)?;
-                plateau = if all_outcomes.len() > before_count {
+                plateau = if observed_root_outcomes(&all_outcomes, &focus.target_source_pcs)
+                    > before_count
+                {
                     0
                 } else {
                     plateau + 1
                 };
                 if plateau >= 8 {
                     focus.feedback_stop_reason =
-                        Some("eight_cases_without_new_root_outcome".into());
+                        Some("eight_cases_without_new_target_outcome".into());
                     break 'feedback;
                 }
             }
         }
         if focus.feedback_stop_reason.is_none() {
             focus.feedback_stop_reason = Some("case_budget_reached".into());
+        }
+        let planned_sequences = [
+            (
+                "state_deposit",
+                None,
+                Operation::Deposit,
+                U256::ZERO,
+                asset_unit + U256::from(1),
+                asset_unit,
+            ),
+            (
+                "order_withdraw_deposit",
+                Some(Operation::Withdraw),
+                Operation::Deposit,
+                asset_unit,
+                asset_unit + U256::from(1),
+                U256::ZERO,
+            ),
+            (
+                "state_mint",
+                None,
+                Operation::Mint,
+                U256::ZERO,
+                share_scale + U256::from(1),
+                asset_unit,
+            ),
+            (
+                "order_deposit_mint",
+                Some(Operation::Deposit),
+                Operation::Mint,
+                asset_unit + U256::from(1),
+                share_scale,
+                U256::ZERO,
+            ),
+            (
+                "state_withdraw",
+                None,
+                Operation::Withdraw,
+                U256::ZERO,
+                asset_unit,
+                asset_unit + U256::from(1),
+            ),
+            (
+                "order_mint_redeem",
+                Some(Operation::Mint),
+                Operation::Redeem,
+                share_scale,
+                share_scale,
+                U256::ZERO,
+            ),
+            (
+                "order_redeem_mint",
+                Some(Operation::Redeem),
+                Operation::Mint,
+                share_scale,
+                share_scale + U256::from(1),
+                U256::ZERO,
+            ),
+            (
+                "order_deposit_redeem",
+                Some(Operation::Deposit),
+                Operation::Redeem,
+                asset_unit + U256::from(1),
+                share_scale,
+                U256::ZERO,
+            ),
+        ];
+        let mut sequence_plateau = 0_usize;
+        for (label, setup, target, setup_amount, target_amount, donation_amount) in
+            planned_sequences
+        {
+            if focus.state_order_sequences_executed >= focus.state_order_sequence_budget {
+                focus.state_order_stop_reason = Some("sequence_budget_reached".into());
+                break;
+            }
+            if sequence_plateau >= 4 {
+                focus.state_order_stop_reason =
+                    Some("four_sequences_without_new_target_outcome".into());
+                break;
+            }
+            let id = snapshot(&local)?;
+            let before_count = observed_root_outcomes(&all_outcomes, &focus.target_source_pcs);
+            let sequence = format!("guided_cycle:{label}");
+            let mut ready = true;
+            if donation_amount > U256::ZERO {
+                let donation = format!(
+                    "0x{}{}{}",
+                    selector("transfer(address,uint256)"),
+                    address_word(&identity.vault),
+                    word(donation_amount)
+                );
+                ready = match send_local(&local, &identity.actor, &identity.asset, &donation) {
+                    Ok((_, receipt)) => receipt["status"] == "0x1",
+                    Err(error) => {
+                        scenario_limitations.push(format!(
+                            "{sequence} local state change unavailable: {error}"
+                        ));
+                        false
+                    }
+                };
+            }
+            if ready {
+                if let Some(setup_operation) = setup {
+                    let setup_case = run_case(
+                        &local,
+                        &identity.vault,
+                        &identity.asset,
+                        &identity.actor,
+                        setup_operation,
+                        setup_amount,
+                        sequence.clone(),
+                        1,
+                        "state_comparison",
+                    );
+                    ready = setup_case.status == "completed";
+                    append_guided_case(
+                        &mut cases,
+                        &mut all_jumps,
+                        &mut all_outcomes,
+                        &mut trace_limitations,
+                        focus,
+                        setup_case,
+                    );
+                }
+            }
+            if ready {
+                let target_case = run_case(
+                    &local,
+                    &identity.vault,
+                    &identity.asset,
+                    &identity.actor,
+                    target,
+                    target_amount,
+                    sequence,
+                    if setup.is_some() { 2 } else { 1 },
+                    "state_comparison",
+                );
+                append_guided_case(
+                    &mut cases,
+                    &mut all_jumps,
+                    &mut all_outcomes,
+                    &mut trace_limitations,
+                    focus,
+                    target_case,
+                );
+            }
+            focus.state_order_sequences_executed += 1;
+            revert_snapshot(&local, &id)?;
+            sequence_plateau =
+                if observed_root_outcomes(&all_outcomes, &focus.target_source_pcs) > before_count {
+                    0
+                } else {
+                    sequence_plateau + 1
+                };
+        }
+        if focus.state_order_stop_reason.is_none() {
+            focus.state_order_stop_reason = Some("sequence_budget_reached".into());
         }
     }
     let completed_transactions = cases
@@ -1660,6 +1956,16 @@ fn run_scenarios(
                 .any(|item| item.starts_with("preflight "))
         })
         .count();
+    let observed_root_call_targets: Vec<String> = cases
+        .iter()
+        .flat_map(|case| case.root_call_targets.iter().cloned())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let cases_with_child_trace = cases
+        .iter()
+        .filter(|case| case.child_trace_steps > 0)
+        .count();
     let jump_sites_with_both_outcomes = all_jumps
         .iter()
         .filter(|site| {
@@ -1712,6 +2018,8 @@ fn run_scenarios(
         cases,
         observed_sequence_transitions,
         address_mapping_slot_candidates,
+        observed_root_call_targets,
+        cases_with_child_trace,
         mapping_slot_search_exclusive_limit: MAPPING_SLOT_SEARCH_LIMIT,
         completed_transactions,
         reverted_transactions,

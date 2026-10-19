@@ -164,6 +164,12 @@ pub fn analyze_recorded_scenarios(path: &Path) -> Result<LocalCoverageReport, St
         entry.outcomes.extend(outcomes.iter().cloned());
         let group = if case.sequence.starts_with("guided_limit:") {
             "guided_limit"
+        } else if case.sequence.starts_with("guided_source:") {
+            "guided_source"
+        } else if case.sequence.starts_with("guided_feedback:") {
+            "guided_feedback"
+        } else if case.sequence.starts_with("guided_cycle:") {
+            "guided_cycle"
         } else if case.sequence.starts_with("guided_order:") {
             "guided_order"
         } else if case.sequence.starts_with("guided_actor:") {
