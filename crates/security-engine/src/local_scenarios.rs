@@ -399,7 +399,16 @@ fn trace_steps(rpc: &Rpc, hash: &str) -> Result<(usize, Vec<String>, Vec<String>
 }
 
 fn hex_u256_padded(value: &str) -> Result<U256, String> {
-    let bytes = hex::decode(value.trim_start_matches("0x")).map_err(|error| error.to_string())?;
+    let raw = value.trim_start_matches("0x");
+    if raw.is_empty() {
+        return Err("empty EVM stack word".into());
+    }
+    let padded = if raw.len() % 2 == 0 {
+        raw.to_owned()
+    } else {
+        format!("0{raw}")
+    };
+    let bytes = hex::decode(padded).map_err(|error| error.to_string())?;
     if bytes.len() > 32 {
         return Err("EVM stack word exceeds 32 bytes".into());
     }
