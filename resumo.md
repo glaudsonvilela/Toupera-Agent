@@ -20,17 +20,24 @@
 - O runtime contém 169 PCs `JUMPI` estáticos. No conjunto dos 36 + 38 + 65 casos, 111 PCs foram observados: 34 em ambos os sentidos, 77 em apenas um. Outros 58 PCs `JUMPI` não foram observados (36 com local de fonte, 22 de código gerado). Esses números não provam que os caminhos restantes sejam alcançáveis.
 - Nenhuma divergência local foi reproduzida. Três preparações falharam entre os 38 casos já escolhidos pelo Rust, exatamente como na rodada salva; entre os 65 candidatos adicionais não houve falha de preparação. Rever essas três preparações antes de interpretar a ausência dos respectivos caminhos.
 
+## Continuação dirigida no bloco fixado
+
+- `tools/wcop_targeted_guards.py` executou 22 casos dirigidos de inicialização, UUPS, ERC-165, allowance, nonce e EIP-2612 no Anvil local. O conjunto passou de 111 para 155 dos 169 PCs `JUMPI` estáticos observados. Foram vistos 209 pares PC/sentido: 54 PCs nos dois sentidos e 101 em apenas um. Não houve próximo PC incompatível nem falha confirmada.
+- `permit` com assinatura válida de conta de desenvolvimento concluiu em snapshot local: nonce +1 e allowance 1. A mesma assinatura falhou na repetição, sem alterar esses valores; o snapshot foi revertido. Chamadas autorizadas e não autorizadas de upgrade produziram os resultados esperados apenas nos casos medidos.
+- Restam 14 PCs `JUMPI` não observados: seis com local de fonte e oito de Yul gerado. A maioria está ligada a alternativas de inicialização ou armazenamento de strings; isso não prova inalcançabilidade global. Ver `docs/WCOP-DESVIOS-DIRIGIDOS-2026-10-19.md`.
+
 ## Evidência privada
 
 - `private-output/site-jobs/92273047cbf7439c/baseline-branch-replay.json`: 36 casos, SHA-256 `ff82321ad690aa3936433da544c73889a1ecb910f35395c72b651cd5b31aff8e`.
 - `private-output/site-jobs/92273047cbf7439c/branch-replay.json`: 38 casos salvos + 65 adicionais, SHA-256 `06d09f85ab6a592db2b10e124ab5427e2572a802a3e4376a15ebcdcba618e135`.
+- `private-output/site-jobs/92273047cbf7439c/targeted-guards.json`: 22 casos dirigidos, SHA-256 `47695f05e78e0e9317fa16450e446be26496b8a8fb23342bbe1c9403890b9611`.
 - Os JSONs acima permanecem privados, modo `0600`, propriedade de `toupera`. Este resumo não contém calldata, endereços de atores nem credenciais.
 
 ## Próxima ação
 
-1. Priorizar os 58 PCs `JUMPI` não observados por função e pré-condição. Um deles está em `src/LatamStable.sol`, PC `1186`, linha `23`; 22 pertencem a código gerado pelo compilador. Separar código de biblioteca potencialmente inalcançável de caminhos cuja pré-condição pode ser construída localmente.
-2. Criar casos dirigidos apenas para caminhos com pré-condições verificáveis, registrar o resultado por caso e repetir qualquer divergência sob a mesma identidade de bloco/runtime. Não interpretar ausência de cobertura como prova de segurança ou de vulnerabilidade.
-3. Vincular o resultado de cada `JUMPI` à semântica da fonte, mantendo separados os IDs de ramo LCOV da recompilação. O estado histórico antigo ainda não está disponível no RPC (403).
+1. Classificar por função e pré-condição os 101 PCs `JUMPI` observados em apenas um sentido, sem confundir dispatcher com lógica econômica.
+2. Examinar os 14 PCs ainda não observados em estados apropriados: inicialização fresca em ambiente local separado, strings longas e alternativas de EIP-712. Manter essas medidas separadas do proxy já inicializado e não supor alcançabilidade.
+3. Vincular resultados de `JUMPI` à semântica da fonte, mantendo separados os IDs de ramo LCOV da recompilação. O estado histórico antigo ainda não está disponível no RPC (403).
 
 ## Publicação
 

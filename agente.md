@@ -484,3 +484,7 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 
 - Leia `resumo.md` antes de ampliar os cenários. Os replays no Anvil reproduziram 36 casos iniciais e 38 escolhas do Rust; 65 candidatos restantes adicionaram dois resultados de `JUMPI` sem novo PC e sem divergência local. Dos 169 PCs `JUMPI` estáticos, 111 foram vistos (34 em ambos os sentidos), 58 permanecem não observados. Os JSONs por caso estão em `private-output` e não devem entrar no Git.
 - A publicação usa checkout autorizado e `git archive`; o VPS não contém `.git` nem credenciais Git.
+
+## Desvios dirigidos no runtime wCOP (2026-10-19)
+
+- Leia `docs/WCOP-DESVIOS-DIRIGIDOS-2026-10-19.md` e `resumo.md`. Vinte e dois casos locais elevaram a observação a 155/169 PCs `JUMPI` estáticos, com 54 vistos nos dois sentidos, 101 em um e 14 não observados. `permit` válido alterou nonce/allowance como esperado em snapshot e a mesma assinatura foi recusada na repetição. Não há falha confirmada; os JSONs ficam privados.

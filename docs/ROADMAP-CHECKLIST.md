@@ -392,7 +392,8 @@ Ver `docs/WCOP-MAPA-LINHAS-2026-10-19.md`.
 - [x] Cruzar, somente por arquivo e linha, PCs observados e registros de ramo LCOV, sem equiparar as duas coberturas.
 - [x] Classificar o opcode terminal das 74 ligações fora do grafo: todas são `JUMP`; 68 têm marca de saída de função e seis de salto comum. Todas as 143 ligações observadas com `JUMPI` terminal constam no grafo estático.
 - [x] Repetir os casos locais com condição, destino e próximo PC de cada `JUMPI` por caso; 36 casos iniciais e 38 escolhas do Rust reproduziram os resumos salvos, e 65 candidatos restantes foram medidos. Ver `resumo.md`.
-- [ ] Ligar os resultados de `JUMPI` a um identificador de ramo LCOV com alinhamento semântico; 58 PCs `JUMPI` seguem não observados e a possibilidade de alcançá-los não foi demonstrada.
+- [x] Executar 22 casos dirigidos no Anvil com identidade fixada: 155/169 PCs `JUMPI` estáticos observados, 54 em ambos os sentidos, 101 em um; `permit` válido e repetição testados em snapshot. Ver `docs/WCOP-DESVIOS-DIRIGIDOS-2026-10-19.md`.
+- [ ] Ligar os resultados de `JUMPI` a um identificador de ramo LCOV com alinhamento semântico; 14 PCs `JUMPI` seguem não observados após os 22 casos dirigidos; a possibilidade de alcançá-los no proxy fixado não foi demonstrada.
 - [x] Medir uma nova rodada local: trabalho `92273047cbf7439c`, 38 escolhas e zero PCs após o mapa; total observado igual ao trabalho anterior. Não há ganho de cobertura demonstrado.
 
 Ver `docs/WCOP-FOCO-MAPA-2026-10-19.md`.
