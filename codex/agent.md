@@ -1,5 +1,10 @@
 # Instruções para futuras sessões do Codex
 
+## Objetivo ativo de engenharia forense
+
+- O usuário exige que o Rust automatize a reconstrução histórica, a análise de transações e estado, invariantes, simulação e retorno da quarentena ao mapa, sem depender da IA para criar o contexto. O mapa/sondagem atual é triagem; não chamá-lo de scanner forense completo.
+- Atualizar `agente.md` e `docs/ROADMAP-CHECKLIST.md` ao concluir cada etapa. Marcar cobertura parcial e falhas de RPC explicitamente; artefatos de alvo em `private-output/`; preservar `web/` não rastreado.
+
 ## Ciclo forense/quarentena, 2026-10-18
 
 - `forensic_probe.rs` implementa: manifesto `forensic-input-v1` → source/runtime/Slither + RPC de bloco fixado verificado → mapa de zonas com score explicável → até 24 quarentenas de variáveis/caminhos → segunda sondagem read-only e cruzamento de evidências → reconstrução integral do mapa. Anomalia observada pode entrar em M5 como `UNVERIFIED` por `--forensic`; M5 rejeita source/runtime divergentes e inclui relatório na chave de cache. Consultar `docs/FORENSIC-QUARANTINE.md`.

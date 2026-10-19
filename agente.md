@@ -1,5 +1,11 @@
 # Memória operacional — Toupera Agent
 
+## Objetivo ativo — scanner forense automático em Rust (2026-10-18)
+
+O usuário rejeitou tratar o mapa atual como auditoria forense completa. O motor deve produzir o contexto por conta própria, usando aritmética EVM de 256 bits, cronologia integral desde o deploy quando o RPC permitir, transações/recibos/rastros, evolução de estado, invariantes econômicas, simulação local e cobertura mensurável. O segundo motor de quarentena recebe divergências concretas; o primeiro refaz o mapa. IA só interpreta hipóteses ainda ambíguas depois dos filtros determinísticos.
+
+Registrar progresso em `docs/ROADMAP-CHECKLIST.md` e neste arquivo a cada etapa. Não marcar como concluídos replay de transações, rastros internos, fuzzing ou cobertura total enquanto não houver execução e evidência. `alloy-primitives::U256` foi escolhido para eliminar truncamento `u128` em valores EVM; o restante da implementação está em andamento. Artefatos de alvo seguem privados. Preservar `web/` não rastreado.
+
 ## Etapa mais recente — mapa forense e quarentena (2026-10-18)
 
 - Pedido do usuário: o **código Rust** deve refazer o mapa de pontos fracos, isolar variável/caminho questionável em um segundo motor para auditoria mais profunda e devolver o resultado ao primeiro motor para reavaliação completa. Implementado em `crates/security-engine/src/forensic_probe.rs`, CLI `--forensic-probe`, integração M5 `--forensic` e documentação `docs/FORENSIC-QUARANTINE.md`.

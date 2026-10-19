@@ -110,6 +110,20 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 
 ## Ciclo por alvo auditado
 
+### Evolução do scanner forense automático (em andamento)
+
+- [x] Fixar identidade do source, runtime, chain ID e hash do bloco; gerar mapa inicial e quarentena com prioridades explicáveis.
+- [ ] Usar inteiros EVM de 256 bits para decodificar e reconciliar valores sem truncamento.
+- [ ] Varredura de eventos desde o deploy, com progresso por bloco, erros e lacunas explícitos; não confundir amostra de eventos retidos com cobertura histórica.
+- [ ] Recuperar e vincular transações, recibos e, onde disponível, rastros internos aos eventos e funções do mapa.
+- [ ] Reconstruir deltas de supply, assets, cap e permissões por bloco/transação, conferindo snapshots históricos e distinguindo efeitos de chamadas externas.
+- [ ] Verificar invariantes econômicas ao longo da cronologia e dos limites de valores; enviar divergências com evidência ao motor de quarentena.
+- [ ] Gerar sequências de operações em fork local e medir ramos/reverts cobertos, com premissas e limites explícitos.
+- [ ] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
+- [ ] Publicar métricas de cobertura (blocos, eventos, transações, estados e caminhos), zonas não examinadas e custo de RPC/IA.
+- [ ] Validar o ramo positivo completo com alvo autorizado, reprodução Foundry e revisão M8 antes de declarar o scanner forense pronto.
+
+
 ### 1. Autorização e escopo
 - [ ] Confirmar propriedade, ambiente de laboratório ou autorização explícita do programa.
 - [ ] Registrar limites permitidos e manter análise em Solidity/EVM, vaults, oracles e economia.
