@@ -29,3 +29,9 @@ O serviço web usa o usuário `caddy`; o motor continua sob `toupera`. As única
 Antes da publicação: sintaxe JavaScript, resposta HTTP local, aparência desktop e mobile (390 × 844), navegação das abas por clique e teclado, pausa dos efeitos e ausência de mensagens de erro no navegador. Não houve execução de cenários de contratos durante a criação da homepage.
 
 Publicação concluída em 2026-10-19 UTC (2026-10-18 local): release `04a1473`, HTTPS 200 em IPv4/IPv6, HTTP 308 para HTTPS, `www` 301 para o domínio principal, assets 200 e caminho `private-output/` 404. Caddy 2.11.7 ativo e habilitado, com certificados Let's Encrypt. A página em produção foi aberta no navegador, com fonte e imagem carregadas e sem erros no console.
+
+## Painel wCOP
+
+O formulário do painel chama a API local descrita em `docs/SITE-WCOP.md`. A API depende de `tools/site_jobs.py`, da unidade `deploy/toupera-site-jobs.service` e do Caddy. O arquivo `deploy/Caddyfile` é um modelo: substitua `__TOUPERA_API_PASSWORD_HASH__` por um hash gerado com `caddy hash-password` apenas no arquivo privado `/etc/caddy/Caddyfile`. Nunca envie a senha ou o hash ao repositório.
+
+Publique somente `index.html`, `app.js`, `style.css`, `assets/`, `robots.txt` e `sitemap.xml`. Não copie `deploy/` nem este README para a raiz servida pelo site. O Caddy também responde 404 para esses caminhos.

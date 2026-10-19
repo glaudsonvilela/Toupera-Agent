@@ -1,0 +1,18 @@
+[Unit]
+Description=Toupeira site contract workflow
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=toupera
+Group=toupera
+WorkingDirectory=/srv/toupera-agent
+ExecStart=/usr/bin/python3 /srv/toupera-agent/tools/site_jobs.py serve
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

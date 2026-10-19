@@ -18,7 +18,18 @@ toupeiraagente.tech {
 	header @assets Cache-Control "public, max-age=86400"
 	@documents path / /index.html /style.css /app.js
 	header @documents Cache-Control "no-cache"
-	file_server
+	@private_files path /deploy/* /README.md
+	respond @private_files 404
+	@smartapi path /api/smart /api/smart/*
+	handle @smartapi {
+		basic_auth {
+			owner __TOUPERA_API_PASSWORD_HASH__
+		}
+		reverse_proxy 127.0.0.1:8765
+	}
+	handle {
+		file_server
+	}
 }
 
 www.toupeiraagente.tech {

@@ -215,3 +215,16 @@ Rodada `precision-v2` no VPS (2026-10-19): serviço `toupera-precision-transitio
 Rodada do chip no VPS: oito observações anteriores carregadas; 20 entradas repetidas e quatro vizinhos equivalentes evitados; 61 opções ordenadas; oito casos adicionais sem classe/resultado novo, então parada por platô. 50 casos totais, 46 concluídos, quatro reversões, zero falhas ou diferenças de pré-checagem; 50/110 PCs estáticos e 58 resultados observados, sem aumento. Filtro sem candidato e plano de IA vazio. Serviço concluído com status 0. A política está operacional, mas o ganho de alcance ainda precisa de outros alvos/estados.
 
 Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode e ligações estreitas de source, com pontos não resolvidos explícitos; [x] calcular pares verdadeiro/falso para comparação direta de primeiro parâmetro com literal; [x] propor e executar ordens por slots escritos/lidos em snapshots; [x] medir deltas, previews e diferença contábil; [x] comparar políticas de entrada em três cenários próprios no Anvil e rodar o plano no contrato fixado. Ver `docs/SIMPLE-PLAN.md`. Continuam abertos resolver expressões compostas e condições de loop sem perda de resultados, além de ampliar a medição dinâmica em outros contratos autorizados.
+
+## Painel wCOP no VPS
+- [x] Formulário de endereço e terminal de progresso no site.
+- [x] API autenticada e limitada a um contrato/trabalho por vez.
+- [x] Criar `smart.md` na raiz e histórico privado por trabalho.
+- [x] Fixar rede, bloco, hash, runtime e implementação; executar Rust no VPS.
+- [x] Criar `result_smart.md` e consolidar estados reais das dez ferramentas em `end_smart_result.md`.
+- [x] Exibir o Markdown final no frontend autenticado.
+- [ ] Projetar propriedades específicas e harness local para Foundry, Echidna/Medusa e Halmos.
+- [ ] Revisar sinais brutos antes de qualquer conclusão ou comunicação ao programa.
+- [x] Execução real do wCOP no VPS: proxy, implementação, Rust, Slither e Mythril com resultado e limitações explícitas.
+- [x] Remover configuração de deploy da raiz pública e manter hash ativo apenas no Caddy do VPS.
+- [x] Validar o fluxo final pela API autenticada e recuperar trabalhos interrompidos.

@@ -114,3 +114,79 @@
   }
   requestAnimationFrame(draw);
 })();
+
+(() => {
+  const form = document.getElementById(smart-form);
+  const events = document.getElementById(smart-events);
+  const state = document.getElementById(smart-state);
+  const report = document.getElementById(smart-report);
+  const reportText = document.getElementById(smart-report-text);
+  const allowed = 0x8a1d45e102e886510e891d2ec656a708991e2d76;
+  let timer = null;
+  let password = ;
+  function headers() {
+    return { Content-Type: application/json, Authorization: Basic  + btoa(owner: + password) };
+  }
+  function line(time, message) {
+    const item = document.createElement(li);
+    const stamp = document.createElement(time);
+    stamp.textContent = time || —;
+    const content = document.createElement(span);
+    content.textContent = message;
+    item.append(stamp, content);
+    return item;
+  }
+  function draw(data) {
+    state.textContent = ({ idle: AGUARDANDO, running: EM CURSO, complete: CONCLUÍDO, failed: INCOMPLETO })[data.state] || —;
+    const rows = (data.events || []).map(item => line((item.time || ).slice(11, 19), item.name +  —  + item.detail));
+    events.replaceChildren(...(rows.length ? rows : [line(—, Aguardando nova leitura.)]));
+    if (data.report) {
+      reportText.textContent = data.report;
+      report.hidden = false;
+    } else {
+      report.hidden = true;
+    }
+    if (data.state === running) {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, 3000);
+    }
+  }
+  async function refresh() {
+    if (!password) return;
+    try {
+      const response = await fetch(/api/smart/latest, { headers: headers(), cache: no-store });
+      if (!response.ok) throw new Error(response.status === 401 ? Chave de acesso incorreta. : Não foi possível ler o andamento.);
+      draw(await response.json());
+    } catch (error) {
+      events.replaceChildren(line(!, error.message));
+      state.textContent = SEM CONEXÃO;
+    }
+  }
+  form.addEventListener(submit, async event => {
+    event.preventDefault();
+    const address = form.elements.address.value.trim().toLowerCase();
+    password = form.elements.password.value;
+    if (address !== allowed) {
+      events.replaceChildren(line(!, Esta etapa aceita apenas o endereço wCOP exibido acima.));
+      return;
+    }
+    state.textContent = INICIANDO;
+    events.replaceChildren(line(…, Enviando endereço ao VPS.));
+    try {
+      const response = await fetch(/api/smart, {
+        method: POST, headers: headers(), credentials: same-origin,
+        body: JSON.stringify({ address })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || (response.status === 401 ? Chave de acesso incorreta. : Falha ao iniciar.));
+      draw(data);
+      refresh();
+    } catch (error) {
+      events.replaceChildren(line(!, error.message));
+      state.textContent = NÃO INICIADO;
+    }
+  });
+  document.getElementById(smart-copy).addEventListener(click, async () => {
+    await navigator.clipboard.writeText(reportText.textContent);
+  });
+})();

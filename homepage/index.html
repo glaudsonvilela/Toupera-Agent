@@ -23,7 +23,7 @@
   <a class="skip" href="#motor">Ir para o conteúdo</a>
   <header class="header">
     <a href="#inicio" class="brand" aria-label="Toupeira Agente, início"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M6 11 20 3l14 8v17l-14 9-14-9Z"/><path d="M12 15h16M20 15v14M12 10l8 5 8-5"/></svg><span>TOUPEIRA<span class="brand-small">AGENTE</span></span></a>
-    <nav aria-label="Navegação principal"><a href="#motor">O motor</a><a href="#processo">Como funciona</a><a href="#visao" class="nav-cta">Nossa visão <span aria-hidden="true">↗</span></a></nav>
+    <nav aria-label="Navegação principal"><a href="#painel">Painel wCOP</a><a href="#motor">O motor</a><a href="#processo">Como funciona</a><a href="#visao" class="nav-cta">Nossa visão <span aria-hidden="true">↗</span></a></nav>
   </header>
 
   <main>
@@ -48,6 +48,33 @@
         <div class="capability"><span class="corner-icon">≋</span><div>EVIDÊNCIAS<span>CADA CONCLUSÃO, UMA ORIGEM</span></div></div>
       </div>
       <div class="hero-edge"><span>01 / EXPLORAR</span><a href="#motor" aria-label="Rolar para conhecer o motor">SCROLL <span>↓</span></a></div>
+    </section>
+
+    <section class="smart-panel section" id="painel" aria-labelledby="smart-title">
+      <div class="section-head reveal"><span class="eyebrow">00 — PAINEL wCOP</span><span class="section-coordinate">ETHEREUM / LEITURA LOCAL</span></div>
+      <div class="smart-grid">
+        <div class="smart-intro reveal">
+          <span class="smart-kicker">CONTRATO SELECIONADO</span>
+          <h2 id="smart-title">Uma leitura.<br><span>Etapa por etapa.</span></h2>
+          <p>Informe o endereço wCOP e acompanhe a preparação, o motor Rust e a conferência das ferramentas. O relatório final aparecerá aqui.</p>
+          <form id="smart-form" autocomplete="off">
+            <label for="smart-address">Endereço EVM</label>
+            <input id="smart-address" name="address" inputmode="text" spellcheck="false" placeholder="0x8a1D45e102e886510e891d2Ec656a708991e2D76" required maxlength="42">
+            <label for="smart-password">Chave de acesso ao painel</label>
+            <input id="smart-password" name="password" type="password" autocomplete="off" required>
+            <button class="button button-primary" type="submit">Iniciar leitura <span aria-hidden="true">↗</span></button>
+          </form>
+          <p class="smart-caption">Disponível nesta etapa: wCOP na rede Ethereum. A consulta usa apenas leitura de rede e processamento local.</p>
+        </div>
+        <div class="smart-terminal reveal" aria-live="polite">
+          <div class="smart-terminal-bar"><span><i></i><i></i><i></i></span><strong>TOUPEIRA / PROCESSO</strong><em id="smart-state">AGUARDANDO</em></div>
+          <ol id="smart-events"><li><time>—</time><span>Aguardando endereço e chave de acesso.</span></li></ol>
+        </div>
+      </div>
+      <div class="smart-report" id="smart-report" hidden>
+        <div class="smart-report-head"><span class="eyebrow">RELATÓRIO FINAL</span><button type="button" id="smart-copy">Copiar Markdown</button></div>
+        <pre id="smart-report-text"></pre>
+      </div>
     </section>
 
     <section class="motor section" id="motor" aria-labelledby="motor-title">
