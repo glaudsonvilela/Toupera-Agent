@@ -162,7 +162,13 @@ pub fn analyze_recorded_scenarios(path: &Path) -> Result<LocalCoverageReport, St
         }
         entry.sites.extend(sites.iter().copied());
         entry.outcomes.extend(outcomes.iter().cloned());
-        let group = if case.sequence.starts_with("above_limit:") {
+        let group = if case.sequence.starts_with("guided_limit:") {
+            "guided_limit"
+        } else if case.sequence.starts_with("guided_actor:") {
+            "guided_actor"
+        } else if case.sequence.starts_with("guided_asset_state:") {
+            "guided_asset_state"
+        } else if case.sequence.starts_with("above_limit:") {
             "above_limit"
         } else if case.sequence == "deposit_then_redeem" {
             "ordered_sequence"

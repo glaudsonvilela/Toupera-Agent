@@ -80,6 +80,17 @@ pub struct LocalScenarioReport {
     pub round_trip_asset_delta: Option<String>,
     pub round_trip_discrepancies: Vec<String>,
     pub limitations: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guidance: Option<GuidedScenarioEvidence>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct GuidedScenarioEvidence {
+    pub variable_lens_sha256: String,
+    pub focus_variable_ast_ids: Vec<i64>,
+    pub selected_families: Vec<String>,
+    pub selection_basis: String,
+    pub executed_sequences: Vec<String>,
 }
 
 struct Rpc {
@@ -357,6 +368,42 @@ fn send_local(rpc: &Rpc, from: &str, to: &str, data: &str) -> Result<(String, Va
     Err(format!("local receipt unavailable for {hash}"))
 }
 
+fn snapshot(rpc: &Rpc) -> Result<String, String> {
+    rpc.call("evm_snapshot", json!([]))?
+        .as_str()
+        .map(str::to_owned)
+        .ok_or("local snapshot ID missing".into())
+}
+
+fn revert_snapshot(rpc: &Rpc, id: &str) -> Result<(), String> {
+    if rpc.call("evm_revert", json!([id]))? != Value::Bool(true) {
+        return Err("local fork snapshot could not be restored".into());
+    }
+    Ok(())
+}
+
+fn append_guided_case(
+    cases: &mut Vec<ScenarioCase>,
+    jumps: &mut BTreeSet<String>,
+    outcomes: &mut BTreeSet<String>,
+    trace_limitations: &mut Vec<String>,
+    guidance: &mut GuidedScenarioEvidence,
+    case: ScenarioCase,
+) {
+    jumps.extend(case.observed_jump_sites.iter().cloned());
+    outcomes.extend(case.observed_branch_outcomes.iter().cloned());
+    if case.trace_steps.is_none() {
+        trace_limitations.push(format!(
+            "{} step {}: local trace missing",
+            case.sequence, case.step
+        ));
+    }
+    if !guidance.executed_sequences.contains(&case.sequence) {
+        guidance.executed_sequences.push(case.sequence.clone());
+    }
+    cases.push(case);
+}
+
 fn trace_steps(rpc: &Rpc, hash: &str) -> Result<(usize, Vec<String>, Vec<String>), String> {
     let value = rpc.call(
         "debug_traceTransaction",
@@ -572,6 +619,24 @@ pub fn run_local_scenarios(
     fork_rpc_url: &str,
     anvil_path: &Path,
 ) -> Result<LocalScenarioReport, String> {
+    run_scenarios(report_path, None, fork_rpc_url, anvil_path)
+}
+
+pub fn run_guided_scenarios(
+    report_path: &Path,
+    lens_path: &Path,
+    fork_rpc_url: &str,
+    anvil_path: &Path,
+) -> Result<LocalScenarioReport, String> {
+    run_scenarios(report_path, Some(lens_path), fork_rpc_url, anvil_path)
+}
+
+fn run_scenarios(
+    report_path: &Path,
+    lens_path: Option<&Path>,
+    fork_rpc_url: &str,
+    anvil_path: &Path,
+) -> Result<LocalScenarioReport, String> {
     let bytes =
         fs::read(report_path).map_err(|error| format!("cannot read base report: {error}"))?;
     let base_report_sha256 = hex::encode(Sha256::digest(&bytes));
@@ -587,6 +652,53 @@ pub fn run_local_scenarios(
     {
         return Err("base report lacks exact onchain runtime identity".into());
     }
+    let guidance = if let Some(path) = lens_path {
+        let lens_bytes =
+            fs::read(path).map_err(|error| format!("cannot read variable lens: {error}"))?;
+        let lens: Value = serde_json::from_slice(&lens_bytes)
+            .map_err(|error| format!("invalid variable lens: {error}"))?;
+        if lens["schema"] != "variable-lens-v1"
+            || lens["forensic_report_sha256"] != base_report_sha256
+            || lens["identity"]["runtime_sha256"] != base["identity"]["runtime_sha256"]
+            || lens["identity"]["block_hash"] != base["identity"]["block_hash"]
+            || lens["identity"]["address"] != base["identity"]["address"]
+        {
+            return Err("variable lens and fixed base report identities differ".into());
+        }
+        let variables = lens["variables"]
+            .as_array()
+            .ok_or("variable lens has no variables")?;
+        let mut ids = BTreeSet::new();
+        let mut families = BTreeSet::new();
+        for variable in variables {
+            let name = variable["name"].as_str().unwrap_or("").to_ascii_lowercase();
+            let typ = variable["type_name"].as_str().unwrap_or("");
+            let Some(id) = variable["ast_id"].as_i64() else {
+                continue;
+            };
+            if name.contains("cap") || name.contains("limit") {
+                ids.insert(id);
+                families.insert("reported_limits".to_owned());
+            }
+            if typ.starts_with("mapping(address") || name.contains("balance") {
+                ids.insert(id);
+                families.insert("alternate_actor".to_owned());
+            }
+            if name.contains("asset") || name.contains("supply") {
+                ids.insert(id);
+                families.insert("asset_state_change".to_owned());
+            }
+        }
+        Some(GuidedScenarioEvidence {
+            variable_lens_sha256: hex::encode(Sha256::digest(&lens_bytes)),
+            focus_variable_ast_ids: ids.into_iter().collect(),
+            selected_families: families.into_iter().collect(),
+            selection_basis: "Source variable names and types select bounded local families; they do not establish path reachability".into(),
+            executed_sequences: Vec::new(),
+        })
+    } else {
+        None
+    };
     let chain_id = base
         .pointer("/identity/chain_id")
         .and_then(Value::as_u64)
@@ -808,6 +920,7 @@ pub fn run_local_scenarios(
             return Err("local fork boundary snapshot could not be restored".into());
         }
     }
+    let round_trip_snapshot = snapshot(&local)?;
     let round_trip_before = read_state(&local, &identity.vault, &identity.asset, &identity.actor)?;
     let deposit = run_case(
         &local,
@@ -870,6 +983,228 @@ pub fn run_local_scenarios(
             "actor asset balance increased over deposit/redeem sequence by {}",
             round_trip_asset_delta.as_deref().unwrap_or("?")
         ));
+    }
+    revert_snapshot(&local, &round_trip_snapshot)?;
+    let mut guidance = guidance;
+    if let Some(focus) = guidance.as_mut() {
+        if focus
+            .selected_families
+            .iter()
+            .any(|family| family == "reported_limits")
+        {
+            for (operation, signature, available) in [
+                (
+                    Operation::Deposit,
+                    "maxDeposit(address)",
+                    baseline.actor_asset_balance.as_str(),
+                ),
+                (
+                    Operation::Mint,
+                    "maxMint(address)",
+                    baseline.actor_asset_balance.as_str(),
+                ),
+                (
+                    Operation::Withdraw,
+                    "maxWithdraw(address)",
+                    baseline.vault_asset_balance.as_str(),
+                ),
+                (
+                    Operation::Redeem,
+                    "maxRedeem(address)",
+                    baseline.actor_share_balance.as_str(),
+                ),
+            ] {
+                let limit = match view_u256(
+                    &local,
+                    &identity.vault,
+                    &calldata(signature, None, &[&identity.actor]),
+                ) {
+                    Ok(limit) => limit,
+                    Err(error) => {
+                        scenario_limitations
+                            .push(format!("{signature} unavailable for guided range: {error}"));
+                        continue;
+                    }
+                };
+                let budget = available
+                    .parse::<U256>()
+                    .map_err(|error| error.to_string())?;
+                let required = if matches!(operation, Operation::Mint) && limit != U256::MAX {
+                    view_u256(
+                        &local,
+                        &identity.vault,
+                        &calldata("previewMint(uint256)", Some(limit), &[]),
+                    )
+                    .unwrap_or(U256::MAX)
+                } else {
+                    limit
+                };
+                if limit == U256::MAX || required > budget || limit == U256::ZERO {
+                    scenario_limitations.push(format!("{signature} limit outside local actor budget; guided near-limit transactions omitted"));
+                    continue;
+                }
+                for (label, amount) in [
+                    ("below", limit - U256::from(1)),
+                    ("at", limit),
+                    ("above", limit + U256::from(1)),
+                ] {
+                    let id = snapshot(&local)?;
+                    let case = run_case(
+                        &local,
+                        &identity.vault,
+                        &identity.asset,
+                        &identity.actor,
+                        operation,
+                        amount,
+                        format!("guided_limit:{}:{label}", operation.name()),
+                        1,
+                        if label == "above" {
+                            "above_reported_limit"
+                        } else {
+                            "state_comparison"
+                        },
+                    );
+                    append_guided_case(
+                        &mut cases,
+                        &mut all_jumps,
+                        &mut all_outcomes,
+                        &mut trace_limitations,
+                        focus,
+                        case,
+                    );
+                    revert_snapshot(&local, &id)?;
+                }
+            }
+        }
+        if focus
+            .selected_families
+            .iter()
+            .any(|family| family == "alternate_actor")
+        {
+            let id = snapshot(&local)?;
+            let second = "0x000000000000000000000000000000000000beef";
+            local.call("anvil_setBalance", json!([second, "0x56bc75e2d63100000"]))?;
+            local.call("anvil_impersonateAccount", json!([second]))?;
+            let transfer_amount = asset_unit * U256::from(2);
+            let transfer = calldata(
+                "transfer(address,uint256)",
+                Some(transfer_amount),
+                &[second],
+            );
+            match send_local(&local, &identity.actor, &identity.asset, &transfer) {
+                Ok((_, receipt)) if receipt["status"] == "0x1" => {
+                    let approve = format!(
+                        "{}{}",
+                        calldata("approve(address,uint256)", None, &[&identity.vault]),
+                        word(U256::MAX)
+                    );
+                    let (_, receipt) = send_local(&local, second, &identity.asset, &approve)?;
+                    if receipt["status"] == "0x1" {
+                        let deposit = run_case(
+                            &local,
+                            &identity.vault,
+                            &identity.asset,
+                            second,
+                            Operation::Deposit,
+                            asset_unit,
+                            "guided_actor:deposit_then_redeem".into(),
+                            1,
+                            "state_comparison",
+                        );
+                        let minted = deposit
+                            .before
+                            .as_ref()
+                            .zip(deposit.after.as_ref())
+                            .and_then(|(before, after)| {
+                                signed_delta(
+                                    &before.actor_share_balance,
+                                    &after.actor_share_balance,
+                                )
+                                .ok()
+                            })
+                            .and_then(|value| value.parse::<U256>().ok());
+                        append_guided_case(
+                            &mut cases,
+                            &mut all_jumps,
+                            &mut all_outcomes,
+                            &mut trace_limitations,
+                            focus,
+                            deposit,
+                        );
+                        if let Some(minted) = minted.filter(|value| *value > U256::ZERO) {
+                            let redeem = run_case(
+                                &local,
+                                &identity.vault,
+                                &identity.asset,
+                                second,
+                                Operation::Redeem,
+                                minted,
+                                "guided_actor:deposit_then_redeem".into(),
+                                2,
+                                "state_comparison",
+                            );
+                            append_guided_case(
+                                &mut cases,
+                                &mut all_jumps,
+                                &mut all_outcomes,
+                                &mut trace_limitations,
+                                focus,
+                                redeem,
+                            );
+                        }
+                    } else {
+                        scenario_limitations
+                            .push("second local actor approval did not complete".into());
+                    }
+                }
+                Ok(_) => scenario_limitations
+                    .push("local asset transfer to second actor did not complete".into()),
+                Err(error) => scenario_limitations
+                    .push(format!("second actor preparation unavailable: {error}")),
+            }
+            revert_snapshot(&local, &id)?;
+        }
+        if focus
+            .selected_families
+            .iter()
+            .any(|family| family == "asset_state_change")
+        {
+            let id = snapshot(&local)?;
+            let donation = calldata(
+                "transfer(address,uint256)",
+                Some(asset_unit),
+                &[&identity.vault],
+            );
+            match send_local(&local, &identity.actor, &identity.asset, &donation) {
+                Ok((_, receipt)) if receipt["status"] == "0x1" => {
+                    let case = run_case(
+                        &local,
+                        &identity.vault,
+                        &identity.asset,
+                        &identity.actor,
+                        Operation::Deposit,
+                        asset_unit,
+                        "guided_asset_state:deposit".into(),
+                        1,
+                        "state_comparison",
+                    );
+                    append_guided_case(
+                        &mut cases,
+                        &mut all_jumps,
+                        &mut all_outcomes,
+                        &mut trace_limitations,
+                        focus,
+                        case,
+                    );
+                }
+                Ok(_) => {
+                    scenario_limitations.push("local asset balance change did not complete".into())
+                }
+                Err(error) => scenario_limitations
+                    .push(format!("local asset balance change unavailable: {error}")),
+            }
+            revert_snapshot(&local, &id)?;
+        }
     }
     let completed_transactions = cases
         .iter()
@@ -939,5 +1274,6 @@ pub fn run_local_scenarios(
             scenario_limitations.extend(["Aggregate (depth,pc) positions include vault and asset calls. Vault-only counts use depth 1 and exact runtime JUMPI PCs; the static denominator includes paths that may be unreachable, so this is not source-level or reachable-path coverage".into(),"Scenario actor is the vault owner from the base report; results depend on that account's snapshot balances and approvals".into()]);
             scenario_limitations
         },
+        guidance,
     })
 }

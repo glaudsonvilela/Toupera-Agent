@@ -62,6 +62,32 @@ pub struct VariableEdge {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct IndexedAccess {
+    pub base_ast_ids: Vec<i64>,
+    pub key_variable_ast_ids: Vec<i64>,
+    pub key_expression: Option<String>,
+    pub expression: Option<String>,
+    pub function: String,
+    pub access: String,
+    pub collection_kind: String,
+    pub source_span: Option<SourceSpan>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct VerifiedVariable {
+    pub ast_id: i64,
+    pub name: String,
+    pub source_file: Option<String>,
+    pub declaration_start_byte: Option<usize>,
+    pub declaration_end_byte: Option<usize>,
+    pub declaring_contract: String,
+    pub scope: String,
+    pub type_name: String,
+    pub state_variable: bool,
+    pub observed_branch_pcs: Vec<usize>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct PcSourceHint {
     pub pc: usize,
     pub observed_outcomes: Vec<String>,
@@ -84,6 +110,9 @@ pub struct VariableLensReport {
     pub category_counts: BTreeMap<String, usize>,
     pub declaration_role_counts: BTreeMap<String, usize>,
     pub dependency_edge_count: usize,
+    pub cross_function_edge_count: usize,
+    pub indexed_access_count: usize,
+    pub indexed_accesses: Vec<IndexedAccess>,
     pub ssa_dependency_edge_count: usize,
     pub ssa_unmatched_declaration_operands: usize,
     pub ssa_report_sha256: Option<String>,
@@ -93,6 +122,7 @@ pub struct VariableLensReport {
     pub observed_root_branch_outcomes: usize,
     pub pc_hints_with_variables: usize,
     pub pc_source_hints: Vec<PcSourceHint>,
+    pub verified_variables: Vec<VerifiedVariable>,
     pub variables: Vec<VariableRecord>,
     pub edges: Vec<VariableEdge>,
     pub limitations: Vec<String>,
@@ -104,6 +134,13 @@ struct Walker<'a> {
     source_id: i64,
     declarations: BTreeMap<i64, VariableRecord>,
     edges: Vec<VariableEdge>,
+    indexed_accesses: Vec<IndexedAccess>,
+    functions: BTreeMap<i64, FunctionSummary>,
+}
+
+struct FunctionSummary {
+    parameters: Vec<i64>,
+    return_sources: Vec<i64>,
 }
 
 #[derive(Clone)]
@@ -219,7 +256,8 @@ pub fn build_variable_lens(
     {
         return Err("compiler output or runtime differs from the fixed report".into());
     }
-    let pc_source_hints = pc_hints(&manifest, &comparison, &coverage, &runtime_bytes)?;
+    let (pc_source_hints, verified_variables) =
+        pc_hints(&manifest, &comparison, &coverage, &runtime_bytes)?;
     let source = std::str::from_utf8(&source_bytes)
         .map_err(|error| format!("source is not UTF-8: {error}"))?;
     let source_name = manifest
@@ -263,12 +301,15 @@ pub fn build_variable_lens(
         source_id,
         declarations: BTreeMap::new(),
         edges: Vec::new(),
+        indexed_accesses: Vec::new(),
+        functions: BTreeMap::new(),
     };
     let root = Context {
         contract: String::new(),
         function: String::new(),
     };
     walker.collect_declarations(ast, &root, "");
+    walker.collect_functions(ast);
     walker.attach_layout(&solc);
     walker.walk(ast, &root, "read");
     let (ssa_added, ssa_unmatched, ssa_sha) = if let Some(path) = ssa_path {
@@ -293,6 +334,7 @@ pub fn build_variable_lens(
         .filter(|hint| !hint.verified_variable_ast_ids.is_empty())
         .count();
     report.pc_source_hints = pc_source_hints;
+    report.verified_variables = verified_variables;
     report.ssa_dependency_edge_count = ssa_added;
     report.ssa_unmatched_declaration_operands = ssa_unmatched;
     report.ssa_report_sha256 = ssa_sha;
@@ -440,6 +482,120 @@ impl Walker<'_> {
         }
     }
 
+    fn collect_functions(&mut self, node: &Value) {
+        if node["nodeType"] == "FunctionDefinition" {
+            if let Some(id) = node["id"].as_i64() {
+                let parameters = node["parameters"]["parameters"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|item| item["id"].as_i64())
+                    .collect();
+                let mut returns = BTreeSet::new();
+                if let Some(items) = node["returnParameters"]["parameters"].as_array() {
+                    for item in items {
+                        if let Some(id) = item["id"].as_i64() {
+                            returns.insert(id);
+                        }
+                    }
+                }
+                fn return_refs(node: &Value, output: &mut BTreeSet<i64>) {
+                    if node["nodeType"] == "Return" {
+                        Walker::refs(&node["expression"], output);
+                        return;
+                    }
+                    for child in Walker::children(node) {
+                        return_refs(child, output);
+                    }
+                }
+                return_refs(&node["body"], &mut returns);
+                returns.retain(|id| self.declarations.contains_key(id));
+                self.functions.insert(
+                    id,
+                    FunctionSummary {
+                        parameters,
+                        return_sources: returns.into_iter().collect(),
+                    },
+                );
+            }
+        }
+        for child in Self::children(node) {
+            self.collect_functions(child);
+        }
+    }
+
+    fn call_return_sources(&self, call: &Value) -> Vec<i64> {
+        if call["expression"]["nodeType"] != "Identifier" {
+            return Vec::new();
+        }
+        call["expression"]["referencedDeclaration"]
+            .as_i64()
+            .and_then(|id| self.functions.get(&id))
+            .map(|summary| summary.return_sources.clone())
+            .unwrap_or_default()
+    }
+
+    fn connect_call_result(&mut self, targets: &BTreeSet<i64>, call: &Value, context: &Context) {
+        if call["nodeType"] != "FunctionCall" {
+            return;
+        }
+        for from in self.call_return_sources(call) {
+            for to in targets {
+                if !self.declarations.contains_key(to) || from == *to {
+                    continue;
+                }
+                self.edges.push(VariableEdge {
+                    from_ast_id: from,
+                    to_ast_id: *to,
+                    relation: "internal_return_to_result".into(),
+                    function: context.function.clone(),
+                    source_span: self.node_span(call),
+                    expression: self.expression(call),
+                    confidence: "syntactic_call_summary".into(),
+                    evidence_source: "solc_ast".into(),
+                });
+            }
+        }
+    }
+
+    fn connect_call_arguments(&mut self, call: &Value, context: &Context) {
+        if call["expression"]["nodeType"] != "Identifier" {
+            return;
+        }
+        let Some(id) = call["expression"]["referencedDeclaration"].as_i64() else {
+            return;
+        };
+        let Some(summary) = self.functions.get(&id) else {
+            return;
+        };
+        let parameters = summary.parameters.clone();
+        let Some(arguments) = call["arguments"].as_array() else {
+            return;
+        };
+        for (argument, to) in arguments.iter().zip(parameters) {
+            if !self.declarations.contains_key(&to) {
+                continue;
+            }
+            let mut refs = BTreeSet::new();
+            Self::refs(argument, &mut refs);
+            for from in refs {
+                if !self.declarations.contains_key(&from) || from == to {
+                    continue;
+                }
+                self.edges.push(VariableEdge {
+                    from_ast_id: from,
+                    to_ast_id: to,
+                    relation: "internal_argument_to_parameter".into(),
+                    function: context.function.clone(),
+                    source_span: self.node_span(argument),
+                    expression: self.expression(argument),
+                    confidence: "syntactic_call_summary".into(),
+                    evidence_source: "solc_ast".into(),
+                });
+            }
+        }
+    }
+
     fn refs(node: &Value, output: &mut BTreeSet<i64>) {
         if let Some(id) = node["referencedDeclaration"].as_i64() {
             if id >= 0 {
@@ -484,6 +640,52 @@ impl Walker<'_> {
                 expression,
             });
         }
+    }
+
+    fn record_index(&mut self, node: &Value, context: &Context, access: &str) {
+        if node["nodeType"] != "IndexAccess" {
+            return;
+        }
+        let mut base = BTreeSet::new();
+        Self::targets(&node["baseExpression"], &mut base);
+        let mut keys = BTreeSet::new();
+        Self::refs(&node["indexExpression"], &mut keys);
+        let kind = base
+            .iter()
+            .filter_map(|id| self.declarations.get(id))
+            .map(|record| record.type_name.as_str())
+            .find_map(|name| {
+                if name.contains("mapping(") {
+                    Some("mapping")
+                } else if name.contains('[') {
+                    Some("array")
+                } else {
+                    None
+                }
+            })
+            .unwrap_or("indexed_unknown");
+        self.indexed_accesses.push(IndexedAccess {
+            base_ast_ids: base.into_iter().collect(),
+            key_variable_ast_ids: keys
+                .into_iter()
+                .filter(|id| self.declarations.contains_key(id))
+                .collect(),
+            key_expression: self.expression(&node["indexExpression"]),
+            expression: self.expression(node),
+            function: context.function.clone(),
+            access: access.into(),
+            collection_kind: kind.into(),
+            source_span: self.node_span(node),
+        });
+    }
+
+    fn record_index_chain(&mut self, node: &Value, context: &Context, access: &str) {
+        if node["nodeType"] != "IndexAccess" {
+            return;
+        }
+        self.record_index(node, context, access);
+        self.walk(&node["indexExpression"], context, "index_key");
+        self.record_index_chain(&node["baseExpression"], context, access);
     }
 
     fn connect(
@@ -534,11 +736,15 @@ impl Walker<'_> {
                     }
                 }
                 self.connect(&targets, right, &current, "assignment");
+                self.connect_call_result(&targets, right, &current);
                 self.walk(right, &current, "read");
                 if left["nodeType"] == "IndexAccess" {
-                    self.walk(&left["indexExpression"], &current, "index_key");
+                    self.record_index_chain(left, &current, "write");
                 }
                 return;
+            }
+            Some("IndexAccess") => {
+                self.record_index(node, &current, mode);
             }
             Some("VariableDeclarationStatement") => {
                 let mut targets = BTreeSet::new();
@@ -552,6 +758,7 @@ impl Walker<'_> {
                 }
                 if !node["initialValue"].is_null() {
                     self.connect(&targets, &node["initialValue"], &current, "initialization");
+                    self.connect_call_result(&targets, &node["initialValue"], &current);
                     self.walk(&node["initialValue"], &current, "read");
                 }
                 return;
@@ -562,6 +769,7 @@ impl Walker<'_> {
                         let targets = BTreeSet::from([id]);
                         self.record(id, "write", node, &current);
                         self.connect(&targets, value, &current, "initialization");
+                        self.connect_call_result(&targets, value, &current);
                         self.walk(value, &current, "read");
                     }
                 }
@@ -602,6 +810,7 @@ impl Walker<'_> {
                 return;
             }
             Some("FunctionCall") => {
+                self.connect_call_arguments(node, &current);
                 let callee = node["expression"]["name"].as_str().unwrap_or("");
                 let kind = if matches!(callee, "require" | "assert") {
                     "guard_read"
@@ -716,6 +925,29 @@ impl Walker<'_> {
         coverage_sha: String,
         coverage: &Value,
     ) -> Result<VariableLensReport, String> {
+        self.indexed_accesses.sort_by(|a, b| {
+            (
+                &a.base_ast_ids,
+                &a.key_variable_ast_ids,
+                &a.function,
+                &a.expression,
+                &a.access,
+            )
+                .cmp(&(
+                    &b.base_ast_ids,
+                    &b.key_variable_ast_ids,
+                    &b.function,
+                    &b.expression,
+                    &b.access,
+                ))
+        });
+        self.indexed_accesses.dedup_by(|a, b| {
+            a.base_ast_ids == b.base_ast_ids
+                && a.key_variable_ast_ids == b.key_variable_ast_ids
+                && a.function == b.function
+                && a.expression == b.expression
+                && a.access == b.access
+        });
         self.edges.sort_by(|a, b| {
             (
                 a.from_ast_id,
@@ -827,6 +1059,9 @@ impl Walker<'_> {
             category_counts,
             declaration_role_counts,
             dependency_edge_count: self.edges.len(),
+            cross_function_edge_count: self.edges.iter().filter(|edge| edge.relation.starts_with("internal_")).count(),
+            indexed_access_count: self.indexed_accesses.len(),
+            indexed_accesses: self.indexed_accesses,
             ssa_dependency_edge_count: 0,
             ssa_unmatched_declaration_operands: 0,
             ssa_report_sha256: None,
@@ -836,6 +1071,7 @@ impl Walker<'_> {
             observed_root_branch_outcomes,
             pc_hints_with_variables: 0,
             pc_source_hints: Vec::new(),
+            verified_variables: Vec::new(),
             variables: self.declarations.into_values().collect(),
             edges: self.edges,
             limitations: vec![
@@ -907,13 +1143,34 @@ fn raw_range(node: &Value) -> Option<SourceRange> {
 
 fn verified_references(
     node: &Value,
-    declarations: &mut BTreeMap<i64, String>,
+    context: &Context,
+    files: &BTreeMap<i64, String>,
+    declarations: &mut BTreeMap<i64, VerifiedVariable>,
     references: &mut Vec<(i64, SourceRange)>,
 ) {
+    let current = Walker::context(node, context);
     match node["nodeType"].as_str() {
         Some("VariableDeclaration") => {
             if let (Some(id), Some(name)) = (node["id"].as_i64(), node["name"].as_str()) {
-                declarations.insert(id, name.into());
+                let range = raw_range(node);
+                declarations.insert(
+                    id,
+                    VerifiedVariable {
+                        ast_id: id,
+                        name: name.into(),
+                        source_file: range.and_then(|item| files.get(&item.file_id).cloned()),
+                        declaration_start_byte: range.map(|item| item.start),
+                        declaration_end_byte: range.map(|item| item.end),
+                        declaring_contract: current.contract.clone(),
+                        scope: current.function.clone(),
+                        type_name: node["typeDescriptions"]["typeString"]
+                            .as_str()
+                            .unwrap_or("")
+                            .into(),
+                        state_variable: node["stateVariable"] == true,
+                        observed_branch_pcs: Vec::new(),
+                    },
+                );
             }
         }
         Some("Identifier" | "MemberAccess") => {
@@ -926,7 +1183,7 @@ fn verified_references(
         _ => {}
     }
     for child in Walker::children(node) {
-        verified_references(child, declarations, references);
+        verified_references(child, &current, files, declarations, references);
     }
 }
 
@@ -979,7 +1236,7 @@ fn pc_hints(
     comparison: &Value,
     coverage: &Value,
     runtime_bytes: &[u8],
-) -> Result<Vec<PcSourceHint>, String> {
+) -> Result<(Vec<PcSourceHint>, Vec<VerifiedVariable>), String> {
     let deployed = &comparison["contracts"][&manifest.comparison_source_name]
         [&manifest.contract_name]["evm"]["deployedBytecode"];
     let compiled_hex = deployed["object"]
@@ -1013,7 +1270,19 @@ fn pc_hints(
         if let Some(id) = entry["id"].as_i64() {
             files.insert(id, name.clone());
         }
-        verified_references(&entry["ast"], &mut declarations, &mut references);
+    }
+    let root = Context {
+        contract: String::new(),
+        function: String::new(),
+    };
+    for entry in source_entries.values() {
+        verified_references(
+            &entry["ast"],
+            &root,
+            &files,
+            &mut declarations,
+            &mut references,
+        );
     }
     let observations = coverage["branch_observations"]
         .as_array()
@@ -1042,8 +1311,13 @@ fn pc_hints(
         }
         let names: BTreeSet<String> = ids
             .iter()
-            .filter_map(|id| declarations.get(id).cloned())
+            .filter_map(|id| declarations.get(id).map(|record| record.name.clone()))
             .collect();
+        for id in &ids {
+            if let Some(record) = declarations.get_mut(id) {
+                record.observed_branch_pcs.push(pc);
+            }
+        }
         let outcomes = observation["outcomes"]
             .as_array()
             .ok_or("branch observation has no outcomes")?
@@ -1068,5 +1342,5 @@ fn pc_hints(
             .into(),
         });
     }
-    Ok(hints)
+    Ok((hints, declarations.into_values().collect()))
 }

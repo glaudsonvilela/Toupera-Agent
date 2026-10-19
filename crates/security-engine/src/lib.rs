@@ -69,7 +69,7 @@ pub use llm_review::{
     empty_review_report, prepare_review_plan, run_review,
 };
 pub use local_coverage::{LocalCoverageReport, analyze_recorded_scenarios};
-pub use local_scenarios::{LocalScenarioReport, run_local_scenarios};
+pub use local_scenarios::{LocalScenarioReport, run_guided_scenarios, run_local_scenarios};
 pub use source::{
     compile_source_ast_file, compile_source_ast_text, compile_source_ast_text_with_evm_version,
     reconstruct_from_ast_json, reconstruct_source_file,

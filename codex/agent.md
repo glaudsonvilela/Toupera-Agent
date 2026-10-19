@@ -174,3 +174,9 @@
 - Fluxo observado: M1/M2 54 funções; M3 31 selectors correlacionados e 299 incertezas; M4 zero candidatos, embora Slither tenha importado 51 sinais (zero mapeados); M5 `cache_hit=true` na repetição; M6 zero requests; M7 zero casos; M8 sem caso/relatório. O alerta de igualdade estrita em `maxMint` usa `uint256.max` como sentinela de cap ilimitado, sem prova de falha. Não inferir ausência de bugs.
 - O ramo automático com candidato M4→M8 continua aberto; a fixture M7 positiva foi montada manualmente. Artefatos brutos ficam em `private-output/real-targets/yield-vault/`, ignorado pelo Git. Não houve transação, fork, DeepSeek nem exploração. `web/` não rastreado não pertence a esta etapa.
 - Verificação: `cargo +1.93.0 fmt --all`, `cargo +1.93.0 test --locked --offline -p security-engine` (23 testes), binário debug e repetição dos comandos reais M3/M5/M6/M7. Atualizar `agente.md` e este arquivo a cada próxima etapa.
+## Ligações da leitura por variável
+
+- A lente registra índices de arrays/mappings como famílias simbólicas, argumentos→parâmetros e retornos→resultados para chamadas internas por identificador. Relações entre funções têm confiança `syntactic_call_summary`; chamada externa, assembly, aliasing e viabilidade seguem abertos.
+- `verified_variables` mantém AST IDs, arquivos e offsets do bundle multifile verificado separados do source achatado. A referência em faixa do source map ainda é `tentative_source_range` para o predicado observado.
+- `--guided-scenarios` valida a identidade da lente e do relatório forense, seleciona famílias por tipos/nomes, executa somente no Anvil local do VPS e registra sequência e decisões observadas. Grupos de `--local-coverage`: `guided_limit`, `guided_actor`, `guided_asset_state`. Consulte `docs/VARIABLE-LENS.md`.
+- Nunca incluir `web/` não rastreado nem arquivos privados de `private-output/` no Git. Atualizar ambos os arquivos de agente e o checklist após cada etapa.

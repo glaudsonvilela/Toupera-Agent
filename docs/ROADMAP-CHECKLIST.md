@@ -142,8 +142,11 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 - [x] Implementar primeiro inventário AST/layout de todas as declarações do source de análise, com leituras, escritas, guardas, atribuições e fatias transitivas por AST ID; execução offline no VPS: 742 declarações e 180 relações. Categorias não presentes no contrato continuam representadas quando declaradas.
 - [x] Alinhar PCs observados ao source map verificado com identidade de runtime conferida, sem unir ASTs distintas por nome; 18/50 faixas amplas ficam sem atribuição, 17/50 têm referências candidatas em faixa curta.
 - [x] Exportar SSA do Slither localmente e cruzar com o grafo Rust por nome e offset da declaração, preservando origem e confiança: 1.303 operações, 287 relações inferidas, 42 referências posicionadas sem vínculo no VPS.
-- [ ] Resolver fluxo entre funções, chaves de mappings, arrays, assembly e efeitos externos com proveniência e limites de caminho.
-- [ ] Ligar variáveis do source verificado ao runtime com identidade forte e usar limiares/estado/ator/ordem para gerar novos cenários no VPS; medir ganho de resultados observados.
+- [x] Registrar chamadas internas por identificador, argumentos→parâmetros, retornos→resultados e famílias simbólicas de mappings/arrays com expressão da chave e proveniência; sem inferir aliasing ou viabilidade.
+- [x] Inventariar variáveis da AST multifile verificada e ligá-las a faixas de PCs do runtime com identidade de compilação e confiança explícita; referência em faixa não prova controle do desvio.
+- [x] Implementar seleção automática de cenários locais por limite, ator e mudança de estado com identidade do relatório de variáveis, snapshots e grupos de cobertura.
+- [ ] Resolver aliases de chaves, assembly, efeitos externos/entre transações e viabilidade de caminhos.
+- [ ] Executar cenários guiados no VPS e medir resultados observados novos por grupo em relação à grade anterior.
 - [ ] Medir cobertura por função/ramo do vault com denominador confiável e ampliar sequências conforme lacunas observadas.
 - [x] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
 - [x] Publicar métricas de cobertura de blocos, eventos, transações, estados e chamadas de borda, com lacunas de rastro/bytecode explícitas.
