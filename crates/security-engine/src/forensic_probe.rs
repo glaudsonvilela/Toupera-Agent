@@ -252,6 +252,9 @@ pub struct ForensicCoverage {
     pub local_scenario_reverted: Option<usize>,
     pub local_scenario_jump_sites: Option<usize>,
     pub local_scenario_branch_outcomes: Option<usize>,
+    pub local_vault_runtime_jump_sites: Option<usize>,
+    pub local_vault_jump_sites_observed: Option<usize>,
+    pub local_vault_branch_outcomes_observed: Option<usize>,
     pub evidence_gate: String,
 }
 
@@ -264,6 +267,10 @@ pub struct LocalScenarioEvidence {
     pub unique_trace_jump_sites: usize,
     pub unique_branch_outcomes: usize,
     pub jump_sites_with_both_outcomes: usize,
+    pub vault_runtime_jump_sites: usize,
+    pub vault_jump_sites_observed: usize,
+    pub vault_branch_outcomes_observed: usize,
+    pub vault_jump_sites_with_both_outcomes: usize,
     pub review_flags_added: usize,
     pub limitations: Vec<String>,
 }
@@ -2736,6 +2743,10 @@ fn attach_local_scenario_evidence(
         unique_trace_jump_sites: number("unique_trace_jump_sites"),
         unique_branch_outcomes: number("unique_branch_outcomes"),
         jump_sites_with_both_outcomes: number("jump_sites_with_both_outcomes"),
+        vault_runtime_jump_sites: number("vault_runtime_jump_sites"),
+        vault_jump_sites_observed: number("vault_jump_sites_observed"),
+        vault_branch_outcomes_observed: number("vault_branch_outcomes_observed"),
+        vault_jump_sites_with_both_outcomes: number("vault_jump_sites_with_both_outcomes"),
         review_flags_added: added,
         limitations,
     })
@@ -3301,6 +3312,15 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
         local_scenario_branch_outcomes: local_scenario_evidence
             .as_ref()
             .map(|item| item.unique_branch_outcomes),
+        local_vault_runtime_jump_sites: local_scenario_evidence
+            .as_ref()
+            .map(|item| item.vault_runtime_jump_sites),
+        local_vault_jump_sites_observed: local_scenario_evidence
+            .as_ref()
+            .map(|item| item.vault_jump_sites_observed),
+        local_vault_branch_outcomes_observed: local_scenario_evidence
+            .as_ref()
+            .map(|item| item.vault_branch_outcomes_observed),
         evidence_gate: if !history_reconciled {
             "partial"
         } else if call_traces_available < receipts_inspected {

@@ -193,6 +193,10 @@ pub fn reassess_cached_map(base_path: &Path, local_path: &Path) -> Result<Value,
         "unique_trace_jump_sites":number("unique_trace_jump_sites"),
         "unique_branch_outcomes":number("unique_branch_outcomes"),
         "jump_sites_with_both_outcomes":number("jump_sites_with_both_outcomes"),
+        "vault_runtime_jump_sites":number("vault_runtime_jump_sites"),
+        "vault_jump_sites_observed":number("vault_jump_sites_observed"),
+        "vault_branch_outcomes_observed":number("vault_branch_outcomes_observed"),
+        "vault_jump_sites_with_both_outcomes":number("vault_jump_sites_with_both_outcomes"),
         "review_flags_added":added,
         "limitations":limitations,
     });
@@ -200,6 +204,11 @@ pub fn reassess_cached_map(base_path: &Path, local_path: &Path) -> Result<Value,
     base["coverage"]["local_scenario_reverted"] = json!(number("reverted_transactions"));
     base["coverage"]["local_scenario_jump_sites"] = json!(number("unique_trace_jump_sites"));
     base["coverage"]["local_scenario_branch_outcomes"] = json!(number("unique_branch_outcomes"));
+    base["coverage"]["local_vault_runtime_jump_sites"] = json!(number("vault_runtime_jump_sites"));
+    base["coverage"]["local_vault_jump_sites_observed"] =
+        json!(number("vault_jump_sites_observed"));
+    base["coverage"]["local_vault_branch_outcomes_observed"] =
+        json!(number("vault_branch_outcomes_observed"));
     let previous_reassessment = base
         .get("reassessment")
         .and_then(Value::as_array)

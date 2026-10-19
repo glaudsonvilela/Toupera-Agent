@@ -122,6 +122,7 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 - [x] Implementar cenários locais em fork Anvil para deposit/mint/withdraw/redeem e sequência deposit→redeem, com snapshots, valores de borda, reversões e pontos `JUMPI` observados; conferir execução no VPS antes de considerar a etapa validada.
 - [x] Aceitar relatório de cenários locais no manifesto, conferir identidade e devolver diferenças à quarentena como pedidos de revisão antes de refazer o mapa; não promover automaticamente a M5.
 - [x] Reaproveitar uma coleta histórica completa por hash/identidade para reavaliar todos os hotspots sem consultar novamente o RPC, com proveniência explícita.
+- [x] Separar pontos `JUMPI` do frame raiz do vault e compará-los com os PCs `JUMPI` do runtime verificado; tratar o denominador como estático, não como prova de alcance.
 - [ ] Medir cobertura por função/ramo do vault com denominador confiável e ampliar sequências conforme lacunas observadas.
 - [x] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
 - [x] Publicar métricas de cobertura de blocos, eventos, transações, estados e chamadas de borda, com lacunas de rastro/bytecode explícitas.

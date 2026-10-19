@@ -71,6 +71,10 @@ pub struct LocalScenarioReport {
     pub unique_trace_jump_sites: usize,
     pub unique_branch_outcomes: usize,
     pub jump_sites_with_both_outcomes: usize,
+    pub vault_runtime_jump_sites: usize,
+    pub vault_jump_sites_observed: usize,
+    pub vault_branch_outcomes_observed: usize,
+    pub vault_jump_sites_with_both_outcomes: usize,
     pub trace_limitations: Vec<String>,
     pub round_trip_asset_delta: Option<String>,
     pub round_trip_discrepancies: Vec<String>,
@@ -600,6 +604,21 @@ pub fn run_local_scenarios(
     };
     let remote = Rpc::new(fork_rpc_url.to_owned())?;
     verify_rpc(&remote, &identity)?;
+    let runtime_raw = remote.call(
+        "eth_getCode",
+        json!([identity.vault, format!("0x{:x}", block_number)]),
+    )?;
+    let runtime_hex = runtime_raw
+        .as_str()
+        .ok_or("remote vault runtime is not hex")?;
+    let runtime_analysis =
+        crate::reconstruct_bytecode_hex("local-scenarios-vault-runtime", runtime_hex)?;
+    let vault_jump_pcs: BTreeSet<usize> = runtime_analysis
+        .instructions
+        .iter()
+        .filter(|item| item.opcode == 0x57)
+        .map(|item| item.pc)
+        .collect();
     let listener = TcpListener::bind("127.0.0.1:0").map_err(|error| error.to_string())?;
     let port = listener
         .local_addr()
@@ -802,6 +821,32 @@ pub fn run_local_scenarios(
                 && all_outcomes.contains(&format!("{site}:not_taken"))
         })
         .count();
+    let vault_observed_pcs: BTreeSet<usize> = all_jumps
+        .iter()
+        .filter_map(|site| {
+            site.strip_prefix("1:")
+                .and_then(|pc| pc.parse::<usize>().ok())
+        })
+        .filter(|pc| vault_jump_pcs.contains(pc))
+        .collect();
+    let vault_outcomes: BTreeSet<String> = all_outcomes
+        .iter()
+        .filter_map(|outcome| outcome.strip_prefix("1:"))
+        .filter_map(|outcome| {
+            let (pc, direction) = outcome.split_once(':')?;
+            let pc = pc.parse::<usize>().ok()?;
+            vault_jump_pcs
+                .contains(&pc)
+                .then(|| format!("{pc}:{direction}"))
+        })
+        .collect();
+    let vault_jump_sites_with_both_outcomes = vault_observed_pcs
+        .iter()
+        .filter(|pc| {
+            vault_outcomes.contains(&format!("{pc}:taken"))
+                && vault_outcomes.contains(&format!("{pc}:not_taken"))
+        })
+        .count();
     Ok(LocalScenarioReport {
         schema: SCHEMA.into(), identity,
         execution_scope: "child Anvil fork on 127.0.0.1; no transaction broadcast to source network".into(),
@@ -809,8 +854,12 @@ pub fn run_local_scenarios(
         unique_trace_jump_sites: all_jumps.len(),
         unique_branch_outcomes: all_outcomes.len(),
         jump_sites_with_both_outcomes,
+        vault_runtime_jump_sites: vault_jump_pcs.len(),
+        vault_jump_sites_observed: vault_observed_pcs.len(),
+        vault_branch_outcomes_observed: vault_outcomes.len(),
+        vault_jump_sites_with_both_outcomes,
         trace_limitations,
         round_trip_asset_delta, round_trip_discrepancies,
-        limitations: vec!["Jump sites are aggregate (depth,pc) positions across vault and asset calls, not source-level branch coverage or a completeness percentage".into(),"Scenario actor is the vault owner from the base report; results depend on that account's snapshot balances and approvals".into()],
+        limitations: vec!["Aggregate (depth,pc) positions include vault and asset calls. Vault-only counts use depth 1 and exact runtime JUMPI PCs; the static denominator includes paths that may be unreachable, so this is not source-level or reachable-path coverage".into(),"Scenario actor is the vault owner from the base report; results depend on that account's snapshot balances and approvals".into()],
     })
 }
