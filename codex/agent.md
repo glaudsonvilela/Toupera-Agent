@@ -5,7 +5,7 @@
 3. Não faça grandes refactors sem necessidade.
 4. Não generalize o escopo: priorize Solidity/EVM, Vaults e Oracles.
 5. Trate o motor Rust como analisador econômico e motor de reconstrução do contrato; source e runtime legado já têm recortes implementados, mas toda inferência incerta deve permanecer explicitamente incerta.
-6. Execute os testes relevantes após cada mudança, exceto enquanto vigorar o pedido do usuário de adiar testes e fixtures até a implementação geral estar completa; nesse período use apenas compilação, formatação e verificações estáticas de sintaxe.
+6. Execute testes quando autorizados pelo escopo da etapa. O pedido de adiar testes gerais permanece para alvos reais; o piloto sintético M7 foi executado após a implementação local, conforme o pedido posterior de concluir M7. Registre exatamente o que foi medido.
 7. Atualize `/agente.md` depois de cada etapa importante.
 8. Nunca armazene API keys, tokens, passwords, secrets, private keys ou seed phrases.
 9. Não modifique outros projetos no SSD Sherlock.
@@ -103,3 +103,10 @@
 - Após testes positivos, executa `forge coverage --report lcov` com a mesma seed e exige ao menos uma linha de `src/Target.sol` atingida. M8 copia LCOV/log e reconfere cobertura e fuzz diretamente dos arquivos antes de `PENDING_HUMAN_REVIEW` ou `REPORT_READY`. Inconclusivos permanecem pendentes; nenhuma hipótese é rejeitada automaticamente.
 - Nenhum teste, fixture, comando de cobertura ou benchmark foi executado nesta etapa, conforme pedido do usuário. Apenas formatação, compilação Rust 1.93 e diff estático. Leia `docs/FOUNDRY-JUDGE.md`; atualizar ambos os arquivos de agente após próximas etapas. Preservar `web/` não rastreado.
 - Revisão `d47a909` publicada no GitHub privado, sincronizada e compilada em release no VPS sob `toupera`. `.deployed-commit` recebeu a revisão antes deste complemento documental; nenhuma campanha ou pacote real foi gerado.
+
+## Fechamento M7 local — piloto sintético
+
+- Leia `docs/M7-PILOT.md`, `docs/FOUNDRY-JUDGE.md` e o checklist antes de avançar. O juiz executou duas rodadas Foundry por ramo da fixture própria, com seed `0x5eed`, 256 fuzz runs por rodada, teste determinístico de assets 1..7 e LCOV. Ramo defeituoso: `REPRODUCED_PENDING_REVIEW`, preview 2 versus execução 3 em assets=1. Ramo corrigido: reprodução falha mas fuzz e domínio válido passam; `--foundry-reject` registrou `REJECTED` com revisão limitada à fixture sintética.
+- Rejeição exige `rejection-review.json` completo, JSON/traces de duas rodadas, target coberto e hashes consistentes. M8 transporta a rejeição como `REJECTED`, nunca `REPORT_READY`. Campos de revisão são atestados declarados, não prova automática de revisão humana.
+- Halmos encontrou contraexemplo assets=1 no harness simbólico baseado em herança. Não executar Echidna/Medusa sem ganho esperado de alcance ou achados únicos; Kontrol/Certora apenas para propriedade crítica com premissas explícitas. O comando `--context-package` seguido de `--llm-plan` não selecionou a fixture: há lacuna M4, e o piloto M7 usou casos montados manualmente. Não apresentar o fluxo M4→M7 como validado de ponta a ponta.
+- Artefatos brutos privados estão em `/srv/toupera-agent/private-output/m7-pilot-v2/`. Não copiar para GitHub. O diretório local `web/` é de outro fluxo e não deve ser adicionado. Atualizar este arquivo e `agente.md` após novas etapas.

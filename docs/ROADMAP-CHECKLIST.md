@@ -49,6 +49,8 @@ Complemento adicional: Heimdall ABI e Gigahorse TAC podem ser importados com `--
 
 O M4 usa a IR source-first de um arquivo sem imports. Regras sintáticas não provam conservação de quantidades, round trips ERC-4626, possibilidade de doação ou qualidade de oracle. O bytecode M3 permanece evidência estrutural separada. A saída e os limites estão em [Análise Econômica](ECONOMIC-ANALYSIS.md).
 
+Lacuna observada no piloto M7: `--llm-plan` retornou zero candidatos para `RoundingVaultM7Fixture.sol`, apesar da divergência sintética de arredondamento reproduzida. Ampliar e calibrar a detecção M4 antes de considerar o pipeline completo validado.
+
 ### M5 — Deduplicação e contexto mínimo
 - [x] Calcular hashes de source, runtime opcional normalizado, AST e função, além de compiler e motor.
 - [x] Evitar reanálise de entradas idênticas com cache local por conteúdo.
@@ -68,17 +70,17 @@ O M6 foi implementado no recorte de candidatos source-backed do M4/M5. Preparaç
 
 ### M7 — Juiz Foundry
 - [x] Preparar caso privado por hipótese priorizada, com snapshot do alvo e scaffold Foundry explicitamente pendente de implementação humana.
-- [x] Implementar executor local com seed fixa, duas execuções, limites de tempo e gates de harness revisado; execução adiada a pedido do usuário.
-- [x] Instrumentar contagem real de fuzz, LCOV do alvo e contadores de chamadas/reverts de invariantes quando houver campanha; nenhuma medição real executada.
-- [ ] Implementar harness específico e obter teste reproduzível para cada hipótese real.
-- [ ] Executar apenas em unit tests, Anvil ou fork local autorizado após a implementação geral.
-- [ ] Aplicar fuzzing de Foundry a limites, fees e arredondamentos.
-- [ ] Rejeitar hipóteses que não reproduzem o comportamento alegado.
-- [ ] Reexecutar resultados positivos e guardar traces relevantes.
-- [ ] Medir cobertura, chamadas econômicas válidas e reverts em casos reais; avaliar Echidna ou Medusa apenas quando acrescentarem alcance ou achados únicos.
-- [ ] Piloto Halmos para propriedades curtas; avaliar Kontrol ou Certora somente para provas críticas com premissas explícitas.
+- [x] Implementar executor local com seed fixa, duas execuções, limites de tempo e gates de harness revisado.
+- [x] Instrumentar contagem observada de fuzz, LCOV do alvo e contadores de chamadas/reverts de invariantes quando houver campanha.
+- [x] Implementar harness específico e reproduzir divergência em fixture própria de fee e arredondamento.
+- [x] Executar apenas em testes unitários locais autorizados; nenhum fork ou contrato real no piloto.
+- [x] Aplicar fuzzing Foundry a domínio válido, fee e arredondamento; conferir limites determinísticos de 1 a 7.
+- [x] Implementar rejeição revisada e exercitá-la no ramo corrigido, sem transformar falha de compilação/teste em rejeição automática.
+- [x] Reexecutar resultado positivo com seed fixa e guardar JSON, traces e LCOV das duas rodadas.
+- [x] Medir cobertura e documentar contagem inferida de chamadas econômicas válidas/reverts no piloto; decidir Echidna/Medusa somente por lacuna ou achado único.
+- [x] Executar piloto Halmos para propriedade curta e documentar decisão de adiar Kontrol/Certora.
 
-O comando `--foundry-plan` cria casos sem executar testes. `--foundry-run` e a coleta de cobertura estão implementados, mas não foram acionados nesta etapa. Uma aprovação declarada em `harness.json` é condição de entrada, não prova de qualidade do teste. Contadores de invariant handlers não provam chamadas válidas ao alvo. O motor não converte texto da IA em Solidity, não rejeita hipótese automaticamente com uma execução falha e não confirma achado por um teste verde. Ver [Juiz Foundry](FOUNDRY-JUDGE.md).
+O M7 do executor local está concluído no recorte sintético descrito em [Piloto M7](M7-PILOT.md). Uma aprovação declarada em `harness.json` é condição de entrada, não prova de qualidade do teste. Contadores de invariant handlers não provam chamadas válidas ao alvo. O motor não converte texto da IA em Solidity, não rejeita hipótese automaticamente com uma execução falha e não confirma achado por um teste verde. A triagem M4 não selecionou a fórmula do piloto; casos reais exigirão seu próprio harness, escopo e revisão. Ver [Juiz Foundry](FOUNDRY-JUDGE.md).
 
 Critérios e prioridade por ferramenta: [Estratégia de ferramentas](TOOLING-STRATEGY.md).
 

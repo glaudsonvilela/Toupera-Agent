@@ -19,6 +19,17 @@ contract Scenario {
         assert(charged >= preview && charged > 0);
     }
 
+    function testValidDomainAndFeeRounding() public {
+        for (uint256 assets = 1; assets <= 7; ++assets) {
+            RoundingVaultM7Fixture vault = new RoundingVaultM7Fixture(true);
+            assert(vault.feeFor(assets) == 1);
+            uint256 preview = vault.previewWithdraw(assets);
+            uint256 charged = vault.withdraw(assets);
+            assert(preview <= charged);
+            if (assets == 1) assert(preview == 2 && charged == 3);
+        }
+    }
+
     function check_previewMatchesExecution(uint256 assets) public {
         if (assets < 1 || assets > 7) return;
         RoundingVaultM7Fixture vault = new RoundingVaultM7Fixture(true);

@@ -18,4 +18,15 @@ contract Scenario {
         uint256 charged = vault.withdraw(assets);
         assert(preview == charged && charged > 0);
     }
+
+    function testValidDomainAndFeeRounding() public {
+        for (uint256 assets = 1; assets <= 7; ++assets) {
+            RoundingVaultM7Fixture vault = new RoundingVaultM7Fixture(false);
+            assert(vault.feeFor(assets) == 1);
+            uint256 preview = vault.previewWithdraw(assets);
+            uint256 charged = vault.withdraw(assets);
+            assert(preview == charged);
+            if (assets == 1) assert(charged == 3);
+        }
+    }
 }

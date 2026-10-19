@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 use crate::context_package::{ensure_private_cache, write_private};
 use crate::foundry_judge::target_coverage;
-use crate::{FoundryCase, FoundryResult};
+use crate::{FoundryCase, FoundryRejection, FoundryResult, RejectionReview};
 
 const SCHEMA: &str = "m8-evidence-v1";
 const MAX_ARTIFACT_BYTES: u64 = 64 * 1024 * 1024;
@@ -364,6 +364,52 @@ pub fn prepare_evidence_bundle(
         } else if report.state != "INCONCLUSIVE" {
             return Err("M7 result has an unknown state".into());
         }
+        if case_dir.join("runs/rejection.json").exists() {
+            copy_artifact(
+                &case_dir.join("rejection-review.json"),
+                output_dir,
+                "rejection-review.json",
+                &mut artifacts,
+            )?;
+            copy_artifact(
+                &case_dir.join("runs/rejection.json"),
+                output_dir,
+                "runs/rejection.json",
+                &mut artifacts,
+            )?;
+            let rejection: FoundryRejection = read_json(&output_dir.join("runs/rejection.json"))?;
+            let review: RejectionReview = read_json(&output_dir.join("rejection-review.json"))?;
+            if stage != "PENDING_REPRODUCTION"
+                || rejection.schema != "m7-foundry-rejection-v1"
+                || rejection.status != "REJECTED"
+                || rejection.candidate_key != case.candidate_key
+                || rejection.source_sha256 != case.source_sha256
+                || rejection.harness_sha256
+                    != *artifacts
+                        .get("test/Scenario.t.sol")
+                        .ok_or("missing harness hash")?
+                || rejection.result_sha256
+                    != *artifacts
+                        .get("runs/result.json")
+                        .ok_or("missing result hash")?
+                || rejection.review_sha256
+                    != *artifacts
+                        .get("rejection-review.json")
+                        .ok_or("missing review hash")?
+                || !review.reviewed
+                || review.reviewer.trim().is_empty()
+                || review.scope_reference.trim().is_empty()
+                || review.reason.trim().len() < 30
+                || !review.assumptions_checked
+                || !review.valid_inputs_checked
+                || !review.failed_assertion_reviewed
+                || !review.target_calls_reviewed
+                || rejection.reason != review.reason
+            {
+                return Err("M7 rejection does not match its evidence".into());
+            }
+            stage = "REJECTED".into();
+        }
     }
     let mut facts = vec![
         EvidenceFact {
@@ -372,7 +418,9 @@ pub fn prepare_evidence_bundle(
         },
         EvidenceFact {
             statement: format!("M7 evidence snapshot stage: {stage}"),
-            artifact: if result_path.exists() {
+            artifact: if stage == "REJECTED" {
+                "runs/rejection.json"
+            } else if result_path.exists() {
                 "runs/result.json"
             } else {
                 "case.json"

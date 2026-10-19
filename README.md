@@ -44,11 +44,11 @@ M5 builds bounded, local context slices for those candidates. SHA-256 fingerprin
 
 M6 prepares one structured review request per eligible, deduplicated slice. A provider interface and an opt-in DeepSeek adapter require a JSON hypothesis with assumptions, relevant paths, and a suggested local test; the candidate remains `UNVERIFIED`. Prompt response caching and provider token usage make repeat calls and spend visible. No API key or live model call was used during implementation. See [LLM Review](docs/LLM-REVIEW.md).
 
-M7 prepares private Foundry cases from M5/M6 output with exact source digests. Its local judge requires a target-specific, reviewed harness and two consistent runs before proposing `REPRODUCED_PENDING_REVIEW`. The scaffold deliberately fails until completed; no Foundry test was executed during this implementation. See [Foundry Judge](docs/FOUNDRY-JUDGE.md).
+M7 prepares private Foundry cases from M5/M6 output with exact source digests. Its local judge requires a target-specific, reviewed harness and two consistent runs before proposing `REPRODUCED_PENDING_REVIEW`. A separately reviewed negative reproduction can be recorded as `REJECTED` only under documented premises. The scaffold deliberately fails until completed. A repository-owned synthetic [M7 pilot](docs/M7-PILOT.md) exercised reproduction, rejection, fuzz, coverage and Halmos; no real target was audited. See [Foundry Judge](docs/FOUNDRY-JUDGE.md).
 
 M8 snapshots a case into a private evidence bundle. A report can reach `REPORT_READY` only after a positive M7 result, artifact integrity checks and explicit human review of scope, assertions, impact and duplicates. No real report was generated during implementation. See [Evidence Delivery](docs/EVIDENCE-DELIVERY.md).
 
-The M7 judge also records observed fuzz runs and target LCOV coverage; optional invariant handler calls/reverts remain separate from verified economic calls to the target. These metrics have not been exercised on a case yet.
+The M7 judge records observed fuzz runs and target LCOV coverage; optional invariant handler calls/reverts remain separate from verified economic calls to the target. The synthetic pilot measured these outputs. The M4 candidate selector did not flag that fixture, so the pilot cases were prepared manually and the full M4–M7 path remains unvalidated.
 
 ## Development
 
