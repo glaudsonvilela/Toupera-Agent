@@ -448,3 +448,7 @@ A última execução automática wCOP é `private-output/site-jobs/ba5146dd978d4
 ## Revisão clínica de UUPS e permit (2026-10-19)
 
 - Leia `docs/WCOP-REVISAO-CLINICA-2026-10-19.md`. Sete chamadas locais separaram implementação direta de proxy. A implementação direta aceitou `proxiableUUID()` e recusou upgrade/inicialização com seletores esperados; `permit` recusou assinaturas inválidas com erros distintos. Mock UUPS que passou pela checagem e reverteu no delegatecall não alterou o slot ERC-1967 em transação local revertida. Proxy: 67/155 PCs `JUMPI` observados nos dois sentidos, 88 em um, 14 não observados; 23 guardas de execução residuais. Nenhuma falha confirmada.
+
+## Fluxo forense executável do wCOP (2026-10-19)
+
+- Leia `docs/WCOP-FLUXO-FORENSE-EXECUTAVEL-2026-10-19.md`. `tools/wcop_forensic_run.py <job-id> --refresh` encadeia cinco etapas limitadas e o filtro Rust `wcop-forensic-sift`. No trabalho `92273047cbf7439c`, 5 transações / 17 eventos históricos foram conferidos; 7 sequências locais de invariantes passaram com snapshots restaurados. O filtro agrupa 23 guardas de execução, preserva 14 PCs não observados e retorna `hold_no_confirmed_violation`, zero candidatos. Armazenamento histórico não verificado por RPC de arquivo; JSONs privados no VPS.

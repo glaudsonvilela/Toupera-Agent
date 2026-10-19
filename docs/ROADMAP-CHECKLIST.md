@@ -395,6 +395,7 @@ Ver `docs/WCOP-MAPA-LINHAS-2026-10-19.md`.
 - [x] Executar 22 casos dirigidos no Anvil com identidade fixada: 155/169 PCs `JUMPI` estáticos observados, 54 em ambos os sentidos, 101 em um; `permit` válido e repetição testados em snapshot. Ver `docs/WCOP-DESVIOS-DIRIGIDOS-2026-10-19.md`.
 - [x] Classificar os 101 PCs `JUMPI` com apenas um sentido e testar 16 entradas dirigidas no fork: 67 PCs agora têm ambos os sentidos, 88 têm um; dos 88, 23 são guardas de execução. Ver `docs/WCOP-GUARDAS-RESIDUAIS-2026-10-19.md`.
 - [x] Separar contexto direto da implementação e proxy, confirmar erros UUPS/ECDSA por seletor e rollback de upgrade após falha no delegatecall. Ver `docs/WCOP-REVISAO-CLINICA-2026-10-19.md`.
+- [x] Implementar reconciliação de 5 transações/17 eventos, 7 sequências isoladas de invariantes e filtro Rust de evidência com rejeição de bloco adulterado. Ver `docs/WCOP-FLUXO-FORENSE-EXECUTAVEL-2026-10-19.md`.
 - [ ] Ligar os resultados de `JUMPI` a um identificador de ramo LCOV com alinhamento semântico; 14 PCs `JUMPI` seguem não observados após os 22 casos dirigidos; a possibilidade de alcançá-los no proxy fixado não foi demonstrada.
 - [x] Medir uma nova rodada local: trabalho `92273047cbf7439c`, 38 escolhas e zero PCs após o mapa; total observado igual ao trabalho anterior. Não há ganho de cobertura demonstrado.
 

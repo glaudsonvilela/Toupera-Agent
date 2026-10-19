@@ -36,6 +36,11 @@
 - `tools/wcop_clinical_guards.py` mediu sete chamadas em contexto separado: `proxiableUUID()` direto retornou o slot ERC-1967; upgrade e inicialização diretos reverteram com erros UUPS e de inicialização. `permit` rejeitou assinatura nula, `v` inválido, signatário diferente e `s` alto com os seletores esperados. Os sentidos diretos não entram nas contagens do proxy.
 - O overload de ECDSA usado por `permit(v,r,s)` não produz `InvalidSignatureLength` segundo a fonte fixada. O upgrade simulado que passou pela checagem UUPS e falhou no delegatecall deixou o slot de implementação inalterado em transação local revertida. Ver `docs/WCOP-REVISAO-CLINICA-2026-10-19.md`.
 
+## Fluxo forense executável
+
+- `tools/wcop_forensic_run.py` encadeia os ensaios locais e o novo filtro `wcop-forensic-sift`. Cinco transações de implantação/papéis foram reconciliadas com 17 logs de origem; o armazenamento antigo continua sem verificação por RPC de arquivo. Sete sequências de invariantes passaram no fork com snapshots restaurados.
+- O filtro Rust confere identidade e hashes dos relatórios, organiza os 23 guardas de execução em sete grupos e mantém 14 PCs `JUMPI` não observados. Estado atual: `hold_no_confirmed_violation`, zero candidatos, nenhum relato pronto. Uma repetição adulterada foi rejeitada. Ver `docs/WCOP-FLUXO-FORENSE-EXECUTAVEL-2026-10-19.md`.
+
 ## Evidência privada
 
 - `private-output/site-jobs/92273047cbf7439c/baseline-branch-replay.json`: 36 casos, SHA-256 `ff82321ad690aa3936433da544c73889a1ecb910f35395c72b651cd5b31aff8e`.
@@ -44,6 +49,9 @@
 - `private-output/site-jobs/92273047cbf7439c/residual-guards.json`: 16 casos, SHA-256 `efa0abf6fe8b5bfada5a18b2348f4c55cda67c9b4a885ed6f551493913647eb7`.
 - `private-output/site-jobs/92273047cbf7439c/residual-classification.json`: 88 desvios classificados, SHA-256 `61aedc14006b24f13acfa08474ca8ae9fdc2ca5e080b1017260eb0b45e95e148`.
 - `private-output/site-jobs/92273047cbf7439c/clinical-guards.json`: sete chamadas clínicas, SHA-256 `c0ee021c99f00061571a5f3b18ba45855201387c1eab0f39510a3bd05055796b`.
+- `private-output/site-jobs/92273047cbf7439c/historical-reconciliation.json`: 5 transações e 17 eventos, SHA-256 `6a279d1d5f3f682c675c0ec247c0ed43c0cacb6180a205c55353edd1313159a9`.
+- `private-output/site-jobs/92273047cbf7439c/invariant-sequences.json`: 7 cenários, SHA-256 `bc0c58827ab7a1e96aca4b962f8ee44ae76df9655448f68d270f1d3b887eb669`.
+- `private-output/site-jobs/92273047cbf7439c/forensic-sift.json`: gate Rust, SHA-256 `f168b0537c529c9601d584f846687b088b026da4e6a2677f49237d5a108a78b0`.
 - Os JSONs acima permanecem privados, modo `0600`, propriedade de `toupera`. Este resumo não contém calldata, endereços de atores nem credenciais.
 
 ## Próxima ação
@@ -51,6 +59,8 @@
 1. Examinar os 23 guardas de execução ainda vistos em um sentido, documentando pré-condição, alcance no proxy fixado e consequência de segurança; priorizar ECDSA e UUPS.
 2. Examinar os 14 PCs ainda não observados em estados apropriados: inicialização fresca em ambiente local separado, strings longas e alternativas de EIP-712. Manter essas medidas separadas do proxy já inicializado e não supor alcançabilidade.
 3. Vincular resultados de `JUMPI` à semântica da fonte, mantendo separados os IDs de ramo LCOV da recompilação. O estado histórico antigo ainda não está disponível no RPC (403).
+
+4. Se houver um RPC de arquivo confiável, conferir os slots históricos nos blocos de implantação e transição de papéis; até lá, manter essa verificação como pendente.
 
 ## Publicação
 
