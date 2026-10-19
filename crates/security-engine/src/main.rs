@@ -7,21 +7,42 @@ use security_engine::{
     CachingProvider, CompanionAnalysis, DeepSeekProvider, ForensicInput, RateCard,
     analyze_economic_functions, analyze_recorded_scenarios, benchmark_sources, build_forensic_plan,
     build_variable_lens, compare_with_solc_contract, empty_review_report, filter_evidence,
-    finalize_evidence_bundle, gate_review_plan, import_gigahorse_tac, import_heimdall_abi,
-    judge_foundry_case, load_or_build_context_package_with_forensic, prepare_evidence_bundle,
-    prepare_foundry_cases, prepare_review_plan, reassess_cached_map, reconcile_trace, reconstruct_bytecode_hex,
-    reconstruct_source_file, reject_foundry_case, run_forensic_probe, run_guided_scenarios,
-    run_local_scenarios, run_review,
+    finalize_evidence_bundle, gate_review_plan, guard_wcop_job, import_gigahorse_tac,
+    import_heimdall_abi, judge_foundry_case, load_or_build_context_package_with_forensic,
+    prepare_evidence_bundle, prepare_foundry_cases, prepare_review_plan, reassess_cached_map,
+    reconcile_trace, reconstruct_bytecode_hex, reconstruct_source_file, reject_foundry_case,
+    run_forensic_probe, run_guided_scenarios, run_local_scenarios, run_review,
 };
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --forensic-probe <manifest.json> | --forensic-plan <manifest.json> <forensic.json> <lens.json> <scenarios.json> <coverage.json> | --source-benchmark <solc> <source1.sol> [source2.sol ...] | --variable-lens <manifest.json> <forensic-report.json> <local-coverage.json> [slither-ssa.json] | --local-scenarios <forensic-report.json> <fork-rpc-url> <anvil-bin> | --guided-scenarios <forensic-report.json> <variable-lens.json> <prior-coverage.json> <fork-rpc-url> <anvil-bin> [previous-scenarios.json] | --local-coverage <local-scenarios.json> | --evidence-filter <forensic.json> <lens.json> <scenarios.json> <coverage.json> <m5-context.json> | --cached-reassessment <forensic-report.json> <local-scenarios.json> | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>] [--forensic <report.json>] | --llm-plan <context.json> --evidence-filter <filter.json> | --llm-review <context.json> --evidence-filter <filter.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --foundry-reject <case-dir> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name> | --wcop-sift <engine.json> <history.json> | --wcop-trace <engine.json> <trace.json>"
+            "usage: security-engine <source.sol> [solc-path] | --forensic-probe <manifest.json> | --forensic-plan <manifest.json> <forensic.json> <lens.json> <scenarios.json> <coverage.json> | --source-benchmark <solc> <source1.sol> [source2.sol ...] | --variable-lens <manifest.json> <forensic-report.json> <local-coverage.json> [slither-ssa.json] | --local-scenarios <forensic-report.json> <fork-rpc-url> <anvil-bin> | --guided-scenarios <forensic-report.json> <variable-lens.json> <prior-coverage.json> <fork-rpc-url> <anvil-bin> [previous-scenarios.json] | --local-coverage <local-scenarios.json> | --evidence-filter <forensic.json> <lens.json> <scenarios.json> <coverage.json> <m5-context.json> | --cached-reassessment <forensic-report.json> <local-scenarios.json> | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>] [--forensic <report.json>] | --llm-plan <context.json> --evidence-filter <filter.json> | --llm-review <context.json> --evidence-filter <filter.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --foundry-reject <case-dir> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name> | --wcop-sift <engine.json> <history.json> | --wcop-trace <engine.json> <trace.json> | --wcop-guard <job-dir>"
         );
         return ExitCode::FAILURE;
     };
+    if source == "--wcop-guard" {
+        let arguments: Vec<_> = args.collect();
+        if arguments.len() != 1 {
+            eprintln!("usage: security-engine --wcop-guard <job-dir>");
+            return ExitCode::FAILURE;
+        }
+        return match guard_wcop_job(Path::new(&arguments[0])) {
+            Ok(value) => {
+                if let Err(error) = serde_json::to_writer(std::io::stdout(), &value) {
+                    eprintln!("cannot write evidence decision: {error}");
+                    return ExitCode::FAILURE;
+                }
+                println!();
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if source == "--wcop-trace" {
         let arguments: Vec<_> = args.collect();
         if arguments.len() != 2 {
@@ -29,10 +50,12 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
         let result = (|| -> Result<serde_json::Value, String> {
-            let engine: serde_json::Value = serde_json::from_slice(&fs::read(&arguments[0]).map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?;
-            let trace: serde_json::Value = serde_json::from_slice(&fs::read(&arguments[1]).map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?;
+            let engine: serde_json::Value =
+                serde_json::from_slice(&fs::read(&arguments[0]).map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
+            let trace: serde_json::Value =
+                serde_json::from_slice(&fs::read(&arguments[1]).map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
             reconcile_trace(&engine, &trace)
         })();
         return match result {
@@ -41,9 +64,13 @@ fn main() -> ExitCode {
                     eprintln!("cannot write trace reconciliation: {error}");
                     return ExitCode::FAILURE;
                 }
-                println!(); ExitCode::SUCCESS
+                println!();
+                ExitCode::SUCCESS
             }
-            Err(error) => { eprintln!("{error}"); ExitCode::FAILURE }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
         };
     }
     if source == "--wcop-sift" {
@@ -53,29 +80,44 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
         let result = (|| -> Result<serde_json::Value, String> {
-            let engine: serde_json::Value = serde_json::from_slice(&fs::read(&arguments[0]).map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?;
-            let history: serde_json::Value = serde_json::from_slice(&fs::read(&arguments[1]).map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?;
-            let unresolved = engine["unresolved"].as_array().ok_or("motor sem lista de dúvidas")?;
+            let engine: serde_json::Value =
+                serde_json::from_slice(&fs::read(&arguments[0]).map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
+            let history: serde_json::Value =
+                serde_json::from_slice(&fs::read(&arguments[1]).map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
+            let unresolved = engine["unresolved"]
+                .as_array()
+                .ok_or("motor sem lista de dúvidas")?;
             let mut groups = std::collections::BTreeMap::<String, usize>::new();
             let mut candidates = Vec::new();
             for item in unresolved {
                 let detail = item["detail"].as_str().unwrap_or("motivo não descrito");
                 *groups.entry(detail.to_owned()).or_default() += 1;
-                if detail.contains("fork, which was not supplied") { continue; }
+                if detail.contains("fork, which was not supplied") {
+                    continue;
+                }
                 let pc = item["location"]["Bytecode"]["pc"].as_u64();
-                let priority = if detail.contains("storage key") { 4 }
-                    else if detail.contains("jump destination") { 3 }
-                    else if detail.contains("stack states") || detail.contains("memory word") { 2 }
-                    else { 1 };
+                let priority = if detail.contains("storage key") {
+                    4
+                } else if detail.contains("jump destination") {
+                    3
+                } else if detail.contains("stack states") || detail.contains("memory word") {
+                    2
+                } else {
+                    1
+                };
                 candidates.push(serde_json::json!({
                     "pc": pc, "question": detail, "priority": priority,
                     "basis": "dúvida do motor; posição em bytecode, sem caminho confirmado"
                 }));
             }
-            candidates.sort_by(|a,b| b["priority"].as_u64().cmp(&a["priority"].as_u64())
-                .then_with(|| a["pc"].as_u64().cmp(&b["pc"].as_u64())));
+            candidates.sort_by(|a, b| {
+                b["priority"]
+                    .as_u64()
+                    .cmp(&a["priority"].as_u64())
+                    .then_with(|| a["pc"].as_u64().cmp(&b["pc"].as_u64()))
+            });
             Ok(serde_json::json!({
                 "input_uncertainties": unresolved.len(), "by_reason": groups,
                 "environment_context_count": unresolved.len() - candidates.len(),
@@ -89,11 +131,16 @@ fn main() -> ExitCode {
         return match result {
             Ok(value) => {
                 if let Err(error) = serde_json::to_writer(std::io::stdout(), &value) {
-                    eprintln!("cannot write sift: {error}"); return ExitCode::FAILURE;
+                    eprintln!("cannot write sift: {error}");
+                    return ExitCode::FAILURE;
                 }
-                println!(); ExitCode::SUCCESS
+                println!();
+                ExitCode::SUCCESS
             }
-            Err(error) => { eprintln!("{error}"); ExitCode::FAILURE }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
         };
     }
     if source == "--forensic-probe" {

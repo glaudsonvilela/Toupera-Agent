@@ -311,8 +311,18 @@ Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode 
 ## Arquitetura de confiança (2026-10-19)
 
 - [x] Desenhar arquitetura, fronteiras, interfaces, estados e critérios antes da implementação. Ver docs/ARQUITETURA-CONFIANCA-2026-10-19.md.
-- [ ] Implementar manifesto e limites de entrada.
-- [ ] Implementar verificação de AST e fallback para bytecode.
-- [ ] Implementar decisão do guardião Rust por afirmação.
-- [ ] Ligar decisão ao relatório, ao painel e à revisão.
-- [ ] Medir o fluxo completo no wCOP com evidências privadas no VPS.
+- [x] Implementar manifesto e limites de entrada.
+- [x] Implementar verificação de AST e fallback para bytecode.
+- [x] Implementar decisão do guardião Rust por afirmação.
+- [x] Ligar decisão ao relatório e ao painel; a revisão permanece humana.
+- [x] Medir o fluxo completo no wCOP com evidências privadas no VPS.
+
+- [x] Preparar manifesto privado e saída AST com limites de entrada; ligação final depende do CLI Rust.
+
+### Entrega do guardião
+
+- Trabalho integrado 3932c3f9ca4e4faf: bloco 26228121, 34 ASTs, identidade válida e vínculo com ressalva para campos imutáveis. Cópias privadas confirmaram rebaixamento de AST alterada e fallback sem fonte.
+- [ ] Integrar decision.json ao pacote M8 de revisão.
+- [ ] Isolar compilação e ferramentas com permissões mais restritas.
+- [ ] Medir a política em mais contratos autorizados.
+- Detalhes e limites: docs/GUARDIAO-EVIDENCIAS-2026-10-19.md.

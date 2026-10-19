@@ -309,3 +309,14 @@ A última execução automática wCOP é `private-output/site-jobs/ba5146dd978d4
 - A pedido do usuário, a arquitetura foi definida antes de qualquer nova implementação. Ver docs/ARQUITETURA-CONFIANCA-2026-10-19.md.
 - Fluxo previsto: identidade fixa → validação de fonte/AST e bytecode → núcleo Rust → ferramentas locais → guardião de evidências Rust → painel/revisão. O guardião classifica afirmações e preserva premissas; não controla transações na rede.
 - Estado desta etapa: somente documentação. Estão pendentes manifesto de identidade, verificador AST, decisão estruturada e ligação ao painel. Continuar a atualizar este arquivo, codex/agent.md e checklist a cada etapa. Código e artefatos privados permanecem no VPS.
+
+## Etapa 1: entradas e identidade (2026-10-19)
+
+- O compilador agora solicita AST de todas as fontes e rejeita nomes repetidos, caminhos inválidos e entradas acima dos limites. O trabalhador cria job-manifest.json com hashes dos artefatos e chama o futuro guardião Rust. Esta etapa ainda depende do novo CLI; não reiniciar o serviço antes da integração.
+
+## Etapa 2: guardião de evidências integrado (2026-10-19)
+
+- CLI Rust --wcop-guard valida manifesto, arquivos/AST, cópias de fonte, binários, slot EIP-1967, proxy, implementação e comparação recompilada. Saída por afirmação em decision.json; fonte divergente cai para bytecode_parcial.
+- tools/site_jobs.py reconfirma o bloco, cria manifesto e põe a decisão no início de end_smart_result.md; em falha, suspende relações de fonte. O modo bytecode-only foi conferido em cópia privada.
+- Trabalho integrado 3932c3f9ca4e4faf concluiu no VPS: 34 ASTs, identidade válida, vínculo masked_immutables com ressalva, relatório visível no painel. Faixa AST adulterada foi rebaixada em cópia privada; não houve transação pública nem conclusão de falha.
+- Ver docs/GUARDIAO-EVIDENCIAS-2026-10-19.md. Ainda faltam isolamento por permissões e ligação automática de decision.json ao pacote M8; não atribuir ao projeto provas matemáticas de seL4/CompCert.

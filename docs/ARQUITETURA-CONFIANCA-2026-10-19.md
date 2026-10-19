@@ -126,3 +126,7 @@ Já existem bloco e implementação fixados, comparação de 34 fontes com runti
 - CompCert, alcance da prova: https://compcert.org/man/manual001.html
 - DARPA SafeDocs: https://www.darpa.mil/research/programs/safe-documents
 - DARPA AMP: https://www.darpa.mil/research/programs/assured-micropatching
+
+## Implementação inicial
+
+A primeira integração e suas lacunas estão registradas em [Guardião de evidências](GUARDIAO-EVIDENCIAS-2026-10-19.md).

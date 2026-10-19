@@ -1,6 +1,7 @@
 //! Foundational types for focused Solidity/EVM economic security analysis.
 
 mod adaptive_chip;
+mod assurance;
 mod bytecode;
 mod bytecode_companions;
 mod bytecode_evmole;
@@ -26,6 +27,7 @@ mod variable_lens;
 
 use serde::Serialize;
 
+pub use assurance::guard_wcop_job;
 pub use bytecode::{
     BytecodeAnalysis, BytecodeBlock, BytecodeEffect, BytecodeEffectKind, BytecodeEntrySummary,
     BytecodeImmutableValue, BytecodeInstruction, BytecodeMetadata, BytecodeMethodMatch,
@@ -41,7 +43,6 @@ pub use bytecode_evmole::{
     EvmoleControlEdgeEvidence, EvmoleReport, EvmoleSelectorEvidence, EvmoleStorageEvidence,
 };
 pub use cached_reassessment::reassess_cached_map;
-pub use trace_reconcile::reconcile_trace;
 pub use context_package::{
     ArtifactDigests, CachedContextPackage, ContextPackage, ContextSlice, EvidenceExcerpt,
     FunctionDigest, FunctionExcerpt, build_context_package, load_or_build_context_package,
@@ -81,6 +82,7 @@ pub use source::{
     compile_source_ast_file, compile_source_ast_text, compile_source_ast_text_with_evm_version,
     reconstruct_from_ast_json, reconstruct_source_file,
 };
+pub use trace_reconcile::reconcile_trace;
 pub use variable_lens::{VariableLensReport, build_variable_lens};
 
 /// Stable identity of a contract in an analysis target.

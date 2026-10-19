@@ -25,11 +25,17 @@ def sources_and_settings(info):
     sources = {}
     for item in entries:
         name, content = item.get("file_path"), item.get("source_code")
-        if not isinstance(name, str) or not isinstance(content, str) or name.startswith("/") or ".." in name.split("/"):
-            raise ValueError("arquivo de fonte inválido")
+        if (not isinstance(name, str) or not isinstance(content, str) or not name or
+                name.startswith("/") or "\\" in name or "\x00" in name or
+                any(part in ("", ".", "..") for part in name.split("/")) or
+                not name.endswith(".sol") or len(name) > 240 or
+                len(content.encode("utf-8")) > 1_000_000 or name in sources):
+            raise ValueError("arquivo de fonte inválido ou repetido")
         sources[name] = {"content": content}
+    if not sources or len(sources) > 256 or sum(len(v["content"].encode("utf-8")) for v in sources.values()) > 10_000_000:
+        raise ValueError("conjunto de fontes fora dos limites")
     settings = dict(raw.get("compiler_settings") or {})
-    settings["outputSelection"] = {raw["file_path"]: {raw["name"]: [
+    settings["outputSelection"] = {"*": {"": ["ast"]}, raw["file_path"]: {raw["name"]: [
         "abi", "evm.deployedBytecode.object", "evm.deployedBytecode.immutableReferences",
         "evm.methodIdentifiers", "storageLayout"]}}
     return {"language": "Solidity", "sources": sources, "settings": settings}

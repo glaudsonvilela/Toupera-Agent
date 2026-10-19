@@ -367,6 +367,26 @@ def deep_review(job, source, runtime, engine, roles):
     jwrite(job / "scope.json", summary)
     return summary
 
+def snapshot_manifest(job, address, block_number, block_hash, implementation, slot_word):
+    names = ("smart.md", "runtime.hex", "implementation.hex", "engine.json",
+             "engine-impl.json", "compiler-input.json", "compiler-output.json",
+             "scope.json", "history.json", "roles.json", "tools.json",
+             "trace.json", "trace-reconcile.json", "scenarios.json", "coverage.json")
+    artifacts = {}
+    for name in names:
+        path = job / name
+        if path.is_file() and not path.is_symlink():
+            data = path.read_bytes()
+            artifacts[name] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+    manifest = {"format": 1, "chain_id": CHAIN, "address": address,
+                "block_number": block_number, "block_hash": block_hash,
+                "implementation": implementation, "eip1967_slot_word": slot_word,
+                "artifacts": artifacts,
+                "engine_binary_sha256": hashlib.sha256(ENGINE.read_bytes()).hexdigest(),
+                "solc_binary_sha256": hashlib.sha256((ROOT / "tools/solc-0.8.27").read_bytes()).hexdigest()}
+    jwrite(job / "job-manifest.json", manifest)
+    return manifest
+
 def worker(job_id):
     job = WORK / job_id
     try:
@@ -544,7 +564,42 @@ def worker(job_id):
                 item["detail"] = "três propriedades locais de oferta, transferência e pausa: " + (
                     "concluída" if deep["formal"]["state"] == "concluído" else deep["formal"]["reason"])
         jwrite(job / "tools.json", rows)
-        final = result.replace("# Resultado do motor Rust", "# Resultado do contrato", 1)
+        stage(job, "Identidade", "Fixando entradas e conferindo vínculos da leitura.")
+        final_block = rpc("eth_getBlockByNumber", [tag, False])
+        if not isinstance(final_block, dict) or final_block.get("hash", "").lower() != block_hash.lower():
+            raise ValueError("o bloco fixado mudou durante a leitura")
+        snapshot_manifest(job, address, block_number, block_hash, implementation, word)
+        guard_code = command([str(ENGINE), "--wcop-guard", str(job)],
+                             job / "decision.json", 60)
+        if guard_code == 0:
+            decision = jread(job / "decision.json")
+        else:
+            decision = {"state": "inconclusivo", "source_binding": "indisponível",
+                        "identity_ok": False, "claims": [],
+                        "reasons": ["guardião não concluiu; nenhuma conclusão elevada"]}
+            jwrite(job / "decision.json", decision)
+        linked_source = (decision.get("identity_ok") is True and
+                         decision.get("source_binding") in ("exact", "masked_immutables"))
+        if not linked_source:
+            deep = {"compiler": {"state": "suspensa"},
+                    "errors": ["relações de fonte suspensas pelo guardião"]}
+        raw_result = result.split("\n", 1)[1] if "\n" in result else result
+        if not linked_source:
+            raw_result = "\n".join(line for line in raw_result.splitlines()
+                                   if not line.startswith(("- Fonte do endereço:", "- Fonte:",
+                                                           "- Compilador declarado:", "- Arquivos de fonte:",
+                                                           "- Funções públicas na ABI:")))
+        final = "# Resultado do contrato\n\n## Decisão das evidências\n\n"
+        final += "- Estado: " + str(decision.get("state", "inconclusivo")) + ".\n"
+        final += "- Fonte ligada ao runtime: " + str(decision.get("source_binding", "indisponível")) + ".\n"
+        for claim in decision.get("claims", []):
+            final += ("- " + str(claim.get("title", claim.get("id", "item"))) + ": " +
+                      str(claim.get("state", "inconclusivo")) + "; " +
+                      str(claim.get("reason", "sem motivo")) + ".\n")
+        for reason in decision.get("reasons", []):
+            final += "- Limite: " + str(reason) + ".\n"
+        final += ("\n## Dados coletados\n\n- Observações brutas do trabalho, sujeitas aos estados acima.\n" +
+                  raw_result + "\n")
         final += "\n## Ferramentas\n\n"
         for item in rows:
             final += "- " + item["name"] + " — " + item["state"] + ": " + item["detail"] + ".\n"
