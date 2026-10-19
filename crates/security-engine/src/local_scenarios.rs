@@ -1086,10 +1086,11 @@ fn run_scenarios(
             local.call("anvil_setBalance", json!([second, "0x56bc75e2d63100000"]))?;
             local.call("anvil_impersonateAccount", json!([second]))?;
             let transfer_amount = asset_unit * U256::from(2);
-            let transfer = calldata(
-                "transfer(address,uint256)",
-                Some(transfer_amount),
-                &[second],
+            let transfer = format!(
+                "0x{}{}{}",
+                selector("transfer(address,uint256)"),
+                address_word(second),
+                word(transfer_amount)
             );
             match send_local(&local, &identity.actor, &identity.asset, &transfer) {
                 Ok((_, receipt)) if receipt["status"] == "0x1" => {
@@ -1170,10 +1171,11 @@ fn run_scenarios(
             .any(|family| family == "asset_state_change")
         {
             let id = snapshot(&local)?;
-            let donation = calldata(
-                "transfer(address,uint256)",
-                Some(asset_unit),
-                &[&identity.vault],
+            let donation = format!(
+                "0x{}{}{}",
+                selector("transfer(address,uint256)"),
+                address_word(&identity.vault),
+                word(asset_unit)
             );
             match send_local(&local, &identity.actor, &identity.asset, &donation) {
                 Ok((_, receipt)) if receipt["status"] == "0x1" => {
