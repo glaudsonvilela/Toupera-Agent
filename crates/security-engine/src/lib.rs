@@ -25,10 +25,16 @@ mod local_scenarios;
 mod source;
 mod trace_reconcile;
 mod variable_lens;
+mod wcop_focus;
+mod wcop_gate;
+mod wcop_versions;
 
 use serde::Serialize;
 
 pub use adaptive_cycle::plan_adaptive_step;
+pub use wcop_focus::plan_wcop_focus;
+pub use wcop_gate::sieve_wcop_context;
+pub use wcop_versions::reconcile_wcop_versions;
 pub use assurance::guard_wcop_job;
 pub use bytecode::{
     BytecodeAnalysis, BytecodeBlock, BytecodeEffect, BytecodeEffectKind, BytecodeEntrySummary,

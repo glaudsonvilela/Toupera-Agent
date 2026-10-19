@@ -288,6 +288,10 @@ pub fn guard_wcop_job(job: &Path) -> Result<Value, String> {
         "adaptive-trace.json",
         "adaptive-reconcile.json",
         "path-map.json",
+        "focus.json",
+        "focus-final.json",
+        "versions-raw.json",
+        "versions.json",
     ];
     let mut reasons = Vec::<String>::new();
     let mut intact = HashSet::new();
@@ -536,6 +540,55 @@ pub fn guard_wcop_job(job: &Path) -> Result<Value, String> {
             else { "vínculo do mapa incompleto" },
             &["path-map.json", "compiler-input.json", engine_name],
         ));
+    }
+    if intact.contains("focus.json") && intact.contains("focus-final.json")
+        && intact.contains("path-map.json") {
+        let first = json_at(job, "focus.json", 5_000_000)?;
+        let last = json_at(job, "focus-final.json", 5_000_000)?;
+        let map = json_at(job, "path-map.json", 5_000_000)?;
+        let base = json_at(job, "trace.json", 5_000_000)?;
+        let code_hash = engine.as_ref()
+            .and_then(|value| value["normalized_hex"].as_str())
+            .and_then(|value| code_bytes(value).ok()).map(|value| digest(&value));
+        let valid = identity_ok && linked
+            && first["contract"].as_str() == Some(address)
+            && last["contract"].as_str() == Some(address)
+            && first["block"].as_u64() == Some(block)
+            && last["block"].as_u64() == Some(block)
+            && first["engine_code_sha256"].as_str() == code_hash.as_deref()
+            && last["engine_code_sha256"].as_str() == code_hash.as_deref()
+            && first["observed_pcs"].as_u64() == base["pcs"].as_array().map(|v| v.len() as u64)
+            && last["observed_pcs"] == map["observed_pcs"]
+            && last["open_links"] == map["observed_links_outside_static_map"];
+        claims.push(claim("focus", "Ordem local do Rust",
+            if valid { "OBSERVADO" } else { "INCONCLUSIVO" },
+            if valid { "prioridades vinculadas às leituras do mesmo código" }
+            else { "ordem de leitura incompleta" },
+            &["focus.json", "focus-final.json", "path-map.json"]));
+    }
+    if intact.contains("versions-raw.json") && intact.contains("versions.json") {
+        let raw = json_at(job, "versions-raw.json", 5_000_000)?;
+        let versions = json_at(job, "versions.json", 5_000_000)?;
+        let current_hash = bytes_at(job, "implementation.hex", 1_000_000).ok()
+            .and_then(|value| String::from_utf8(value).ok())
+            .and_then(|value| code_bytes(value.trim()).ok())
+            .map(|value| digest(&value));
+        let valid = identity_ok
+            && raw["address"].as_str() == Some(address)
+            && versions["address"].as_str() == Some(address)
+            && raw["through_block"].as_u64() == Some(block)
+            && versions["through_block"].as_u64() == Some(block)
+            && versions["current_code_sha256"].as_str() == current_hash.as_deref()
+            && versions["change_count"].as_u64() == raw["upgrade_events"].as_array().map(|v| v.len() as u64)
+            && versions["slot_event_mismatches"].as_u64() == Some(0)
+            && versions["current_slot_matches_last_event"] == true;
+        let historical_gap = versions["unverified_event_blocks"].as_u64().unwrap_or(0) > 0;
+        claims.push(claim("versions", "Linha de versões",
+            if !valid { "INCONCLUSIVO" } else if historical_gap { "LIMITADO" } else { "OBSERVADO" },
+            if !valid { "blocos ou códigos da linha de versões exigem revisão" }
+            else if historical_gap { "código atual confere; estado de bloco antigo indisponível" }
+            else { "mudanças e código final conferem nos blocos lidos" },
+            &["versions-raw.json", "versions.json", "history.json"]));
     }
     if intact.contains("scope.json") {
         let scope = json_at(job, "scope.json", 5_000_000)?;

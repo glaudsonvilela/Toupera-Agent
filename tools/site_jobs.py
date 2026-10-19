@@ -193,7 +193,7 @@ def tool_line(name, state, detail):
 def run_tools(job, source, runtime_path, block_number, holder=None, role_actors=None, implementation=None):
     rows = []
     logs = job / "tools"
-    logs.mkdir(mode=0o700)
+    logs.mkdir(mode=0o700, exist_ok=True)
     main = prepare_source(job, source)
     if main:
         stage(job, "Slither", "Compilando a fonte verificada e reunindo sinais.")
@@ -404,7 +404,7 @@ def snapshot_manifest(job, address, block_number, block_hash, implementation, sl
              "scope.json", "history.json", "roles.json", "tools.json",
              "trace.json", "trace-reconcile.json", "scenarios.json", "coverage.json",
              "adaptive.json", "adaptive-state.json", "adaptive-trace.json",
-             "adaptive-reconcile.json", "path-map.json")
+             "adaptive-reconcile.json", "path-map.json", "focus.json", "focus-final.json", "versions-raw.json", "versions.json")
     artifacts = {}
     for name in names:
         path = job / name
@@ -568,6 +568,22 @@ def worker(job_id):
                 jwrite(job / "roles.json", roles)
             except (ValueError, OSError, urllib.error.URLError) as error:
                 save(job / "roles-error.txt", type(error).__name__ + ": " + str(error)[:120] + "\n")
+        versions = None
+        if history and roles and implementation and impl_runtime_path:
+            (job / "tools").mkdir(mode=0o700, exist_ok=True)
+            stage(job, "Versões", "Conferindo mudanças registradas e estados em blocos fixos.")
+            version_code = command([sys.executable, str(ROOT / "tools/wcop_versions.py"), job_id],
+                                   job / "tools/versions.log", 180)
+            if version_code == 0 and (job / "versions-raw.json").is_file():
+                reconcile_code = command([str(ENGINE), "--wcop-versions", str(job / "history.json"),
+                                          str(job / "versions-raw.json"), str(job / "implementation.hex")],
+                                         job / "versions.json", 45)
+                if reconcile_code == 0:
+                    versions = jread(job / "versions.json")
+                else:
+                    (job / "versions.json").unlink(missing_ok=True)
+            if versions is None:
+                save(job / "versions-error.txt", "linha de versões incompleta\n")
         rows = run_tools(job, selected_source, selected_runtime, block_number,
                          (history.get("funded_holder") or {}).get("address") if history else None,
                          roles, implementation)
@@ -590,6 +606,20 @@ def worker(job_id):
                     save(job / "trace-error.txt", "motor não concluiu a ligação dos caminhos\n")
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.TimeoutExpired) as error:
                 save(job / "trace-error.txt", type(error).__name__ + ": " + str(error)[:160] + "\n")
+        initial_focus = None
+        if trace_review and impl_source and impl_summary:
+            stage(job, "Mapa inicial", "Ligando a primeira leitura às linhas da fonte.")
+            map_code = command([sys.executable, str(ROOT / "tools/wcop_path_map.py"), job_id],
+                               job / "tools/path-map-initial.log", 150)
+            if map_code == 0 and (job / "path-map.json").is_file():
+                focus_code = command([str(ENGINE), "--wcop-focus", str(job / "engine-impl.json"),
+                                      str(job / "path-map.json"), str(job / "trace.json")],
+                                     job / "focus.json", 45)
+                if focus_code == 0:
+                    initial_focus = jread(job / "focus.json")
+            if initial_focus is None:
+                (job / "focus.json").unlink(missing_ok=True)
+                save(job / "focus-error.txt", "mapa inicial não concluiu; ciclo usa a leitura básica\n")
         if trace_review and trace_review.get("trace_errors") == 0:
             stage(job, "Ciclo", "Escolhendo a próxima operação pelo ganho observado na cópia local.")
             adaptive_code = command([sys.executable, str(ROOT / "tools/wcop_adaptive.py"), job_id],
@@ -614,6 +644,14 @@ def worker(job_id):
                                job / "tools/path-map.log", 150)
             if map_code == 0 and (job / "path-map.json").is_file():
                 path_map = jread(job / "path-map.json")
+                focus_args = [str(ENGINE), "--wcop-focus", str(job / "engine-impl.json"),
+                              str(job / "path-map.json"), str(job / "trace.json")]
+                if adaptive_review and adaptive_review.get("trace_errors") == 0:
+                    focus_args.append(str(job / "adaptive-trace.json"))
+                final_focus_code = command(focus_args, job / "focus-final.json", 45)
+                if final_focus_code != 0:
+                    (job / "focus-final.json").unlink(missing_ok=True)
+                    save(job / "focus-final-error.txt", "mapa final não concluiu\n")
             else:
                 save(job / "path-map-error.txt", "mapa de linhas incompleto; saída " + str(map_code) + "\n")
         for item in rows:
@@ -642,6 +680,16 @@ def worker(job_id):
                         "identity_ok": False, "claims": [],
                         "reasons": ["guardião não concluiu; nenhuma conclusão elevada"]}
             jwrite(job / "decision.json", decision)
+        review_gate = None
+        if (job / "adaptive.json").is_file() and (job / "focus-final.json").is_file() and (job / "versions.json").is_file():
+            stage(job, "Filtro", "Conferindo se alguma diferença local merece contexto adicional.")
+            gate_code = command([str(ENGINE), "--wcop-review-gate", str(job)],
+                                job / "review-gate.json", 45)
+            if gate_code == 0:
+                review_gate = jread(job / "review-gate.json")
+            else:
+                (job / "review-gate.json").unlink(missing_ok=True)
+                save(job / "review-gate-error.txt", "filtro final não concluiu\n")
         linked_source = (decision.get("identity_ok") is True and
                          decision.get("source_binding") in ("exact", "masked_immutables"))
         if not linked_source:
@@ -664,6 +712,13 @@ def worker(job_id):
             final += "- Limite: " + str(reason) + ".\n"
         final += ("\n## Dados coletados\n\n- Observações brutas do trabalho, sujeitas aos estados acima.\n" +
                   raw_result + "\n")
+        final += "\n## Filtro final\n\n"
+        if review_gate:
+            final += ("- Estado: " + review_gate["state"] + "; itens com diferença local repetida: " +
+                      str(review_gate["candidate_count"]) +
+                      ". Esta etapa não faz chamada externa.\n")
+        else:
+            final += "- Ainda sem decisão: entradas desta etapa incompletas.\n"
         final += "\n## Ferramentas\n\n"
         for item in rows:
             final += "- " + item["name"] + " — " + item["state"] + ": " + item["detail"] + ".\n"
@@ -672,6 +727,11 @@ def worker(job_id):
         final += "- Comparação da fonte compilada: " + str(compiler.get("state") or "incompleta") + ".\n"
         final += "- Compilador: " + str(compiler.get("compiler") or "indisponível") + "; EVM: " + str(compiler.get("evm_version") or "indisponível") + ".\n"
         final += "- Espaços de dados nomeados na fonte: " + str(len(deep.get("storage_namespaces") or [])) + "; posições distintas: " + ("sim" if deep.get("storage_slots_unique") else "não confirmado") + ".\n"
+        if versions:
+            final += ("- Versões: " + str(versions["change_count"]) +
+                      " mudanças registradas, " + str(versions["snapshot_count"]) +
+                      " blocos conferidos; diferenças entre registro e posição atual: " +
+                      str(versions["slot_event_mismatches"]) + ".\n")
         if roles:
             final += ("- Sequência dos papéis vista nos eventos: " + str(roles.get("role_event_count", 0)) +
                       " registros; comparação com o bloco: " +
@@ -698,6 +758,11 @@ def worker(job_id):
                       str(path_map["observed_links_outside_static_map"]) +
                       " ligações observadas aguardam ajuste do mapa estático.\n")
             final += "- Detalhes por arquivo e posição: path-map.json privado do trabalho.\n"
+            if (job / "focus-final.json").is_file():
+                final_focus = jread(job / "focus-final.json")
+                final += ("- Seleção Rust: " + str(len(final_focus.get("selector_focus") or {})) +
+                          " entradas ordenadas e " + str(final_focus.get("open_links", 0)) +
+                          " ligações para melhorar o mapa.\n")
         cov = deep.get("coverage") or {}
         if cov:
             totals = cov["totals"]

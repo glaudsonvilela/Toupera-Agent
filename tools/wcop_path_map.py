@@ -27,14 +27,15 @@ def compiler_map(job):
     name = "LatamStable"
     try:
         deployed = output["contracts"][path][name]["evm"]["deployedBytecode"]
-        if deployed.get("sourceMap"):
+        if deployed.get("sourceMap") and "generatedSources" in deployed:
             return output
     except KeyError:
         pass
     input_data = read(job / "compiler-input.json")
     wanted = input_data["settings"]["outputSelection"][path][name]
-    if "evm.deployedBytecode.sourceMap" not in wanted:
-        wanted.append("evm.deployedBytecode.sourceMap")
+    for output_name in ("evm.deployedBytecode.sourceMap", "evm.deployedBytecode.generatedSources"):
+        if output_name not in wanted:
+            wanted.append(output_name)
     proc = subprocess.run([SOLC, "--standard-json"], input=json.dumps(input_data),
                           capture_output=True, text=True, timeout=120)
     start = proc.stdout.find("{")
@@ -103,6 +104,19 @@ def main(job_id):
     mapped_end_pc = pcs[len(maps) - 1]
     ids = {v["id"]: k for k, v in output["sources"].items()}
     contents = {k: v["content"] for k, v in read(job / "compiler-input.json")["sources"].items()}
+    generated = set()
+    for item in deployed.get("generatedSources") or []:
+        source_id, name, content = item.get("id"), item.get("name"), item.get("contents")
+        if (not isinstance(source_id, int) or source_id in ids or
+                not isinstance(name, str) or not name or not isinstance(content, str) or
+                len(content.encode("utf-8")) > 2_000_000):
+            raise ValueError("arquivo interno do compilador inválido")
+        label = "(compilador)/" + name
+        if label in contents:
+            raise ValueError("nome interno repetido")
+        ids[source_id] = label
+        contents[label] = content
+        generated.add(label)
     by_pc = {}
     for pc, (start, length, file_id, _jump, _modifier) in zip(pcs, maps):
         if pc >= len(code):
@@ -111,7 +125,8 @@ def main(job_id):
         if file is None or start < 0 or length <= 0 or start + length > len(contents[file].encode("utf-8")):
             by_pc[pc] = None
         else:
-            by_pc[pc] = {"file": file, "line": line_for(contents[file], start), "start": start, "length": length}
+            by_pc[pc] = {"file": file, "line": line_for(contents[file], start), "start": start,
+                         "length": length, "kind": "generated" if file in generated else "source"}
     engine_pcs = {item["pc"] for item in engine["instructions"]}
     if not set(by_pc).issubset(engine_pcs) or not engine_pcs.issubset(set(pcs)):
         raise ValueError("instruções do motor e mapa do compilador diferentes")
@@ -156,7 +171,11 @@ def main(job_id):
         "observed_positions_after_compiler_map": sum(pc > mapped_end_pc for pc in seen),
         "source_assigned_pcs": sum(v["total_pcs"] for k, v in counts.items() if k != "(sem local de fonte)"),
         "observed_source_assigned_pcs": sum(v["seen_pcs"] for k, v in counts.items() if k != "(sem local de fonte)"),
-        "files": counts, "observed_links_outside_static_map": len(open_links),
+        "generated_assigned_pcs": sum(v["total_pcs"] for k, v in counts.items() if k in generated),
+        "observed_generated_assigned_pcs": sum(v["seen_pcs"] for k, v in counts.items() if k in generated),
+        "files": counts,
+        "pc_locations": [{"pc": pc, **where} for pc, where in sorted(by_pc.items()) if where],
+        "observed_links_outside_static_map": len(open_links),
         "links_to_review": open_links,
         "limits": ["Uma localização do compilador não prova que o ramo seja alcançável.",
                    "Campos imutáveis mascarados mantêm a ressalva do vínculo.",

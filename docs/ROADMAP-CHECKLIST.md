@@ -369,3 +369,12 @@ Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode 
 - [ ] Separar código e dados embutidos no denominador de posições e medir caminhos alcançáveis por função.
 
 Ver `docs/WCOP-MAPA-LINHAS-2026-10-19.md`.
+
+- [x] Incluir arquivos internos do compilador no mapa de linhas e distingui-los da fonte original; 2504/3048 posições observadas com local após esta etapa.
+
+- [x] Ordenar ligações e entradas no Rust e usar a prioridade no ciclo local.
+- [x] Acrescentar duas combinações locais com preparação de dois passos e retorno decrescente para repetições.
+
+- [x] Ligar registros de troca a blocos fixos e conferir código, posição, oferta e contas vistas em cada versão.
+
+- [x] Criar filtro Rust de revisão: só permitir contexto compacto com diferença local repetida e vínculos observados.

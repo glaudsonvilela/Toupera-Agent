@@ -182,6 +182,18 @@ def candidates(holder, actors, holder_balance, supply, roles):
                   + word_address(SECOND)}]
         add("mint", "0x40c10f19", "0x40c10f19" + word_address(RECEIVER)
             + word_number(11), SECOND, 11, RECEIVER, SECOND, setup=grant)
+    if minter and holder:
+        funding = {"sender": minter, "data": "0x40c10f19" + word_address(SECOND) + word_number(1)}
+        approval = {"sender": SECOND, "data": "0x095ea7b3" + word_address(RECEIVER) + word_number(1)}
+        add("transferFrom", "0x23b872dd", "0x23b872dd" + word_address(SECOND)
+            + word_address(holder) + word_number(1), RECEIVER, 1, holder, SECOND,
+            setup=[funding, approval])
+    if pauser and holder:
+        approval = {"sender": holder, "data": "0x095ea7b3" + word_address(SECOND) + word_number(1)}
+        paused = {"sender": pauser, "data": "0x8456cb59"}
+        add("transferFrom", "0x23b872dd", "0x23b872dd" + word_address(holder)
+            + word_address(RECEIVER) + word_number(1), SECOND, 1, RECEIVER, holder,
+            setup=[approval, paused])
     return list({item["id"]: item for item in out}.values())[:256]
 
 
@@ -348,7 +360,14 @@ def run(job_id):
             for sender in {x["sender"] for x in pool}:
                 rpc(url, "anvil_impersonateAccount", [sender])
                 rpc(url, "anvil_setBalance", [sender, hex(10**18)])
+            focus = read(job / "focus.json") if (job / "focus.json").is_file() else {}
+            if focus and (focus.get("contract") != TOKEN or focus.get("block") != block
+                          or focus.get("engine_code_sha256") != code_hash
+                          or focus.get("observed_pcs") != len(set(baseline["pcs"]))):
+                raise ValueError("mapa inicial fora do bloco")
             state = {"format": 1, "address": TOKEN, "block": block,
+                     "focus_engine_code_sha256": code_hash if focus else None,
+                     "focus_by_selector": focus.get("selector_focus") or {},
                      "engine_code_sha256": code_hash, "candidates": pool,
                      "baseline_pcs": sorted(set(baseline["pcs"])),
                      "visited_pcs": sorted(set(baseline["pcs"])),

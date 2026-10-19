@@ -31,7 +31,8 @@ pub fn plan_adaptive_step(engine: &Value, state: &Value) -> Result<Value, String
     let code = engine["normalized_hex"].as_str().ok_or("runtime ausente")?;
     let raw = hex::decode(code.trim_start_matches("0x")).map_err(|e| e.to_string())?;
     let hash = hex::encode(Sha256::digest(raw));
-    if state["engine_code_sha256"].as_str() != Some(hash.as_str()) {
+    if state["engine_code_sha256"].as_str() != Some(hash.as_str())
+        || state["focus_engine_code_sha256"].as_str().is_some_and(|value| value != hash) {
         return Err("estado e runtime divergentes".into());
     }
     let candidates = state["candidates"].as_array().ok_or("candidatos ausentes")?;
@@ -175,6 +176,10 @@ pub fn plan_adaptive_step(engine: &Value, state: &Value) -> Result<Value, String
             attempts.iter().any(|row| row["id"].as_str() == Some(parent)
                 && (row["new_pcs"].as_u64().unwrap_or(0) > 0
                     || row["new_edges"].as_u64().unwrap_or(0) > 0)));
+        let focus = &state["focus_by_selector"][selector];
+        let focus_score = focus["score"].as_f64().unwrap_or(0.0).clamp(0.0, 50.0);
+        let focus_main = focus["unseen_main_pcs"].as_u64().unwrap_or(0).min(60);
+        let focus_open = focus["open_links"].as_u64().unwrap_or(0).min(30);
         let score = 18.0 / (1.0 + n as f64).sqrt()
             + mean.min(25.0) * 0.35
             + (unseen_reachable.min(500) as f64).sqrt() * 0.65
@@ -184,7 +189,10 @@ pub fn plan_adaptive_step(engine: &Value, state: &Value) -> Result<Value, String
             + (reachable_frontiers.min(30) as f64).sqrt() * 1.5
             + (adjacent_frontiers.min(8) as f64) * 2.0
             + if setup_len > 0 { if plateau >= 5 { 26.0 } else { 11.0 } } else { 0.0 }
-            + if followed_gain { 12.0 } else { 0.0 };
+            + if followed_gain { 12.0 } else { 0.0 }
+            + focus_score * 0.30 / (1.0 + selector_seen as f64 * 0.10)
+            + (focus_main as f64).sqrt() * 0.8
+            + (focus_open as f64).sqrt() * 0.7;
         choices.push((score, id, candidate.clone(), unseen_reachable, reachable_frontiers));
     }
     choices.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(&b.1)));

@@ -418,3 +418,34 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 - Em aplicação retrospectiva ao trabalho `7011fcd042db41e5`, 1945/3048 PCs observados receberam local de fonte; 74 ligações observadas ficaram fora do mapa estático combinado. O mapa termina no PC 8499 e 37 posições desmontadas depois dele não foram observadas.
 - Registros de papéis (15, cinco contas) foram refeitos offline e coincidiram com a consulta de estado guardada para quatro papéis. A descoberta de todas as contas permanece não comprovada.
 - Ver `docs/WCOP-MAPA-LINHAS-2026-10-19.md`. Nenhum novo trabalho completo foi executado nesta etapa. Continuar a atualizar este arquivo, `codex/agent.md` e o checklist após cada etapa.
+
+## Etapa: arquivos internos do compilador (2026-10-19)
+
+- `wcop_path_map.py` agora pede e lê os arquivos internos gerados pelo compilador, preservando a distinção entre fonte original, conteúdo gerado e posição sem local.
+- Na leitura retrospectiva `7011fcd042db41e5`, posições com local subiram de 3168 para 4463 no mapa total e de 1945 para 2504 entre 3048 posições observadas. 559 posições observadas foram ligadas a conteúdo gerado.
+- O vínculo de runtime e campos imutáveis continua obrigatório. Esta etapa ainda não muda seleção de cenários nem afirma cobertura completa.
+
+## Etapa: seleção Rust por linhas e ligações (2026-10-19)
+
+- Novo `--wcop-focus` em Rust confere identidade e calcula prioridades por entrada da ABI a partir de linhas não observadas e ligações vistas fora do mapa estático. A saída preserva os 74 itens para revisão do mapa.
+- O trabalhador prepara `focus.json` antes do ciclo local e `focus-final.json` depois; o Rust usa a prioridade inicial com retorno decrescente por repetição.
+- O executor local recebeu duas combinações de duas preparações. Orçamento e parada do ciclo permanecem limitados; descoberta de diferença não é garantida.
+- A compilação de produção terminou no VPS. Ainda falta integrar histórico de versões e filtro final desta rodada.
+
+## Etapa: linha de versões (2026-10-19)
+
+- `wcop_versions.py` consulta somente os blocos fixos do histórico e guarda código, posição da implementação, oferta e permissões das contas vistas.
+- O Rust `--wcop-versions` reconcilia registros de mudança, blocos e hash da versão final; diferenças ficam explícitas.
+- `versions-raw.json` e `versions.json` entram no trabalho privado quando a leitura conclui. Blocos de evento não mostram a ordem de todas as operações internas nem descobrem todas as contas.
+
+## Etapa: filtro final (2026-10-19)
+
+- Rust `--wcop-review-gate` lê decisão, ciclo, mapa final e versões no mesmo trabalho. Só libera um pacote compacto quando há diferença repetida na cópia local e todas as ligações necessárias estão observadas.
+- Caminhos novos sem diferença ficam em revisão local. O filtro não chama IA automaticamente, não marca resultado confirmado e não converte contagem de caminhos em conclusão.
+- O painel mostra o estado do filtro ao fim do trabalho; ausência de entrada permanece explícita.
+
+## Ajuste da linha de versões (2026-10-19)
+
+- O provedor respondeu 403 para estado de bloco antigo. O coletor agora grava essa lacuna, usa o estado atual do trabalho e deixa o Rust classificar a linha como limitada.
+- A aplicação retrospectiva `7011fcd042db41e5` encontrou uma troca registrada, dois blocos de interesse, uma leitura histórica indisponível e concordância entre a última implementação registrada e a atual.
+- O trabalho integrado foi reiniciado após corrigir a preparação do diretório de logs. Nenhum trabalho incompleto é apresentado como resultado final.

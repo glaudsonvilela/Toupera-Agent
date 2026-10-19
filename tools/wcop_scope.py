@@ -36,7 +36,7 @@ def sources_and_settings(info):
         raise ValueError("conjunto de fontes fora dos limites")
     settings = dict(raw.get("compiler_settings") or {})
     settings["outputSelection"] = {"*": {"": ["ast"]}, raw["file_path"]: {raw["name"]: [
-        "abi", "evm.deployedBytecode.object", "evm.deployedBytecode.sourceMap", "evm.deployedBytecode.immutableReferences",
+        "abi", "evm.deployedBytecode.object", "evm.deployedBytecode.sourceMap", "evm.deployedBytecode.generatedSources", "evm.deployedBytecode.immutableReferences",
         "evm.methodIdentifiers", "storageLayout"]}}
     return {"language": "Solidity", "sources": sources, "settings": settings}
 
