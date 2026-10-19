@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use alloy_primitives::U256;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -20,8 +21,8 @@ use crate::{
 };
 
 const SCHEMA: &str = "forensic-map-v1";
-const MAX_HISTORY_BLOCKS: u64 = 20_000;
-const HISTORY_CHUNK: u64 = 2_000;
+const HISTORY_CHUNK: u64 = 10_000;
+const MAX_RETAINED_EVENTS: usize = 2_000;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct ForensicInput {
@@ -51,6 +52,7 @@ pub struct ForensicIdentity {
     pub block_hash: String,
     pub rpc_host: String,
     pub rpc_fallback_used: bool,
+    pub rpc_history_floor: Option<u64>,
     pub runtime_sha256: String,
     pub analysis_source_sha256: String,
     pub comparison_json_sha256: String,
@@ -123,11 +125,128 @@ pub struct ForensicEvent {
 pub struct EventHistory {
     pub deployment_block: Option<u64>,
     pub scanned_from_block: Option<u64>,
+    pub scanned_to_block: Option<u64>,
     pub complete_from_deployment: bool,
+    pub blocks_scanned: u64,
     pub event_counts: BTreeMap<String, usize>,
     pub events: Vec<ForensicEvent>,
     pub omitted_events: usize,
+    pub transaction_count: usize,
+    pub selected_transaction_hashes: Vec<String>,
+    pub minted_shares: Option<String>,
+    pub burned_shares: Option<String>,
+    pub last_cap: Option<String>,
+    pub last_owner: Option<String>,
+    pub ledger_errors: Vec<String>,
+    pub block_deltas: Vec<HistoricalBlockDelta>,
     pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct HistoricalBlockDelta {
+    pub block_number: u64,
+    pub vault_event_count: usize,
+    pub minted_shares: String,
+    pub burned_shares: String,
+    pub last_cap: Option<String>,
+    pub last_owner: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TransactionEvidence {
+    pub transaction_hash: String,
+    pub block_number: Option<u64>,
+    pub caller: Option<String>,
+    pub target: Option<String>,
+    pub outer_selector: Option<String>,
+    pub receipt_status: Option<u64>,
+    pub vault_event_count: usize,
+    pub asset_transfer_in: String,
+    pub asset_transfer_out: String,
+    pub declared_deposit_assets: String,
+    pub declared_deposit_shares: String,
+    pub declared_withdraw_assets: String,
+    pub declared_withdraw_shares: String,
+    pub declared_yield_assets: String,
+    pub minted_shares: String,
+    pub burned_shares: String,
+    pub trace_status: String,
+    pub trace_calls_to_vault: Option<usize>,
+    pub anomalies: Vec<String>,
+    pub review_flags: Vec<String>,
+    pub limitations: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct HistoricalStateCheck {
+    pub block_number: u64,
+    pub supply_before: Option<String>,
+    pub supply_after: Option<String>,
+    pub expected_minted: String,
+    pub expected_burned: String,
+    pub cap_after: Option<String>,
+    pub owner_after: Option<String>,
+    pub total_assets_after: Option<String>,
+    pub asset_balance_after: Option<String>,
+    pub asset_balance_before: Option<String>,
+    pub expected_asset_in: Option<String>,
+    pub expected_asset_out: Option<String>,
+    pub vault_runtime_sha256_after: Option<String>,
+    pub vault_runtime_matches_fixed: Option<bool>,
+    pub asset_runtime_sha256_after: Option<String>,
+    pub asset_runtime_matches_fixed: Option<bool>,
+    pub anomalies: Vec<String>,
+    pub review_flags: Vec<String>,
+    pub limitations: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AssetBlockDelta {
+    pub block_number: u64,
+    pub inbound: String,
+    pub outbound: String,
+    pub transfer_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AssetFlowHistory {
+    pub asset_address: String,
+    pub from_block: u64,
+    pub to_block: u64,
+    pub inbound_scanned_to: Option<u64>,
+    pub outbound_scanned_to: Option<u64>,
+    pub complete_from_deployment: bool,
+    pub transfer_count: usize,
+    pub inbound: String,
+    pub outbound: String,
+    pub balance_before_deployment: Option<String>,
+    pub expected_final_balance: Option<String>,
+    pub observed_final_balance: Option<String>,
+    pub direct_transfer_transaction_count: Option<usize>,
+    pub selected_direct_transaction_hashes: Vec<String>,
+    pub block_deltas: Vec<AssetBlockDelta>,
+    pub review_flags: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ForensicCoverage {
+    pub source_functions_reconstructed: usize,
+    pub hotspots_scored: usize,
+    pub quarantine_cases_opened: usize,
+    pub vault_blocks_scanned: u64,
+    pub vault_history_complete_from_deployment: bool,
+    pub asset_history_complete_from_deployment: bool,
+    pub vault_event_transactions: usize,
+    pub receipts_inspected: usize,
+    pub call_traces_available: usize,
+    pub event_or_asset_blocks: usize,
+    pub historical_blocks_checked: usize,
+    pub historical_blocks_without_limitations: usize,
+    pub boundary_calls: usize,
+    pub boundary_calls_succeeded: usize,
+    pub bytecode_unresolved_items: usize,
+    pub evidence_gate: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -148,6 +267,7 @@ pub struct QuarantineCase {
     pub boundary_probe_count: usize,
     pub boundary_reverts: usize,
     pub anomalies: Vec<String>,
+    pub review_flags: Vec<String>,
     pub status: String,
     pub limitations: Vec<String>,
 }
@@ -198,6 +318,10 @@ pub struct ForensicReport {
     pub boundary_probes: Vec<BoundaryProbe>,
     pub observed_relations: Vec<String>,
     pub event_history: EventHistory,
+    pub asset_flow_history: Option<AssetFlowHistory>,
+    pub transaction_evidence: Vec<TransactionEvidence>,
+    pub historical_state_checks: Vec<HistoricalStateCheck>,
+    pub coverage: ForensicCoverage,
     pub unresolved: Vec<String>,
 }
 
@@ -293,12 +417,8 @@ fn decode_word(raw: &str) -> Option<[u8; 32]> {
     bytes.try_into().ok()
 }
 
-fn as_u128(raw: &str) -> Option<u128> {
-    let word = decode_word(raw)?;
-    if word[..16].iter().any(|byte| *byte != 0) {
-        return None;
-    }
-    Some(u128::from_be_bytes(word[16..].try_into().ok()?))
+fn as_u256(raw: &str) -> Option<U256> {
+    Some(U256::from_be_bytes(decode_word(raw)?))
 }
 
 fn as_address(raw: &str) -> Option<String> {
@@ -309,8 +429,8 @@ fn as_address(raw: &str) -> Option<String> {
     Some(format!("0x{}", hex::encode(&word[12..])))
 }
 
-fn encode_u256(value: u128) -> String {
-    format!("{value:064x}")
+fn encode_u256(value: U256) -> String {
+    hex::encode(value.to_be_bytes::<32>())
 }
 fn encode_address(value: &str) -> String {
     format!("{:0>64}", &value[2..])
@@ -333,7 +453,7 @@ fn probe_call(
         Ok(raw) => {
             let decoded = match kind {
                 "address" => as_address(&raw),
-                "uint" => as_u128(&raw).map(|value| value.to_string()),
+                "uint" => as_u256(&raw).map(|value| value.to_string()),
                 _ => None,
             };
             ProbeValue {
@@ -702,52 +822,27 @@ fn historical_relations(
 ) -> (Vec<String>, Vec<String>) {
     let mut relations = Vec::new();
     let mut anomalies = Vec::new();
-    if !history.complete_from_deployment || history.error.is_some() || history.omitted_events > 0 {
+    if !history.complete_from_deployment
+        || history.error.is_some()
+        || !history.ledger_errors.is_empty()
+    {
         return (relations, anomalies);
     }
-    let zero_topic = format!("0x{}", "00".repeat(32));
-    let mut minted = 0_u128;
-    let mut burned = 0_u128;
-    let mut complete = true;
-    for event in &history.events {
-        if event.name != "Transfer" {
-            continue;
-        }
-        let Some(amount) = as_u128(&event.data) else {
-            complete = false;
-            break;
-        };
-        if event
-            .topics
-            .get(1)
-            .is_some_and(|topic| topic.eq_ignore_ascii_case(&zero_topic))
-        {
-            let Some(value) = minted.checked_add(amount) else {
-                complete = false;
-                break;
-            };
-            minted = value;
-        }
-        if event
-            .topics
-            .get(2)
-            .is_some_and(|topic| topic.eq_ignore_ascii_case(&zero_topic))
-        {
-            let Some(value) = burned.checked_add(amount) else {
-                complete = false;
-                break;
-            };
-            burned = value;
-        }
-    }
-    if complete {
-        if let (Some(expected), Some(actual)) = (
-            minted.checked_sub(burned),
-            state
-                .get("totalSupply()")
-                .and_then(|value| value.raw_hex.as_deref())
-                .and_then(as_u128),
-        ) {
+    if let (Some(minted), Some(burned), Some(actual)) = (
+        history
+            .minted_shares
+            .as_ref()
+            .and_then(|value| value.parse::<U256>().ok()),
+        history
+            .burned_shares
+            .as_ref()
+            .and_then(|value| value.parse::<U256>().ok()),
+        state
+            .get("totalSupply()")
+            .and_then(|value| value.raw_hex.as_deref())
+            .and_then(as_u256),
+    ) {
+        if let Some(expected) = minted.checked_sub(burned) {
             let relation = format!(
                 "share Transfer mint-burn={expected} versus totalSupply={actual}; equal={}",
                 expected == actual
@@ -756,52 +851,43 @@ fn historical_relations(
                 anomalies.push(relation.clone());
             }
             relations.push(relation);
+        } else {
+            anomalies.push("burned shares exceed minted shares in complete history".into());
         }
     }
-    if let (Some(event), Some(actual)) = (
+    if let (Some(expected), Some(actual)) = (
         history
-            .events
-            .iter()
-            .rev()
-            .find(|event| event.name == "DepositCapSet"),
+            .last_cap
+            .as_ref()
+            .and_then(|value| value.parse::<U256>().ok()),
         state
             .get("depositCap()")
             .and_then(|value| value.raw_hex.as_deref())
-            .and_then(as_u128),
+            .and_then(as_u256),
     ) {
-        if let Some(expected) = as_u128(&event.data) {
-            let relation = format!(
-                "last DepositCapSet={expected} versus depositCap={actual}; equal={}",
-                expected == actual
-            );
-            if expected != actual {
-                anomalies.push(relation.clone());
-            }
-            relations.push(relation);
+        let relation = format!(
+            "last DepositCapSet={expected} versus depositCap={actual}; equal={}",
+            expected == actual
+        );
+        if expected != actual {
+            anomalies.push(relation.clone());
         }
+        relations.push(relation);
     }
-    if let (Some(event), Some(actual)) = (
-        history
-            .events
-            .iter()
-            .rev()
-            .find(|event| event.name == "OwnershipTransferred"),
+    if let (Some(expected), Some(actual)) = (
+        history.last_owner.as_deref(),
         state
             .get("owner()")
             .and_then(|value| value.decoded.as_deref()),
     ) {
-        if let Some(topic) = event.topics.get(2) {
-            if let Some(expected) = as_address(topic) {
-                let relation = format!(
-                    "last OwnershipTransferred owner={expected} versus current owner={actual}; equal={}",
-                    expected.eq_ignore_ascii_case(actual)
-                );
-                if !expected.eq_ignore_ascii_case(actual) {
-                    anomalies.push(relation.clone());
-                }
-                relations.push(relation);
-            }
+        let relation = format!(
+            "last OwnershipTransferred owner={expected} versus current owner={actual}; equal={}",
+            expected.eq_ignore_ascii_case(actual)
+        );
+        if !expected.eq_ignore_ascii_case(actual) {
+            anomalies.push(relation.clone());
         }
+        relations.push(relation);
     }
     (relations, anomalies)
 }
@@ -815,7 +901,7 @@ fn numeric_anomalies(
         state
             .get(key)
             .and_then(|value| value.raw_hex.as_deref())
-            .and_then(as_u128)
+            .and_then(as_u256)
     };
     if let (Some(total), Some(balance)) =
         (number("totalAssets()"), number("asset.balanceOf(vault)"))
@@ -831,7 +917,7 @@ fn numeric_anomalies(
         number("totalAssets()"),
         number("maxDeposit(address)"),
     ) {
-        if cap != u128::MAX && max != cap.saturating_sub(total) {
+        if cap != U256::MAX && max != cap.saturating_sub(total) {
             anomalies.push(format!(
                 "maxDeposit={max} differs from cap headroom={}",
                 cap.saturating_sub(total)
@@ -843,7 +929,7 @@ fn numeric_anomalies(
             .iter()
             .find(|probe| probe.method == name && probe.input == input)
             .and_then(|probe| probe.result.raw_hex.as_deref())
-            .and_then(as_u128)
+            .and_then(as_u256)
     };
     for amount in probes
         .iter()
@@ -853,7 +939,7 @@ fn numeric_anomalies(
         if amount == "0" {
             continue;
         }
-        if let Some(0) = sample("previewDeposit(uint256)", amount) {
+        if let Some(U256::ZERO) = sample("previewDeposit(uint256)", amount) {
             anomalies.push(format!(
                 "positive deposit input {amount} previews zero shares"
             ));
@@ -884,11 +970,11 @@ fn numeric_anomalies(
 }
 
 fn monotonicity_observations(probes: &[BoundaryProbe]) -> (Vec<String>, Vec<String>) {
-    let mut by_method: BTreeMap<String, Vec<(u128, u128)>> = BTreeMap::new();
+    let mut by_method: BTreeMap<String, Vec<(U256, U256)>> = BTreeMap::new();
     for probe in probes {
         if let (Ok(input), Some(output)) = (
-            probe.input.parse::<u128>(),
-            probe.result.raw_hex.as_deref().and_then(as_u128),
+            probe.input.parse::<U256>(),
+            probe.result.raw_hex.as_deref().and_then(as_u256),
         ) {
             by_method
                 .entry(probe.method.clone())
@@ -974,10 +1060,18 @@ fn quarantine_cases(
     state: &BTreeMap<String, ProbeValue>,
     probes: &[BoundaryProbe],
     history: &EventHistory,
+    asset_history: Option<&AssetFlowHistory>,
+    transactions: &[TransactionEvidence],
+    state_checks: &[HistoricalStateCheck],
 ) -> Vec<QuarantineCase> {
     let mut cases = Vec::new();
     let mut anomalies = numeric_anomalies(state, probes);
     anomalies.extend(historical_relations(history, state).1);
+    anomalies.extend(
+        state_checks
+            .iter()
+            .flat_map(|check| check.anomalies.iter().cloned()),
+    );
     for hotspot in hotspots
         .iter()
         .filter(|item| item.priority_score >= 25)
@@ -1112,6 +1206,45 @@ fn quarantine_cases(
             })
             .cloned()
             .collect();
+        let mut relevant_flags: Vec<_> = transactions
+            .iter()
+            .flat_map(|transaction| {
+                transaction
+                    .review_flags
+                    .iter()
+                    .map(move |flag| (transaction, flag))
+            })
+            .filter(|(_, flag)| {
+                (flag.contains("Deposit") && matches!(name, "deposit" | "mint" | "_deposit"))
+                    || (flag.contains("Withdraw")
+                        && matches!(name, "withdraw" | "redeem" | "_withdraw"))
+                    || (flag.contains("inbound") && matches!(name, "deposit" | "distributeYield"))
+                    || (flag.contains("withdrawal") && matches!(name, "withdraw" | "redeem"))
+                    || (flag.contains("direct asset Transfer")
+                        && matches!(
+                            name,
+                            "totalAssets"
+                                | "deposit"
+                                | "redeem"
+                                | "_convertToShares"
+                                | "_convertToAssets"
+                        ))
+            })
+            .map(|(transaction, flag)| format!("{}: {flag}", transaction.transaction_hash))
+            .collect();
+        if matches!(
+            name,
+            "totalAssets" | "deposit" | "redeem" | "_convertToShares" | "_convertToAssets"
+        ) {
+            relevant_flags.extend(
+                state_checks
+                    .iter()
+                    .flat_map(|check| check.review_flags.iter().cloned()),
+            );
+            if let Some(asset_history) = asset_history {
+                relevant_flags.extend(asset_history.review_flags.iter().cloned());
+            }
+        }
         let mut limitations = Vec::new();
         if entry.is_none() {
             limitations.push(
@@ -1135,6 +1268,8 @@ fn quarantine_cases(
         }
         let status = if !relevant_anomalies.is_empty() {
             "anomaly_observed"
+        } else if !relevant_flags.is_empty() {
+            "needs_deep_review"
         } else if !related.is_empty() {
             "sampled_no_anomaly_observed"
         } else if entry.is_some() {
@@ -1171,6 +1306,7 @@ fn quarantine_cases(
             boundary_probe_count: related.len(),
             boundary_reverts: reverts,
             anomalies: relevant_anomalies,
+            review_flags: relevant_flags,
             status: status.into(),
             limitations,
         });
@@ -1185,8 +1321,8 @@ fn reevaluate_map(
     slither_signals: &[SlitherSignal],
     cases: &[QuarantineCase],
 ) -> (Vec<ForensicHotspot>, Vec<Reassessment>) {
-    // Engine 1 starts from its source/bytecode map again. Engine 2 may only add
-    // observed anomalies, never a confidence bonus for a normal sample.
+    // Engine 1 starts from its source/bytecode map again. Observed anomalies
+    // and unresolved receipt discrepancies raise priority, never confidence.
     let mut map = hotspot_map(functions, comparison, target, slither_signals);
     let mut reassessment = Vec::new();
     for hotspot in &mut map {
@@ -1196,7 +1332,13 @@ fn reevaluate_map(
             .find(|case| case.originating_function == identity)
         {
             let original = hotspot.priority_score;
-            let added = if case.anomalies.is_empty() { 0 } else { 20 };
+            let added = if !case.anomalies.is_empty() {
+                20
+            } else if !case.review_flags.is_empty() {
+                5
+            } else {
+                0
+            };
             hotspot.priority_score = original.saturating_add(added).min(100);
             hotspot.priority_band = if hotspot.priority_score >= 40 {
                 "high"
@@ -1206,11 +1348,17 @@ fn reevaluate_map(
                 "low"
             }
             .into();
-            if added > 0 {
+            if !case.anomalies.is_empty() {
                 hotspot.reasons.push(HotspotReason {
                     feature: "quarantine_observed_anomaly".into(),
                     points: added,
                     evidence: case.anomalies.join("; "),
+                });
+            } else if !case.review_flags.is_empty() {
+                hotspot.reasons.push(HotspotReason {
+                    feature: "quarantine_receipt_question".into(),
+                    points: added,
+                    evidence: case.review_flags.join("; "),
                 });
             }
             reassessment.push(Reassessment {
@@ -1219,8 +1367,11 @@ fn reevaluate_map(
                 original_score: original,
                 revised_score: hotspot.priority_score,
                 quarantine_case_id: case.case_id.clone(),
-                change_reason: if added > 0 {
+                change_reason: if !case.anomalies.is_empty() {
                     "observed anomaly promoted this path".into()
+                } else if !case.review_flags.is_empty() {
+                    "receipt discrepancy raised investigation priority; not a confirmed anomaly"
+                        .into()
                 } else {
                     "no new anomaly; score retained, no claim of safety".into()
                 },
@@ -1251,14 +1402,59 @@ fn earliest_available_block(error: &str) -> Option<u64> {
         .ok()
 }
 
+fn fetch_logs_range(
+    rpc: &Rpc,
+    base_filter: &Value,
+    start: u64,
+    end: u64,
+) -> Result<Vec<Value>, String> {
+    let mut last_error = String::new();
+    let mut filter = base_filter.clone();
+    filter["fromBlock"] = Value::String(block_tag(start));
+    filter["toBlock"] = Value::String(block_tag(end));
+    for attempt in 0..3 {
+        match rpc.call("eth_getLogs", json!([filter])) {
+            Ok(value) => {
+                return value
+                    .as_array()
+                    .cloned()
+                    .ok_or_else(|| "eth_getLogs result is not an array".into());
+            }
+            Err(error) => {
+                last_error = error;
+                if attempt < 2 {
+                    std::thread::sleep(Duration::from_millis(300 * (1 << attempt)));
+                }
+            }
+        }
+    }
+    if start == end || last_error.contains("429") {
+        return Err(format!("eth_getLogs blocks {start}..{end}: {last_error}"));
+    }
+    let middle = start + (end - start) / 2;
+    let mut left = fetch_logs_range(rpc, base_filter, start, middle)?;
+    left.extend(fetch_logs_range(rpc, base_filter, middle + 1, end)?);
+    Ok(left)
+}
+
 fn event_history(rpc: &Rpc, address: &str, block: u64) -> EventHistory {
     let mut history = EventHistory {
         deployment_block: None,
         scanned_from_block: None,
+        scanned_to_block: None,
         complete_from_deployment: false,
+        blocks_scanned: 0,
         event_counts: BTreeMap::new(),
         events: Vec::new(),
         omitted_events: 0,
+        transaction_count: 0,
+        selected_transaction_hashes: Vec::new(),
+        minted_shares: None,
+        burned_shares: None,
+        last_cap: None,
+        last_owner: None,
+        ledger_errors: Vec::new(),
+        block_deltas: Vec::new(),
         error: None,
     };
     let outcome = (|| -> Result<(), String> {
@@ -1273,7 +1469,9 @@ fn event_history(rpc: &Rpc, address: &str, block: u64) -> EventHistory {
         }
         let code_at_lower = hex_bytes(&rpc.code(address, lo)?)?;
         if !code_at_lower.is_empty() {
-            history.scanned_from_block = Some(lo.max(block.saturating_sub(MAX_HISTORY_BLOCKS - 1)));
+            if lo == 0 {
+                history.deployment_block = Some(0);
+            }
         } else {
             let mut hi = block;
             while lo < hi {
@@ -1289,11 +1487,8 @@ fn event_history(rpc: &Rpc, address: &str, block: u64) -> EventHistory {
             }
             history.deployment_block = Some(lo);
         }
-        let from = history
-            .scanned_from_block
-            .unwrap_or_else(|| lo.max(block.saturating_sub(MAX_HISTORY_BLOCKS - 1)));
+        let from = history.deployment_block.unwrap_or(lo);
         history.scanned_from_block = Some(from);
-        history.complete_from_deployment = history.deployment_block == Some(from);
         let known: BTreeMap<String, String> = [
             ("Deposit(address,address,uint256,uint256)", "Deposit"),
             (
@@ -1315,17 +1510,27 @@ fn event_history(rpc: &Rpc, address: &str, block: u64) -> EventHistory {
         .into_iter()
         .map(|(signature, name)| (topic(signature), name.into()))
         .collect();
+        let zero_topic = format!("0x{}", "00".repeat(32));
+        let mut minted = U256::ZERO;
+        let mut burned = U256::ZERO;
+        let mut deltas: BTreeMap<u64, (U256, U256, usize, Option<String>, Option<String>)> =
+            BTreeMap::new();
+        let mut transactions: BTreeMap<String, (u8, u64)> = BTreeMap::new();
         let mut start = from;
         while start <= block {
             let end = block.min(start.saturating_add(HISTORY_CHUNK - 1));
-            let logs = rpc.call(
-                "eth_getLogs",
-                json!([{"address":address,"fromBlock":block_tag(start),"toBlock":block_tag(end)}]),
-            )?;
-            let logs = logs
-                .as_array()
-                .ok_or("eth_getLogs result is not an array")?;
-            for log in logs {
+            let logs = fetch_logs_range(rpc, &json!({"address":address}), start, end)?;
+            for log in &logs {
+                let event_block = hex_u64(
+                    log.get("blockNumber")
+                        .and_then(Value::as_str)
+                        .ok_or("log missing blockNumber")?,
+                )?;
+                if !(start..=end).contains(&event_block) {
+                    return Err(format!(
+                        "RPC returned log outside requested blocks {start}..{end}"
+                    ));
+                }
                 let topics: Vec<String> = log
                     .get("topics")
                     .and_then(Value::as_array)
@@ -1344,42 +1549,1015 @@ fn event_history(rpc: &Rpc, address: &str, block: u64) -> EventHistory {
                     .cloned()
                     .unwrap_or_else(|| format!("unknown:{first}"));
                 *history.event_counts.entry(name.clone()).or_default() += 1;
-                if history.events.len() < 200 {
+                let event_data = log.get("data").and_then(Value::as_str).unwrap_or("");
+                let tx_hash = log
+                    .get("transactionHash")
+                    .and_then(Value::as_str)
+                    .ok_or("log missing transactionHash")?
+                    .to_ascii_lowercase();
+                if tx_hash.len() != 66 || !tx_hash.starts_with("0x") {
+                    return Err("log has invalid transactionHash".into());
+                }
+                let tx_priority = match name.as_str() {
+                    "Deposit"
+                    | "Withdraw"
+                    | "YieldDistributed"
+                    | "DepositCapSet"
+                    | "OwnershipTransferred" => 3,
+                    "Transfer" => 2,
+                    _ => 1,
+                };
+                transactions
+                    .entry(tx_hash.clone())
+                    .and_modify(|entry| entry.0 = entry.0.max(tx_priority))
+                    .or_insert((tx_priority, event_block));
+                let delta = deltas.entry(event_block).or_default();
+                delta.2 += 1;
+                match name.as_str() {
+                    "Transfer" => {
+                        if let Some(amount) = as_u256(event_data) {
+                            if topics
+                                .get(1)
+                                .is_some_and(|topic| topic.eq_ignore_ascii_case(&zero_topic))
+                            {
+                                if let Some(sum) = minted.checked_add(amount) {
+                                    minted = sum;
+                                    delta.0 =
+                                        delta.0.checked_add(amount).ok_or("mint delta overflow")?;
+                                } else {
+                                    history
+                                        .ledger_errors
+                                        .push(format!("mint overflow at block {event_block}"));
+                                }
+                            }
+                            if topics
+                                .get(2)
+                                .is_some_and(|topic| topic.eq_ignore_ascii_case(&zero_topic))
+                            {
+                                if let Some(sum) = burned.checked_add(amount) {
+                                    burned = sum;
+                                    delta.1 =
+                                        delta.1.checked_add(amount).ok_or("burn delta overflow")?;
+                                } else {
+                                    history
+                                        .ledger_errors
+                                        .push(format!("burn overflow at block {event_block}"));
+                                }
+                            }
+                        } else {
+                            history.ledger_errors.push(format!(
+                                "undecodable Transfer amount at block {event_block}"
+                            ));
+                        }
+                    }
+                    "DepositCapSet" => {
+                        if let Some(cap) = as_u256(event_data) {
+                            history.last_cap = Some(cap.to_string());
+                            delta.3 = history.last_cap.clone();
+                        } else {
+                            history
+                                .ledger_errors
+                                .push(format!("undecodable cap at block {event_block}"));
+                        }
+                    }
+                    "OwnershipTransferred" => {
+                        if let Some(owner) = topics.get(2).and_then(|value| as_address(value)) {
+                            history.last_owner = Some(owner);
+                            delta.4 = history.last_owner.clone();
+                        } else {
+                            history
+                                .ledger_errors
+                                .push(format!("undecodable owner at block {event_block}"));
+                        }
+                    }
+                    _ => {}
+                }
+                if history.events.len() < MAX_RETAINED_EVENTS {
                     history.events.push(ForensicEvent {
                         name,
-                        block_number: hex_u64(
-                            log.get("blockNumber")
-                                .and_then(Value::as_str)
-                                .ok_or("log missing blockNumber")?,
-                        )?,
-                        transaction_hash: log
-                            .get("transactionHash")
-                            .and_then(Value::as_str)
-                            .unwrap_or("")
-                            .into(),
+                        block_number: event_block,
+                        transaction_hash: tx_hash,
                         log_index: log
                             .get("logIndex")
                             .and_then(Value::as_str)
                             .unwrap_or("")
                             .into(),
-                        data: log.get("data").and_then(Value::as_str).unwrap_or("").into(),
+                        data: event_data.into(),
                         topics,
                     });
                 } else {
                     history.omitted_events += 1;
                 }
             }
+            history.scanned_to_block = Some(end);
+            history.blocks_scanned += end - start + 1;
             if end == block {
                 break;
             }
             start = end + 1;
         }
+        history.complete_from_deployment =
+            history.deployment_block == Some(from) && history.scanned_to_block == Some(block);
+        history.minted_shares = Some(minted.to_string());
+        history.burned_shares = Some(burned.to_string());
+        history.transaction_count = transactions.len();
+        let mut selected: Vec<_> = transactions.into_iter().collect();
+        selected.sort_by(|left, right| {
+            right
+                .1
+                .0
+                .cmp(&left.1.0)
+                .then_with(|| left.1.1.cmp(&right.1.1))
+                .then_with(|| left.0.cmp(&right.0))
+        });
+        history.selected_transaction_hashes =
+            selected.into_iter().take(64).map(|item| item.0).collect();
+        history.block_deltas = deltas
+            .into_iter()
+            .map(
+                |(
+                    block_number,
+                    (minted_shares, burned_shares, vault_event_count, last_cap, last_owner),
+                )| {
+                    HistoricalBlockDelta {
+                        block_number,
+                        vault_event_count,
+                        minted_shares: minted_shares.to_string(),
+                        burned_shares: burned_shares.to_string(),
+                        last_cap,
+                        last_owner,
+                    }
+                },
+            )
+            .collect();
         Ok(())
     })();
     if let Err(error) = outcome {
         history.error = Some(error);
     }
     history
+}
+
+fn scan_asset_flows(
+    rpc: &Rpc,
+    asset: &str,
+    vault: &str,
+    history: &EventHistory,
+    fixed_block: u64,
+    fixed_state: &BTreeMap<String, ProbeValue>,
+) -> AssetFlowHistory {
+    let from = history.scanned_from_block.unwrap_or(fixed_block);
+    let transfer_topic = topic("Transfer(address,address,uint256)");
+    let vault_topic = format!("0x{:0>64}", &vault[2..]);
+    let mut result = AssetFlowHistory {
+        asset_address: asset.into(),
+        from_block: from,
+        to_block: fixed_block,
+        inbound_scanned_to: None,
+        outbound_scanned_to: None,
+        complete_from_deployment: false,
+        transfer_count: 0,
+        inbound: "0".into(),
+        outbound: "0".into(),
+        balance_before_deployment: None,
+        expected_final_balance: None,
+        observed_final_balance: fixed_state
+            .get("asset.balanceOf(vault)")
+            .and_then(|value| value.decoded.clone()),
+        direct_transfer_transaction_count: None,
+        selected_direct_transaction_hashes: Vec::new(),
+        block_deltas: Vec::new(),
+        review_flags: Vec::new(),
+        errors: Vec::new(),
+    };
+    if from > fixed_block {
+        result
+            .errors
+            .push("asset flow history starts after the fixed block".into());
+        return result;
+    }
+    let selector = hex::encode(&Keccak256::digest(b"balanceOf(address)")[..4]);
+    let call_data = format!("0x{selector}{}", encode_address(vault));
+    let baseline = if from == 0 {
+        Some(U256::ZERO)
+    } else {
+        match rpc
+            .view(asset, &call_data, from - 1)
+            .ok()
+            .and_then(|raw| as_u256(&raw))
+        {
+            Some(value) => Some(value),
+            None => {
+                match rpc
+                    .code(asset, from - 1)
+                    .ok()
+                    .and_then(|raw| hex_bytes(&raw).ok())
+                {
+                    Some(code) if code.is_empty() => Some(U256::ZERO),
+                    _ => {
+                        result.errors.push("asset balance before scan window unavailable while asset code existed or could not be checked".into());
+                        None
+                    }
+                }
+            }
+        }
+    };
+    result.balance_before_deployment = baseline.map(|value| value.to_string());
+    let mut inbound = U256::ZERO;
+    let mut outbound = U256::ZERO;
+    let mut deltas: BTreeMap<u64, (U256, U256, usize)> = BTreeMap::new();
+    let mut asset_transactions = BTreeSet::new();
+    let mut unique_logs = BTreeSet::new();
+    let filters = [
+        (
+            true,
+            json!({"address":asset,"topics":[transfer_topic,null,vault_topic]}),
+        ),
+        (
+            false,
+            json!({"address":asset,"topics":[transfer_topic,vault_topic]}),
+        ),
+    ];
+    for (is_inbound, filter) in filters {
+        let mut start = from;
+        while start <= fixed_block {
+            let end = fixed_block.min(start.saturating_add(HISTORY_CHUNK - 1));
+            let logs = match fetch_logs_range(rpc, &filter, start, end) {
+                Ok(logs) => logs,
+                Err(error) => {
+                    result
+                        .errors
+                        .push(format!("asset transfer scan stopped at {start}: {error}"));
+                    break;
+                }
+            };
+            for log in &logs {
+                let Some(event_block) = log
+                    .get("blockNumber")
+                    .and_then(Value::as_str)
+                    .and_then(|value| hex_u64(value).ok())
+                else {
+                    result
+                        .errors
+                        .push("asset Transfer log missing block number".into());
+                    continue;
+                };
+                if !(start..=end).contains(&event_block) {
+                    result.errors.push(format!(
+                        "asset Transfer log outside requested range {start}..{end}"
+                    ));
+                    continue;
+                }
+                let topics = log.get("topics").and_then(Value::as_array);
+                let participant = topics
+                    .and_then(|topics| topics.get(if is_inbound { 2 } else { 1 }))
+                    .and_then(Value::as_str)
+                    .and_then(as_address);
+                if !participant.is_some_and(|participant| participant.eq_ignore_ascii_case(vault)) {
+                    result.errors.push(format!(
+                        "asset Transfer topic filter mismatch at block {event_block}"
+                    ));
+                    continue;
+                }
+                let Some(amount) = log.get("data").and_then(Value::as_str).and_then(as_u256) else {
+                    result.errors.push(format!(
+                        "undecodable asset Transfer amount at block {event_block}"
+                    ));
+                    continue;
+                };
+                let Some(hash) = log.get("transactionHash").and_then(Value::as_str) else {
+                    result.errors.push(format!(
+                        "asset Transfer missing transaction hash at block {event_block}"
+                    ));
+                    continue;
+                };
+                let hash = hash.to_ascii_lowercase();
+                asset_transactions.insert(hash.clone());
+                let log_index = log.get("logIndex").and_then(Value::as_str).unwrap_or("");
+                if unique_logs.insert((hash, log_index.to_owned())) {
+                    result.transfer_count += 1;
+                }
+                let delta = deltas.entry(event_block).or_default();
+                delta.2 += 1;
+                if is_inbound {
+                    add_amount(
+                        &mut inbound,
+                        amount,
+                        "asset inbound history",
+                        &mut result.errors,
+                    );
+                    add_amount(
+                        &mut delta.0,
+                        amount,
+                        "asset inbound block",
+                        &mut result.errors,
+                    );
+                } else {
+                    add_amount(
+                        &mut outbound,
+                        amount,
+                        "asset outbound history",
+                        &mut result.errors,
+                    );
+                    add_amount(
+                        &mut delta.1,
+                        amount,
+                        "asset outbound block",
+                        &mut result.errors,
+                    );
+                }
+            }
+            if is_inbound {
+                result.inbound_scanned_to = Some(end);
+            } else {
+                result.outbound_scanned_to = Some(end);
+            }
+            if end == fixed_block {
+                break;
+            }
+            start = end + 1;
+        }
+    }
+    result.inbound = inbound.to_string();
+    result.outbound = outbound.to_string();
+    result.block_deltas = deltas
+        .into_iter()
+        .map(
+            |(block_number, (inbound, outbound, transfer_count))| AssetBlockDelta {
+                block_number,
+                inbound: inbound.to_string(),
+                outbound: outbound.to_string(),
+                transfer_count,
+            },
+        )
+        .collect();
+    result.complete_from_deployment = history.deployment_block == Some(from)
+        && result.inbound_scanned_to == Some(fixed_block)
+        && result.outbound_scanned_to == Some(fixed_block);
+    if result.complete_from_deployment && history.omitted_events == 0 {
+        let vault_transactions: BTreeSet<_> = history
+            .events
+            .iter()
+            .map(|event| event.transaction_hash.to_ascii_lowercase())
+            .collect();
+        let direct: Vec<_> = asset_transactions
+            .difference(&vault_transactions)
+            .cloned()
+            .collect();
+        result.direct_transfer_transaction_count = Some(direct.len());
+        result.selected_direct_transaction_hashes = direct.into_iter().take(64).collect();
+    }
+    if result.complete_from_deployment && result.errors.is_empty() {
+        if let Some(expected) = baseline
+            .and_then(|value| value.checked_add(inbound))
+            .and_then(|value| value.checked_sub(outbound))
+        {
+            result.expected_final_balance = Some(expected.to_string());
+            if result.observed_final_balance.as_deref() != Some(&expected.to_string()) {
+                result.review_flags.push(format!("asset Transfer ledger expects balance {expected}, fixed block reports {:?}; token behavior or event completeness requires review", result.observed_final_balance));
+            }
+        } else {
+            result
+                .errors
+                .push("asset Transfer ledger overflows or underflows uint256".into());
+        }
+    }
+    result
+}
+
+fn data_word(data: &str, index: usize) -> Option<U256> {
+    let bytes = hex_bytes(data).ok()?;
+    let offset = index.checked_mul(32)?;
+    let word: [u8; 32] = bytes.get(offset..offset + 32)?.try_into().ok()?;
+    Some(U256::from_be_bytes(word))
+}
+
+fn add_amount(total: &mut U256, value: U256, context: &str, errors: &mut Vec<String>) {
+    if let Some(sum) = total.checked_add(value) {
+        *total = sum;
+    } else {
+        errors.push(format!(
+            "{context}: uint256 overflow while aggregating receipt"
+        ));
+    }
+}
+
+fn trace_vault_calls(trace: &Value, vault: &str) -> usize {
+    let here = usize::from(
+        trace
+            .get("to")
+            .and_then(Value::as_str)
+            .is_some_and(|to| to.eq_ignore_ascii_case(vault)),
+    );
+    here + trace
+        .get("calls")
+        .and_then(Value::as_array)
+        .map(|children| {
+            children
+                .iter()
+                .map(|child| trace_vault_calls(child, vault))
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
+fn inspect_transactions(
+    rpc: &Rpc,
+    vault: &str,
+    asset: Option<&str>,
+    history: &EventHistory,
+    direct_asset_transactions: &[String],
+) -> Vec<TransactionEvidence> {
+    let mut result = Vec::new();
+    let transfer_topic = topic("Transfer(address,address,uint256)");
+    let deposit_topic = topic("Deposit(address,address,uint256,uint256)");
+    let withdraw_topic = topic("Withdraw(address,address,address,uint256,uint256)");
+    let yield_topic = topic("YieldDistributed(address,uint256,uint256)");
+    let zero = format!("0x{}", "00".repeat(32));
+    let mut trace_supported = true;
+    let mut selected = history.selected_transaction_hashes.clone();
+    for hash in direct_asset_transactions {
+        if selected.len() >= 96 {
+            break;
+        }
+        if !selected.iter().any(|item| item.eq_ignore_ascii_case(hash)) {
+            selected.push(hash.clone());
+        }
+    }
+    for hash in &selected {
+        let mut evidence = TransactionEvidence {
+            transaction_hash: hash.clone(),
+            block_number: None,
+            caller: None,
+            target: None,
+            outer_selector: None,
+            receipt_status: None,
+            vault_event_count: 0,
+            asset_transfer_in: "0".into(),
+            asset_transfer_out: "0".into(),
+            declared_deposit_assets: "0".into(),
+            declared_deposit_shares: "0".into(),
+            declared_withdraw_assets: "0".into(),
+            declared_withdraw_shares: "0".into(),
+            declared_yield_assets: "0".into(),
+            minted_shares: "0".into(),
+            burned_shares: "0".into(),
+            trace_status: "not_attempted".into(),
+            trace_calls_to_vault: None,
+            anomalies: Vec::new(),
+            review_flags: Vec::new(),
+            limitations: Vec::new(),
+        };
+        let tx = match rpc.call("eth_getTransactionByHash", json!([hash])) {
+            Ok(value) if value.is_object() => value,
+            Ok(_) => {
+                evidence
+                    .limitations
+                    .push("transaction was not returned by RPC".into());
+                result.push(evidence);
+                continue;
+            }
+            Err(error) => {
+                evidence
+                    .limitations
+                    .push(format!("transaction unavailable: {error}"));
+                result.push(evidence);
+                continue;
+            }
+        };
+        let receipt = match rpc.call("eth_getTransactionReceipt", json!([hash])) {
+            Ok(value) if value.is_object() => value,
+            Ok(_) => {
+                evidence
+                    .limitations
+                    .push("receipt was not returned by RPC".into());
+                result.push(evidence);
+                continue;
+            }
+            Err(error) => {
+                evidence
+                    .limitations
+                    .push(format!("receipt unavailable: {error}"));
+                result.push(evidence);
+                continue;
+            }
+        };
+        evidence.caller = tx.get("from").and_then(Value::as_str).map(str::to_owned);
+        evidence.target = tx.get("to").and_then(Value::as_str).map(str::to_owned);
+        evidence.outer_selector = tx
+            .get("input")
+            .and_then(Value::as_str)
+            .filter(|input| input.len() >= 10)
+            .map(|input| input[..10].to_owned());
+        evidence.block_number = tx
+            .get("blockNumber")
+            .and_then(Value::as_str)
+            .and_then(|value| hex_u64(value).ok());
+        evidence.receipt_status = receipt
+            .get("status")
+            .and_then(Value::as_str)
+            .and_then(|value| hex_u64(value).ok());
+        if tx.get("blockHash") != receipt.get("blockHash")
+            || tx.get("blockNumber") != receipt.get("blockNumber")
+        {
+            evidence
+                .anomalies
+                .push("transaction and receipt disagree on block identity".into());
+        }
+        if evidence
+            .target
+            .as_deref()
+            .is_some_and(|to| !to.eq_ignore_ascii_case(vault))
+        {
+            evidence.limitations.push(
+                "outer transaction targets another contract; internal path requires trace".into(),
+            );
+        }
+        let mut asset_in = U256::ZERO;
+        let mut asset_out = U256::ZERO;
+        let mut deposit_assets = U256::ZERO;
+        let mut deposit_shares = U256::ZERO;
+        let mut withdraw_assets = U256::ZERO;
+        let mut withdraw_shares = U256::ZERO;
+        let mut yield_assets = U256::ZERO;
+        let mut minted = U256::ZERO;
+        let mut burned = U256::ZERO;
+        if let Some(logs) = receipt.get("logs").and_then(Value::as_array) {
+            for log in logs {
+                let address = log.get("address").and_then(Value::as_str).unwrap_or("");
+                let topics = log.get("topics").and_then(Value::as_array);
+                let first = topics
+                    .and_then(|topics| topics.first())
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let data = log.get("data").and_then(Value::as_str).unwrap_or("");
+                if address.eq_ignore_ascii_case(vault) {
+                    evidence.vault_event_count += 1;
+                    if first.eq_ignore_ascii_case(&deposit_topic) {
+                        match (data_word(data, 0), data_word(data, 1)) {
+                            (Some(assets), Some(shares)) => {
+                                add_amount(
+                                    &mut deposit_assets,
+                                    assets,
+                                    "Deposit assets",
+                                    &mut evidence.limitations,
+                                );
+                                add_amount(
+                                    &mut deposit_shares,
+                                    shares,
+                                    "Deposit shares",
+                                    &mut evidence.limitations,
+                                );
+                            }
+                            _ => evidence
+                                .limitations
+                                .push("undecodable Deposit event in receipt".into()),
+                        }
+                    } else if first.eq_ignore_ascii_case(&withdraw_topic) {
+                        match (data_word(data, 0), data_word(data, 1)) {
+                            (Some(assets), Some(shares)) => {
+                                add_amount(
+                                    &mut withdraw_assets,
+                                    assets,
+                                    "Withdraw assets",
+                                    &mut evidence.limitations,
+                                );
+                                add_amount(
+                                    &mut withdraw_shares,
+                                    shares,
+                                    "Withdraw shares",
+                                    &mut evidence.limitations,
+                                );
+                            }
+                            _ => evidence
+                                .limitations
+                                .push("undecodable Withdraw event in receipt".into()),
+                        }
+                    } else if first.eq_ignore_ascii_case(&yield_topic) {
+                        if let Some(amount) = data_word(data, 0) {
+                            add_amount(
+                                &mut yield_assets,
+                                amount,
+                                "YieldDistributed assets",
+                                &mut evidence.limitations,
+                            );
+                        } else {
+                            evidence
+                                .limitations
+                                .push("undecodable YieldDistributed event in receipt".into());
+                        }
+                    } else if first.eq_ignore_ascii_case(&transfer_topic) {
+                        if let Some(amount) = data_word(data, 0) {
+                            if topics
+                                .and_then(|topics| topics.get(1))
+                                .and_then(Value::as_str)
+                                .is_some_and(|from| from.eq_ignore_ascii_case(&zero))
+                            {
+                                add_amount(&mut minted, amount, "mint", &mut evidence.limitations);
+                            }
+                            if topics
+                                .and_then(|topics| topics.get(2))
+                                .and_then(Value::as_str)
+                                .is_some_and(|to| to.eq_ignore_ascii_case(&zero))
+                            {
+                                add_amount(&mut burned, amount, "burn", &mut evidence.limitations);
+                            }
+                        } else {
+                            evidence
+                                .limitations
+                                .push("undecodable vault Transfer in receipt".into());
+                        }
+                    }
+                }
+                if asset.is_some_and(|asset| address.eq_ignore_ascii_case(asset))
+                    && first.eq_ignore_ascii_case(&transfer_topic)
+                {
+                    if let Some(amount) = data_word(data, 0) {
+                        if topics
+                            .and_then(|topics| topics.get(2))
+                            .and_then(Value::as_str)
+                            .and_then(as_address)
+                            .is_some_and(|to| to.eq_ignore_ascii_case(vault))
+                        {
+                            add_amount(
+                                &mut asset_in,
+                                amount,
+                                "asset transfer in",
+                                &mut evidence.limitations,
+                            );
+                        }
+                        if topics
+                            .and_then(|topics| topics.get(1))
+                            .and_then(Value::as_str)
+                            .and_then(as_address)
+                            .is_some_and(|from| from.eq_ignore_ascii_case(vault))
+                        {
+                            add_amount(
+                                &mut asset_out,
+                                amount,
+                                "asset transfer out",
+                                &mut evidence.limitations,
+                            );
+                        }
+                    } else {
+                        evidence
+                            .limitations
+                            .push("undecodable asset Transfer in receipt".into());
+                    }
+                }
+            }
+        } else {
+            evidence
+                .limitations
+                .push("receipt has no logs array".into());
+        }
+        evidence.asset_transfer_in = asset_in.to_string();
+        evidence.asset_transfer_out = asset_out.to_string();
+        evidence.declared_deposit_assets = deposit_assets.to_string();
+        evidence.declared_deposit_shares = deposit_shares.to_string();
+        evidence.declared_withdraw_assets = withdraw_assets.to_string();
+        evidence.declared_withdraw_shares = withdraw_shares.to_string();
+        evidence.declared_yield_assets = yield_assets.to_string();
+        evidence.minted_shares = minted.to_string();
+        evidence.burned_shares = burned.to_string();
+        if evidence.receipt_status == Some(0) && evidence.vault_event_count > 0 {
+            evidence
+                .anomalies
+                .push("vault emitted events in a receipt without successful status".into());
+        } else if evidence.receipt_status.is_none() {
+            evidence
+                .limitations
+                .push("receipt status unavailable; transaction success cannot be confirmed".into());
+        }
+        if deposit_shares != minted && (deposit_shares > U256::ZERO || minted > U256::ZERO) {
+            evidence.review_flags.push(format!("Deposit shares {deposit_shares} differ from shares minted {minted} in the same receipt"));
+        }
+        if withdraw_shares != burned && (withdraw_shares > U256::ZERO || burned > U256::ZERO) {
+            evidence.review_flags.push(format!("Withdraw shares {withdraw_shares} differ from shares burned {burned} in the same receipt"));
+        }
+        if let Some(expected) = deposit_assets.checked_add(yield_assets) {
+            if asset_in < expected {
+                evidence.review_flags.push(format!(
+                    "declared inbound assets {expected} exceed asset Transfer into vault {asset_in}"
+                ));
+            }
+        }
+        if asset_out < withdraw_assets {
+            evidence.review_flags.push(format!("declared withdrawal assets {withdraw_assets} exceed asset Transfer out of vault {asset_out}"));
+        }
+        if evidence.vault_event_count == 0 && asset_in > U256::ZERO {
+            evidence.review_flags.push(format!("direct asset Transfer into vault ({asset_in}) without a vault event; donation or external accounting path"));
+        }
+        if trace_supported {
+            match rpc.call(
+                "debug_traceTransaction",
+                json!([hash,{"tracer":"callTracer","timeout":"10s"}]),
+            ) {
+                Ok(trace) => {
+                    evidence.trace_calls_to_vault = Some(trace_vault_calls(&trace, vault));
+                    evidence.trace_status = "available".into();
+                }
+                Err(error) => {
+                    evidence.trace_status = "unavailable".into();
+                    evidence
+                        .limitations
+                        .push(format!("call trace unavailable: {error}"));
+                    trace_supported = false;
+                }
+            }
+        } else {
+            evidence.trace_status = "unavailable".into();
+            evidence
+                .limitations
+                .push("call trace endpoint unavailable for this scan".into());
+        }
+        result.push(evidence);
+    }
+    result
+}
+
+fn replay_historical_state(
+    rpc: &Rpc,
+    vault: &str,
+    asset: Option<&str>,
+    methods: &serde_json::Map<String, Value>,
+    history: &EventHistory,
+    asset_history: Option<&AssetFlowHistory>,
+    fixed_runtime_sha256: &str,
+    fixed_asset_runtime_sha256: Option<&str>,
+) -> Vec<HistoricalStateCheck> {
+    let mut by_block: BTreeMap<u64, HistoricalBlockDelta> = history
+        .block_deltas
+        .iter()
+        .map(|item| (item.block_number, item.clone()))
+        .collect();
+    if let Some(asset_history) = asset_history {
+        for item in &asset_history.block_deltas {
+            by_block
+                .entry(item.block_number)
+                .or_insert_with(|| HistoricalBlockDelta {
+                    block_number: item.block_number,
+                    vault_event_count: 0,
+                    minted_shares: "0".into(),
+                    burned_shares: "0".into(),
+                    last_cap: None,
+                    last_owner: None,
+                });
+        }
+    }
+    let mut selected: Vec<&HistoricalBlockDelta> = by_block.values().collect();
+    selected.sort_by(|left, right| {
+        let weight = |item: &HistoricalBlockDelta| {
+            let mint = item.minted_shares.parse::<U256>().unwrap_or(U256::ZERO);
+            let burn = item.burned_shares.parse::<U256>().unwrap_or(U256::ZERO);
+            (u8::from(mint > U256::ZERO || burn > U256::ZERO) * 2)
+                + u8::from(item.last_cap.is_some() || item.last_owner.is_some())
+        };
+        weight(right)
+            .cmp(&weight(left))
+            .then_with(|| left.block_number.cmp(&right.block_number))
+    });
+    selected.truncate(64);
+    selected.sort_by_key(|item| item.block_number);
+    let call_u256 = |address: &str,
+                     signature: &str,
+                     argument: Option<&str>,
+                     block: u64|
+     -> Result<U256, String> {
+        let selector = methods
+            .get(signature)
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("{signature} absent from verified ABI"))?;
+        let data = format!(
+            "0x{}{}",
+            selector.trim_start_matches("0x"),
+            argument.unwrap_or("")
+        );
+        as_u256(&rpc.view(address, &data, block)?)
+            .ok_or_else(|| format!("{signature} did not return uint256 at block {block}"))
+    };
+    let mut checks = Vec::new();
+    for delta in selected {
+        let mut check = HistoricalStateCheck {
+            block_number: delta.block_number,
+            supply_before: None,
+            supply_after: None,
+            expected_minted: delta.minted_shares.clone(),
+            expected_burned: delta.burned_shares.clone(),
+            cap_after: None,
+            owner_after: None,
+            total_assets_after: None,
+            asset_balance_after: None,
+            asset_balance_before: None,
+            expected_asset_in: None,
+            expected_asset_out: None,
+            vault_runtime_sha256_after: None,
+            vault_runtime_matches_fixed: None,
+            asset_runtime_sha256_after: None,
+            asset_runtime_matches_fixed: None,
+            anomalies: Vec::new(),
+            review_flags: Vec::new(),
+            limitations: Vec::new(),
+        };
+        match rpc
+            .code(vault, delta.block_number)
+            .ok()
+            .and_then(|raw| hex_bytes(&raw).ok())
+        {
+            Some(code) => {
+                let digest = sha256(&code);
+                check.vault_runtime_matches_fixed = Some(digest == fixed_runtime_sha256);
+                check.vault_runtime_sha256_after = Some(digest.clone());
+                if digest != fixed_runtime_sha256 {
+                    check.review_flags.push(format!("vault runtime at block {} differs from fixed-block runtime; source identity must be re-established", delta.block_number));
+                }
+            }
+            None => check
+                .limitations
+                .push("vault runtime unavailable at historical event block".into()),
+        }
+        let before = if history.deployment_block == Some(delta.block_number) {
+            Some(U256::ZERO)
+        } else if delta.block_number > 0 {
+            match call_u256(vault, "totalSupply()", None, delta.block_number - 1) {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    check
+                        .limitations
+                        .push(format!("pre-block supply unavailable: {error}"));
+                    None
+                }
+            }
+        } else {
+            Some(U256::ZERO)
+        };
+        let after = match call_u256(vault, "totalSupply()", None, delta.block_number) {
+            Ok(value) => Some(value),
+            Err(error) => {
+                check
+                    .limitations
+                    .push(format!("post-block supply unavailable: {error}"));
+                None
+            }
+        };
+        check.supply_before = before.map(|value| value.to_string());
+        check.supply_after = after.map(|value| value.to_string());
+        if let (Some(before), Some(after), Ok(minted), Ok(burned)) = (
+            before,
+            after,
+            delta.minted_shares.parse::<U256>(),
+            delta.burned_shares.parse::<U256>(),
+        ) {
+            match before
+                .checked_add(minted)
+                .and_then(|sum| sum.checked_sub(burned))
+            {
+                Some(expected) if expected != after => check.anomalies.push(format!(
+                    "totalSupply block {}: event replay expects {expected}, observed {after}",
+                    delta.block_number
+                )),
+                None => check.anomalies.push(format!(
+                    "totalSupply block {}: event replay overflow or underflow",
+                    delta.block_number
+                )),
+                _ => {}
+            }
+        }
+        if let Some(expected) = &delta.last_cap {
+            match call_u256(vault, "depositCap()", None, delta.block_number) {
+                Ok(actual) => {
+                    check.cap_after = Some(actual.to_string());
+                    if expected != &actual.to_string() {
+                        check.anomalies.push(format!(
+                            "DepositCapSet block {}: event says {expected}, state says {actual}",
+                            delta.block_number
+                        ));
+                    }
+                }
+                Err(error) => check
+                    .limitations
+                    .push(format!("cap state unavailable: {error}")),
+            }
+        }
+        if let Some(expected) = &delta.last_owner {
+            if let Some(selector) = methods.get("owner()").and_then(Value::as_str) {
+                match rpc
+                    .view(
+                        vault,
+                        &format!("0x{}", selector.trim_start_matches("0x")),
+                        delta.block_number,
+                    )
+                    .ok()
+                    .and_then(|raw| as_address(&raw))
+                {
+                    Some(actual) => {
+                        check.owner_after = Some(actual.clone());
+                        if !expected.eq_ignore_ascii_case(&actual) {
+                            check.anomalies.push(format!("OwnershipTransferred block {}: event says {expected}, state says {actual}", delta.block_number));
+                        }
+                    }
+                    None => check
+                        .limitations
+                        .push("owner state unavailable at event block".into()),
+                }
+            }
+        }
+        match call_u256(vault, "totalAssets()", None, delta.block_number) {
+            Ok(value) => check.total_assets_after = Some(value.to_string()),
+            Err(error) => check
+                .limitations
+                .push(format!("totalAssets state unavailable: {error}")),
+        }
+        if let Some(asset) = asset {
+            if let Some(expected) = fixed_asset_runtime_sha256 {
+                match rpc
+                    .code(asset, delta.block_number)
+                    .ok()
+                    .and_then(|raw| hex_bytes(&raw).ok())
+                {
+                    Some(code) => {
+                        let digest = sha256(&code);
+                        check.asset_runtime_matches_fixed = Some(digest == expected);
+                        check.asset_runtime_sha256_after = Some(digest.clone());
+                        if digest != expected {
+                            check.review_flags.push(format!("asset runtime at block {} differs from fixed-block asset runtime; token behavior must be re-established", delta.block_number));
+                        }
+                    }
+                    None => check
+                        .limitations
+                        .push("asset runtime unavailable at historical event block".into()),
+                }
+            }
+            let selector = hex::encode(&Keccak256::digest(b"balanceOf(address)")[..4]);
+            let data = format!("0x{selector}{}", encode_address(vault));
+            let asset_before =
+                if asset_history.is_some_and(|history| history.from_block == delta.block_number) {
+                    asset_history
+                        .and_then(|history| history.balance_before_deployment.as_ref())
+                        .and_then(|value| value.parse::<U256>().ok())
+                } else if delta.block_number > 0 {
+                    rpc.view(asset, &data, delta.block_number - 1)
+                        .ok()
+                        .and_then(|raw| as_u256(&raw))
+                } else {
+                    Some(U256::ZERO)
+                };
+            check.asset_balance_before = asset_before.map(|value| value.to_string());
+            match rpc
+                .view(asset, &data, delta.block_number)
+                .ok()
+                .and_then(|raw| as_u256(&raw))
+            {
+                Some(value) => check.asset_balance_after = Some(value.to_string()),
+                None => check
+                    .limitations
+                    .push("asset balance unavailable at event block".into()),
+            }
+            if let Some(asset_delta) = asset_history.and_then(|history| {
+                history
+                    .block_deltas
+                    .iter()
+                    .find(|item| item.block_number == delta.block_number)
+            }) {
+                check.expected_asset_in = Some(asset_delta.inbound.clone());
+                check.expected_asset_out = Some(asset_delta.outbound.clone());
+                if let (Some(before), Some(after), Ok(inbound), Ok(outbound)) = (
+                    asset_before,
+                    check
+                        .asset_balance_after
+                        .as_ref()
+                        .and_then(|value| value.parse::<U256>().ok()),
+                    asset_delta.inbound.parse::<U256>(),
+                    asset_delta.outbound.parse::<U256>(),
+                ) {
+                    if let Some(expected) = before
+                        .checked_add(inbound)
+                        .and_then(|value| value.checked_sub(outbound))
+                    {
+                        if expected != after {
+                            check.review_flags.push(format!("asset balance block {}: Transfer ledger expects {expected}, observed {after}; token semantics require review", delta.block_number));
+                        }
+                    } else {
+                        check.limitations.push(
+                            "asset Transfer block delta overflows or underflows uint256".into(),
+                        );
+                    }
+                }
+            }
+        }
+        if let (Some(total), Some(balance)) =
+            (&check.total_assets_after, &check.asset_balance_after)
+        {
+            if total != balance {
+                check.anomalies.push(format!(
+                    "totalAssets block {}: {total} differs from asset balance {balance}",
+                    delta.block_number
+                ));
+            }
+        }
+        checks.push(check);
+    }
+    checks
 }
 
 pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, String> {
@@ -1438,7 +2616,7 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
         .chain(input.rpc_fallback_urls.iter())
         .enumerate()
     {
-        let attempt = (|| -> Result<(Rpc, u64, String, String), String> {
+        let attempt = (|| -> Result<(Rpc, u64, String, String, u64), String> {
             let rpc = Rpc::new(url)?;
             let chain = rpc.call("eth_chainId", json!([]))?;
             let chain = hex_u64(chain.as_str().ok_or("eth_chainId is not hex")?)?;
@@ -1465,22 +2643,33 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
                 .ok()
                 .and_then(|parsed| parsed.host_str().map(str::to_owned))
                 .unwrap_or_else(|| "unknown".into());
-            Ok((rpc, chain, block_hash, host))
+            let history_floor = match rpc.code(&address, 0) {
+                Ok(_) => 0,
+                Err(error) => earliest_available_block(&error).unwrap_or(u64::MAX),
+            };
+            Ok((rpc, chain, block_hash, host, history_floor))
         })();
         match attempt {
-            Ok((rpc, chain, block_hash, host)) => {
-                selected = Some((rpc, chain, block_hash, host, index > 0));
-                break;
+            Ok((rpc, chain, block_hash, host, history_floor)) => {
+                let better = selected.as_ref().is_none_or(
+                    |(_, _, _, _, _, floor): &(Rpc, u64, String, String, bool, u64)| {
+                        history_floor < *floor
+                    },
+                );
+                if better {
+                    selected = Some((rpc, chain, block_hash, host, index > 0, history_floor));
+                }
             }
             Err(_) => rpc_failures += 1,
         }
     }
-    let (rpc, chain, block_hash, rpc_host, rpc_fallback_used) = selected.ok_or_else(|| {
-        format!(
-            "all {} RPC endpoints failed chain, block, or runtime verification",
-            rpc_failures
-        )
-    })?;
+    let (rpc, chain, block_hash, rpc_host, rpc_fallback_used, rpc_history_floor) = selected
+        .ok_or_else(|| {
+            format!(
+                "all {} RPC endpoints failed chain, block, or runtime verification",
+                rpc_failures
+            )
+        })?;
     let economic =
         analyze_economic_functions(&functions, source_name, &source, slither.as_deref())?;
     let mut detector_counts = BTreeMap::new();
@@ -1594,7 +2783,7 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
         state
             .get(key)
             .and_then(|value| value.raw_hex.as_deref())
-            .and_then(as_u128)
+            .and_then(as_u256)
     };
     let mut relations = Vec::new();
     if let (Some(total), Some(balance)) =
@@ -1613,7 +2802,7 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
         number("totalAssets()"),
         number("maxDeposit(address)"),
     ) {
-        let expected = if cap == u128::MAX {
+        let expected = if cap == U256::MAX {
             None
         } else {
             Some(cap.saturating_sub(total))
@@ -1638,24 +2827,44 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
         ));
     }
     let unit = number("asset.decimals()")
-        .and_then(|value| u32::try_from(value).ok())
-        .and_then(|decimals| 10_u128.checked_pow(decimals));
-    let mut samples = BTreeSet::from([0_u128, 1_u128, 2_u128, 3_u128, 7_u128, 10_u128]);
+        .and_then(|value| (value <= U256::from(77)).then(|| value.to::<u32>()))
+        .and_then(|decimals| {
+            let mut unit = U256::from(1);
+            for _ in 0..decimals {
+                unit = unit.checked_mul(U256::from(10))?;
+            }
+            Some(unit)
+        });
+    let mut samples = BTreeSet::from([
+        U256::ZERO,
+        U256::from(1),
+        U256::from(2),
+        U256::from(3),
+        U256::from(7),
+        U256::from(10),
+        U256::MAX,
+    ]);
     if let Some(unit) = unit {
-        samples.insert(unit.saturating_sub(1));
+        samples.insert(unit.saturating_sub(U256::from(1)));
         samples.insert(unit);
-        samples.insert(unit.saturating_add(1));
+        samples.insert(unit.saturating_add(U256::from(1)));
     }
     if let Some(headroom) = number("maxDeposit(address)") {
-        if headroom <= 1_000_000_000_000_000_000 {
-            samples.insert(headroom.saturating_sub(1));
-            samples.insert(headroom);
-            samples.insert(headroom.saturating_add(1));
-        }
+        samples.insert(headroom.saturating_sub(U256::from(1)));
+        samples.insert(headroom);
+        samples.insert(headroom.saturating_add(U256::from(1)));
     }
     if let Some(total) = number("totalAssets()") {
-        if total <= 1_000_000_000_000_000_000 {
-            samples.insert(total);
+        samples.insert(total);
+    }
+    if let Some(supply) = number("totalSupply()") {
+        samples.insert(supply);
+    }
+    if let Some(cap) = number("depositCap()") {
+        if cap != U256::MAX {
+            samples.insert(cap.saturating_sub(U256::from(1)));
+            samples.insert(cap);
+            samples.insert(cap.saturating_add(U256::from(1)));
         }
     }
     let mut probes = Vec::new();
@@ -1700,13 +2909,13 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
             .then_with(|| a.input.cmp(&b.input))
     });
     relations.extend(monotonicity_observations(&probes).0);
-    for amount in [1_u128, unit.unwrap_or(1)] {
+    for amount in [U256::from(1), unit.unwrap_or(U256::from(1))] {
         let get = |method: &str| {
             probes
                 .iter()
                 .find(|probe| probe.method == method && probe.input == amount.to_string())
                 .and_then(|probe| probe.result.raw_hex.as_deref())
-                .and_then(as_u128)
+                .and_then(as_u256)
         };
         if let (Some(preview), Some(convert)) = (
             get("previewDeposit(uint256)"),
@@ -1729,6 +2938,29 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
     let history = event_history(&rpc, &address, input.block_number);
     let (historical_observations, _) = historical_relations(&history, &state);
     relations.extend(historical_observations);
+    let asset_address = state
+        .get("asset()")
+        .and_then(|value| value.decoded.as_deref());
+    let asset_flow_history = asset_address
+        .map(|asset| scan_asset_flows(&rpc, asset, &address, &history, input.block_number, &state));
+    let direct_asset_hashes = asset_flow_history
+        .as_ref()
+        .map(|item| item.selected_direct_transaction_hashes.as_slice())
+        .unwrap_or(&[]);
+    let transaction_evidence =
+        inspect_transactions(&rpc, &address, asset_address, &history, direct_asset_hashes);
+    let historical_state_checks = replay_historical_state(
+        &rpc,
+        &address,
+        asset_address,
+        methods,
+        &history,
+        asset_flow_history.as_ref(),
+        &sha256(&runtime_bytes),
+        state
+            .get("asset.code_sha256")
+            .and_then(|value| value.decoded.as_deref()),
+    );
     let quarantine_cases = quarantine_cases(
         &initial_hotspots,
         &functions,
@@ -1736,6 +2968,9 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
         &state,
         &probes,
         &history,
+        asset_flow_history.as_ref(),
+        &transaction_evidence,
+        &historical_state_checks,
     );
     let (mut hotspots, reassessment) = reevaluate_map(
         &functions,
@@ -1754,11 +2989,49 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
     if let Some(error) = &history.error {
         unresolved.push(format!("Event history incomplete: {error}"));
     }
+    if !history.ledger_errors.is_empty() {
+        unresolved.push(format!(
+            "Event ledger has {} decode or arithmetic errors",
+            history.ledger_errors.len()
+        ));
+    }
+    if let Some(asset_history) = &asset_flow_history {
+        if !asset_history.complete_from_deployment || !asset_history.errors.is_empty() {
+            unresolved.push(format!(
+                "Asset Transfer chronology incomplete or undecodable: {} issue(s)",
+                asset_history.errors.len()
+            ));
+        }
+    } else {
+        unresolved
+            .push("Asset address unavailable; token Transfer chronology was not scanned".into());
+    }
+    if transaction_evidence.len() < history.transaction_count {
+        unresolved.push(format!(
+            "Receipt inspection sampled {} of {} event transactions",
+            transaction_evidence.len(),
+            history.transaction_count
+        ));
+    }
+    if historical_state_checks.len() < history.block_deltas.len() {
+        unresolved.push(format!(
+            "Historical state replay sampled {} of {} event blocks",
+            historical_state_checks.len(),
+            history.block_deltas.len()
+        ));
+    }
+    if transaction_evidence
+        .iter()
+        .any(|transaction| transaction.trace_status != "available")
+    {
+        unresolved
+            .push("Internal call traces unavailable for at least one selected transaction".into());
+    }
     if economic.candidates.is_empty() {
         unresolved.push("M4 produced no candidate; hotspot priority remains available and does not imply safety".into());
     }
     if rpc_fallback_used {
-        unresolved.push(format!("primary RPC failed fixed-block verification; selected {rpc_host} after {rpc_failures} failed endpoint(s)"));
+        unresolved.push(format!("selected {rpc_host} for deeper available history; {rpc_failures} endpoint(s) failed fixed-block verification"));
     }
     if comparison.unmatched_source_methods.len() > 0
         || comparison.unmatched_bytecode_selectors.len() > 0
@@ -1770,6 +3043,65 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
             item.investigation_questions.push("Internal function has no independent ABI entry PC; inspect reachable callers and call paths".into());
         }
     }
+    let event_or_asset_blocks: BTreeSet<u64> = history
+        .block_deltas
+        .iter()
+        .map(|item| item.block_number)
+        .chain(
+            asset_flow_history
+                .iter()
+                .flat_map(|history| history.block_deltas.iter().map(|item| item.block_number)),
+        )
+        .collect();
+    let receipts_inspected = transaction_evidence
+        .iter()
+        .filter(|item| item.receipt_status.is_some())
+        .count();
+    let call_traces_available = transaction_evidence
+        .iter()
+        .filter(|item| item.trace_status == "available")
+        .count();
+    let historical_blocks_without_limitations = historical_state_checks
+        .iter()
+        .filter(|item| item.limitations.is_empty())
+        .count();
+    let asset_history_complete = asset_flow_history
+        .as_ref()
+        .is_some_and(|item| item.complete_from_deployment && item.errors.is_empty());
+    let history_reconciled = history.complete_from_deployment
+        && history.ledger_errors.is_empty()
+        && asset_history_complete
+        && receipts_inspected >= history.transaction_count
+        && historical_state_checks.len() == event_or_asset_blocks.len()
+        && historical_blocks_without_limitations == historical_state_checks.len();
+    let coverage = ForensicCoverage {
+        source_functions_reconstructed: functions.len(),
+        hotspots_scored: hotspots.len(),
+        quarantine_cases_opened: quarantine_cases.len(),
+        vault_blocks_scanned: history.blocks_scanned,
+        vault_history_complete_from_deployment: history.complete_from_deployment,
+        asset_history_complete_from_deployment: asset_history_complete,
+        vault_event_transactions: history.transaction_count,
+        receipts_inspected,
+        call_traces_available,
+        event_or_asset_blocks: event_or_asset_blocks.len(),
+        historical_blocks_checked: historical_state_checks.len(),
+        historical_blocks_without_limitations,
+        boundary_calls: probes.len(),
+        boundary_calls_succeeded: probes
+            .iter()
+            .filter(|item| item.result.error.is_none())
+            .count(),
+        bytecode_unresolved_items: analysis.unresolved.len(),
+        evidence_gate: if !history_reconciled {
+            "partial"
+        } else if call_traces_available < receipts_inspected {
+            "history_reconciled_trace_gaps"
+        } else {
+            "history_reconciled"
+        }
+        .into(),
+    };
     Ok(ForensicReport {
         schema: SCHEMA.into(),
         identity: ForensicIdentity {
@@ -1779,6 +3111,7 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
             block_hash,
             rpc_host,
             rpc_fallback_used,
+            rpc_history_floor: (rpc_history_floor != u64::MAX).then_some(rpc_history_floor),
             runtime_sha256: sha256(&runtime_bytes),
             analysis_source_sha256: sha256(source.as_bytes()),
             comparison_json_sha256: sha256(comparison_json.as_bytes()),
@@ -1808,6 +3141,10 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
         boundary_probes: probes,
         observed_relations: relations,
         event_history: history,
+        asset_flow_history,
+        transaction_evidence,
+        historical_state_checks,
+        coverage,
         unresolved,
     })
 }

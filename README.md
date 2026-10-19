@@ -53,7 +53,7 @@ The M7 judge records observed fuzz runs and target LCOV coverage; optional invar
 
 A [real Sepolia pilot](docs/REAL-EVM-PILOT.md) connected verified multi-file source and deployed runtime for an ERC-4626 vault through M1–M6. The compiler's two constructor immutables explain the runtime differences; M4 found no eligible candidate, so M7 correctly created no case and M8 had no evidence to package. This validates the empty path on a real EVM target, while the positive candidate path still needs calibration and an authorized case.
 
-The Rust forensic cycle now runs automatically from one manifest. It verifies a fixed-block runtime, scores source/bytecode hotspots, quarantines selected variables for deeper crosschecks and read-only boundary probes, then rebuilds the map. Only observed anomalies tied to the same source and runtime may become `UNVERIFIED` M5 candidates. The Sepolia run found no sampled anomaly; that is not a security clearance.
+The Rust forensic cycle now runs automatically from one manifest. It verifies a fixed-block runtime, scores source/bytecode hotspots, scans vault and asset event history from the detected deployment block when the RPC permits, reconciles 256-bit ledger values with selected receipts and historical state, quarantines selected variables for deeper crosschecks and read-only boundary probes, then rebuilds the map. Coverage and missing traces are explicit. Only observed anomalies tied to the same source and runtime may become `UNVERIFIED` M5 candidates. The Sepolia read-only run reconciled the available event history but had no internal call traces; it found no observed anomaly in those checks. This is not a security clearance. Local sequence simulation and path coverage remain pending.
 
 ## Development
 

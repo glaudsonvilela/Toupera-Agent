@@ -6,6 +6,7 @@ license = "UNLICENSED"
 description = "Foundational types for Toupera Agent's EVM economic security engine"
 
 [dependencies]
+alloy-primitives = "=1.7.3"
 evmole = { version = "=0.9.4", default-features = false }
 hex = "=0.4.3"
 reqwest = { version = "=0.12.28", default-features = false, features = ["blocking", "json", "rustls-tls"] }

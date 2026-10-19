@@ -4,11 +4,18 @@
 
 - O usuário exige que o Rust automatize a reconstrução histórica, a análise de transações e estado, invariantes, simulação e retorno da quarentena ao mapa, sem depender da IA para criar o contexto. O mapa/sondagem atual é triagem; não chamá-lo de scanner forense completo.
 - Atualizar `agente.md` e `docs/ROADMAP-CHECKLIST.md` ao concluir cada etapa. Marcar cobertura parcial e falhas de RPC explicitamente; artefatos de alvo em `private-output/`; preservar `web/` não rastreado.
+- Pedido vigente: não executar simulações nesta sessão; deixar a implementação compilada no VPS. Não confundir leitura histórica ou `eth_call` com replay de execução.
+
+## Etapa histórica concluída, 2026-10-18
+
+- O motor Rust usa `alloy-primitives::U256`; seleciona RPC com maior histórico após validar chain/bloco/runtime; varre logs do vault e transferências do asset desde o deploy em lotes, com erros e alcance explícitos; cruza transações/recibos, eventos, cap, owner, supply e balanço por bloco. Tenta `debug_traceTransaction`, registrando a lacuna quando não há acesso. Divergências observadas chegam à quarentena e ao mapa refeito; a saída inclui `coverage`.
+- Execução de leitura já feita em YieldVault Sepolia: 818.846 blocos, 5 eventos do vault, 2 transferências do asset, 3 recibos, 1 bloco com eventos conferido, 108 chamadas de borda (103 retornaram). `coverage.evidence_gate=history_reconciled_trace_gaps`: nenhum rastro interno (RPC HTTP 429), 299 itens de bytecode não resolvidos, sem simulação de sequência ou prova de segurança. Ver `docs/REAL-EVM-PILOT.md` e `docs/FORENSIC-QUARANTINE.md`.
+- Próximos gates: sequências locais em fork com cobertura mensurável, calibração M4, ramo positivo M5–M8. Não marcar esses itens como concluídos. Nesta etapa, compilar e instalar no VPS sem rodar simulações ou testes.
 
 ## Ciclo forense/quarentena, 2026-10-18
 
 - `forensic_probe.rs` implementa: manifesto `forensic-input-v1` → source/runtime/Slither + RPC de bloco fixado verificado → mapa de zonas com score explicável → até 24 quarentenas de variáveis/caminhos → segunda sondagem read-only e cruzamento de evidências → reconstrução integral do mapa. Anomalia observada pode entrar em M5 como `UNVERIFIED` por `--forensic`; M5 rejeita source/runtime divergentes e inclui relatório na chave de cache. Consultar `docs/FORENSIC-QUARANTINE.md`.
-- YieldVault Sepolia: 29 zonas, 19 quarentenas, 78 sondagens, 15 relações, zero anomalias nas amostras; M5/M6 zero candidatos/requests. Histórico de eventos parcial. Não chamar `sampled_no_anomaly_observed` de ausência de bugs. Sem transações ou DeepSeek. Testes Rust: 27 passaram. Próximo gate é anomalia real autorizada → hipótese M6 → Foundry M7 → revisão M8.
+- Primeira passagem YieldVault Sepolia: 29 zonas, 19 quarentenas, 78 sondagens, 15 relações, zero anomalias nas amostras; M5/M6 zero candidatos/requests. Seu histórico de eventos era parcial e foi ampliado na etapa histórica acima. Não chamar `sampled_no_anomaly_observed` de ausência de bugs. Sem transações ou DeepSeek. Testes Rust de etapa anterior: 27 passaram. Próximo gate positivo é anomalia real autorizada → hipótese M6 → Foundry M7 → revisão M8.
 - O fallback `sepolia.gateway.tenderly.co` foi aceito depois de validar chain ID, bloco e runtime; o RPC primário ficou indisponível para estado histórico. Preservar `web/` não rastreado, e manter artefatos de alvo em `private-output/` ignorado.
 
 1. Leia primeiro `/agente.md`.

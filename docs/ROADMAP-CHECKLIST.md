@@ -113,15 +113,18 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 ### Evolução do scanner forense automático (em andamento)
 
 - [x] Fixar identidade do source, runtime, chain ID e hash do bloco; gerar mapa inicial e quarentena com prioridades explicáveis.
-- [ ] Usar inteiros EVM de 256 bits para decodificar e reconciliar valores sem truncamento.
-- [ ] Varredura de eventos desde o deploy, com progresso por bloco, erros e lacunas explícitos; não confundir amostra de eventos retidos com cobertura histórica.
-- [ ] Recuperar e vincular transações, recibos e, onde disponível, rastros internos aos eventos e funções do mapa.
-- [ ] Reconstruir deltas de supply, assets, cap e permissões por bloco/transação, conferindo snapshots históricos e distinguindo efeitos de chamadas externas.
-- [ ] Verificar invariantes econômicas ao longo da cronologia e dos limites de valores; enviar divergências com evidência ao motor de quarentena.
+- [x] Usar inteiros EVM de 256 bits para decodificar e reconciliar valores sem truncamento.
+- [x] Varredura de eventos desde o deploy quando o RPC fornece histórico, com último bloco lido, erros e lacunas explícitos; distinguir amostra de eventos retidos de cobertura histórica.
+- [x] Recuperar e vincular transações e recibos aos eventos; tentar rastros internos quando o RPC permitir e registrar indisponibilidade.
+- [x] Reconstruir deltas de supply, assets, cap e permissões por bloco/transação, conferindo snapshots históricos e separando questões de semântica do token.
+- [x] Conferir invariantes de oferta e balanço em blocos com eventos e entradas de borda no bloco fixado; enviar divergências observadas à quarentena.
 - [ ] Gerar sequências de operações em fork local e medir ramos/reverts cobertos, com premissas e limites explícitos.
-- [ ] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
-- [ ] Publicar métricas de cobertura (blocos, eventos, transações, estados e caminhos), zonas não examinadas e custo de RPC/IA.
+- [x] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
+- [x] Publicar métricas de cobertura de blocos, eventos, transações, estados e chamadas de borda, com lacunas de rastro/bytecode explícitas.
+- [ ] Medir cobertura de caminhos e custo de RPC/IA em campanhas representativas.
 - [ ] Validar o ramo positivo completo com alvo autorizado, reprodução Foundry e revisão M8 antes de declarar o scanner forense pronto.
+
+Etapa histórica 2026-10-18: `YieldVault` Sepolia teve 818.846 blocos de logs completos desde o deploy, 5 eventos do vault, 2 transferências do asset, 3 recibos, 1 bloco com eventos conferido e 108 chamadas de borda (103 retornaram). `history_reconciled_trace_gaps` registra a reconciliação dessas evidências e a ausência de rastros internos. Nenhuma simulação foi executada nesta etapa; o item de sequências em fork permanece aberto.
 
 
 ### 1. Autorização e escopo
