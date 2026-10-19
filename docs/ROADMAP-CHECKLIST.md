@@ -145,11 +145,14 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 - [x] Registrar chamadas internas por identificador, argumentos→parâmetros, retornos→resultados e famílias simbólicas de mappings/arrays com expressão da chave e proveniência; sem inferir aliasing ou viabilidade.
 - [x] Inventariar variáveis da AST multifile verificada e ligá-las a faixas de PCs do runtime com identidade de compilação e confiança explícita; referência em faixa não prova controle do desvio.
 - [x] Implementar seleção automática de cenários locais por limite, ator e mudança de estado com identidade do relatório de variáveis, snapshots e grupos de cobertura.
-- [ ] Resolver aliases de chaves, assembly, efeitos externos/entre transações e viabilidade de caminhos.
+- [x] Classificar pares de chaves indexadas em igualdade literal, diferença literal, mesmo símbolo ou sobreposição desconhecida; registrar 11 relações possíveis entre funções por estado com proveniência, sem promover símbolo a alias provado.
+- [x] Marcar seis chamadas a contrato e 36 limites de assembly na AST do alvo, com classe de efeito e slots literais quando existirem; não atribuir comportamento interno de chamada externa ou assembly dinâmico sem evidência.
+- [x] Conferir viabilidade **concreta** por `eth_call` e recibo no mesmo fork; registrar continuidade e reutilização de slots `SLOAD`/`SSTORE` entre etapas locais, além de candidatos à fórmula de mapping por endereço.
 - [x] Executar cenários guiados no VPS, conferir hash da cobertura anterior e registrar automaticamente PCs/resultados novos: rodada corrigida com 33 casos, 29 concluídos, quatro reversões de limite, zero falhas RPC/diferenças, ganho de resultados zero; reavaliação com cache manteve 29 zonas/19 quarentenas.
 
 `guided-scenarios-v3/report.json` contém a comparação automática com `local-coverage-v2.json`: 58 resultados anteriores, nenhum resultado ou PC novo. A grade confirma a infraestrutura de ligação, mas não amplia o conjunto de caminhos observados neste alvo. Próxima seleção deve partir de condições não observadas ou apenas vistas em um sentido, com orçamento de estado e viabilidade explícitos.
-- [ ] Medir cobertura por função/ramo do vault com denominador confiável e ampliar sequências conforme lacunas observadas.
+- [x] Medir PCs estáticos com origem única em função/modifier do bundle verificado e resultados observados, mantendo PCs sem atribuição e faixas amplas explícitos; ampliar sequências pelo feedback dessas lacunas.
+- [ ] Demonstrar viabilidade de caminhos não executados, resolver aliases dinâmicos gerais/efeitos externos e obter denominador de ramos **alcançáveis** por função; o denominador atual é apenas PC estático com origem de source única.
 - [x] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
 - [x] Publicar métricas de cobertura de blocos, eventos, transações, estados e chamadas de borda, com lacunas de rastro/bytecode explícitas.
 - [ ] Medir cobertura de caminhos e custo de RPC/IA em campanhas representativas.
