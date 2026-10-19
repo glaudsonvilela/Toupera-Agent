@@ -8,11 +8,11 @@ A API Python de loopback está em `tools/site_jobs.py`, executada por `toupera-s
 
 1. O formulário cria `/srv/toupera-agent/smart.md` e uma cópia por trabalho.
 2. O trabalhador confirma chain ID, fixa bloco e hash, lê o runtime com `eth_getCode` e a implementação do proxy no slot EIP-1967. Não envia transações.
-3. O Rust `security-engine --bytecode` processa o runtime do endereço e da implementação; o resumo vai para `result_smart.md`.
+3. O Rust `security-engine --bytecode` processa o runtime do endereço e da implementação. O trabalhador lê os eventos desde a criação, compara a oferta e usa `security-engine --wcop-sift` para ordenar dúvidas técnicas. O resumo vai para `result_smart.md`.
 4. O trabalhador procura fonte verificada no Sourcify ou Blockscout e executa as ferramentas compatíveis. Cada uma das dez ferramentas fica marcada como executada, pendente, incompatível ou indisponível, com motivo. O relatório consolidado vai para `end_smart_result.md` e uma cópia por trabalho.
 5. A API autenticada retorna somente os eventos de progresso e o Markdown final. O frontend o exibe como texto, sem interpretar HTML do contrato.
 
-O motor Rust atual reconstrói a estrutura do runtime e mostra incertezas. Os sinais Slither/Mythril são brutos e não são achados confirmados. Foundry, Echidna, Medusa, Halmos e Kontrol exigem propriedades e harness específicos; Securify2/Manticore são legados para este runtime; Certora precisa de credencial e usa serviço externo. O painel registra esses limites em vez de alegar uma execução inexistente. Não há submissão automática ao programa de recompensas nem chamada à IA.
+O motor Rust atual reconstrói a estrutura do runtime e mostra incertezas. Os sinais Slither/Mythril são brutos e não são achados confirmados. Echidna, Medusa, Halmos e Kontrol exigem propriedades e harness específicos; Securify2/Manticore são legados para este runtime; Certora precisa de credencial e usa serviço externo. O painel registra esses limites em vez de alegar uma execução inexistente. Não há submissão automática ao programa de recompensas nem chamada à IA.
 
 O endereço foi fornecido pelo usuário. O programa e o escopo podem mudar; confira as regras atuais em https://hackerone.com/ripio/policy_scopes antes de qualquer comunicação de resultados. O trabalho público de pesquisa visto online não é tratado como evidência original.
 
@@ -31,3 +31,14 @@ A execução final pela API ficou no diretório privado `private-output/site-job
 
 O arquivo `tools/wcop_readonly.t.sol` contém três regras pequenas para o wCOP. O trabalhador o copia para o diretório privado do trabalho e executa Foundry em uma cópia local do bloco fixado: aprovação sem mudança de oferta, rejeição de emissão sem papel e rejeição de pausa sem papel. O resultado é marcado como verificação básica; não cobre operações autorizadas, sequências longas, invariantes econômicas ou outras redes. A execução manual inicial passou em três casos no VPS.
 A execução automática final `ba5146dd978d45e2` terminou com nove eventos. Slither, Mythril e Foundry foram executados; Foundry passou 3/3 no bloco 26227659. Os sete outros executores ficaram com estado e motivo explícitos no relatório. O Markdown final foi servido pela API autenticada.
+
+
+## Leitura ampliada do wCOP
+
+O trabalho `f36ae038ef634853` fixou um bloco e leu 236 eventos de criação até ele: 192 transferências, 27 autorizações, 11 concessões de papel, 4 revogações, uma inicialização e uma mudança de implementação. O saldo da oferta obtido de emissão menos retirada conferiu com `totalSupply` no bloco. Cada evento detalhado fica em `history.json` privado, com bloco, transação e índice. O resumo da página mostra movimentos de oferta e mudanças de papel.
+
+A peneira do Rust separou 372 avisos dependentes da versão da rede entre 475 dúvidas iniciais e ordenou 30 registros para revisão. O número e a ordem não são prova de falha. `sift.json` permanece privado. O Foundry passou em cinco cenários na cópia local do mesmo bloco: três regras de acesso/aprovação, ida e volta de saldo, e gasto de autorização. Esses cenários não incluem operações autorizadas de emissão ou retirada.
+
+Slither e Foundry usam `tools/solc-0.8.27` no VPS, versão `0.8.27+commit.40a35a09`, SHA-256 `b9977d500c17cba6f0032ca939ef98c4decf6363f19f386d05fb02f708115264`. O binário vem de `https://binaries.soliditylang.org/linux-amd64/solc-linux-amd64-v0.8.27+commit.40a35a09`; verifique o hash ao reinstalar. Ele não entra no Git.
+
+O JavaScript do painel foi corrigido e publicado em uma nova versão do site. A API requer a chave; `/api/smart/latest` sem autenticação responde 401. A interface mostra o relatório Markdown como texto.

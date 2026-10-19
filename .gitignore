@@ -5,3 +5,4 @@
 !.env.example
 *.log
 .DS_Store
+/tools/solc-0.8.27

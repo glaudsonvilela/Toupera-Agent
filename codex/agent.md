@@ -226,3 +226,24 @@ O último trabalho wCOP está em `private-output/site-jobs/356a04b350144dc6/`. A
 A execução final autenticada está em `private-output/site-jobs/b0a86a00d5664e97/`. O trabalhador lê `smart.md`; o status trata morte do processo e prazo prolongado.
 O painel wCOP inclui `tools/wcop_readonly.t.sol` e roda três regras Foundry no fork local do bloco fixado. Os outros executores permanecem condicionados a propriedades/compatibilidade.
 A última execução automática wCOP é `private-output/site-jobs/ba5146dd978d45e2/`: três ferramentas executadas, Foundry 3/3, relatório no painel.
+
+
+## Etapa wCOP: histórico, peneira e sequências locais (2026-10-19)
+
+- O painel continua limitado ao wCOP no Ethereum e grava os dados por trabalho em `private-output/site-jobs`.
+- `tools/wcop_history.py` lê a criação e os eventos do endereço até o bloco fixado. Cada mudança traz bloco, transação e índice do evento. O relatório compara emissão menos retirada com `totalSupply` lido no mesmo bloco e marca divergência.
+- `security-engine --wcop-sift` agrupa as dúvidas do bytecode e ordena até 30 pontos para revisão. As 372 ocorrências ligadas à versão da rede ficam separadas do restante; a ordem não representa chance de falha.
+- `tools/wcop_readonly.t.sol` inclui ida e volta de saldo e uso de autorização, além das três regras anteriores, sempre em cópia local do bloco. Um titular com saldo é escolhido a partir dos eventos e confirmado por leitura no bloco.
+- Slither e Foundry usam o binário Solidity 0.8.27 obtido da distribuição oficial com SHA-256 conferido. O binário fica no VPS e não entra no Git.
+- O relatório deve distinguir consulta completa, leitura incompleta e resultado local. Não transformar sinal bruto em conclusão.
+- Na implantação, conferir `history.json`, `sift.json`, `tools.json` e `end_smart_result.md` de um trabalho real antes de declarar a etapa concluída.
+
+
+### Fechamento desta etapa (2026-10-19)
+
+- Trabalho final do painel: `f36ae038ef634853`, completo em bloco fixado. 236 eventos foram classificados: 192 transferências, 27 autorizações, 11 concessões de papel, 4 revogações, 1 inicialização e 1 mudança de implementação.
+- Emissão menos retirada conferiu com `totalSupply` no bloco. O resultado descreve consistência observada, sem afirmar que todos os caminhos do contrato foram cobertos.
+- A peneira Rust recebeu 475 dúvidas, separou 372 dependentes da versão da rede e ordenou 30 pontos para revisão. O texto deixa explícito que essa ordem não é probabilidade de falha.
+- Slither com solc 0.8.27 retornou saída estruturada e código 0; o único sinal no arquivo principal é informativo sobre pragma. Foundry concluiu 5/5 cenários locais. Mythril registrou um sinal bruto ainda sem confirmação.
+- O JavaScript do painel estava inválido. O formulário e o terminal foram refeitos no VPS; o arquivo corrigido foi publicado em `/var/www/toupeiraagente/current`. Site e arquivo JS respondem 200; API sem credencial responde 401.
+- Arquivos detalhados continuam privados no VPS. Código e documentos devem ser enviados ao repositório privado; não incluir o binário solc, credenciais, relatórios privados nem dados da pasta `private-output`.

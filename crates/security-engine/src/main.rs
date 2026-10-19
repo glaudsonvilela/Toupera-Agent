@@ -22,6 +22,56 @@ fn main() -> ExitCode {
         );
         return ExitCode::FAILURE;
     };
+    if source == "--wcop-sift" {
+        let arguments: Vec<_> = args.collect();
+        if arguments.len() != 2 {
+            eprintln!("usage: security-engine --wcop-sift <engine.json> <history.json>");
+            return ExitCode::FAILURE;
+        }
+        let result = (|| -> Result<serde_json::Value, String> {
+            let engine: serde_json::Value = serde_json::from_slice(&fs::read(&arguments[0]).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            let history: serde_json::Value = serde_json::from_slice(&fs::read(&arguments[1]).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            let unresolved = engine["unresolved"].as_array().ok_or("motor sem lista de dúvidas")?;
+            let mut groups = std::collections::BTreeMap::<String, usize>::new();
+            let mut candidates = Vec::new();
+            for item in unresolved {
+                let detail = item["detail"].as_str().unwrap_or("motivo não descrito");
+                *groups.entry(detail.to_owned()).or_default() += 1;
+                if detail.contains("fork, which was not supplied") { continue; }
+                let pc = item["location"]["Bytecode"]["pc"].as_u64();
+                let priority = if detail.contains("storage key") { 4 }
+                    else if detail.contains("jump destination") { 3 }
+                    else if detail.contains("stack states") || detail.contains("memory word") { 2 }
+                    else { 1 };
+                candidates.push(serde_json::json!({
+                    "pc": pc, "question": detail, "priority": priority,
+                    "basis": "dúvida do motor; posição em bytecode, sem caminho confirmado"
+                }));
+            }
+            candidates.sort_by(|a,b| b["priority"].as_u64().cmp(&a["priority"].as_u64())
+                .then_with(|| a["pc"].as_u64().cmp(&b["pc"].as_u64())));
+            Ok(serde_json::json!({
+                "input_uncertainties": unresolved.len(), "by_reason": groups,
+                "environment_context_count": unresolved.len() - candidates.len(),
+                "selected_count": candidates.len().min(30),
+                "selected": candidates.into_iter().take(30).collect::<Vec<_>>(),
+                "history_complete": history["complete_event_range"],
+                "supply_matches_events": history["supply_matches_events"],
+                "method": "ordem por tipo de dúvida; não é probabilidade de erro"
+            }))
+        })();
+        return match result {
+            Ok(value) => {
+                if let Err(error) = serde_json::to_writer(std::io::stdout(), &value) {
+                    eprintln!("cannot write sift: {error}"); return ExitCode::FAILURE;
+                }
+                println!(); ExitCode::SUCCESS
+            }
+            Err(error) => { eprintln!("{error}"); ExitCode::FAILURE }
+        };
+    }
     if source == "--forensic-probe" {
         let arguments: Vec<_> = args.collect();
         if arguments.len() != 1 {

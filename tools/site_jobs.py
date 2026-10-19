@@ -14,6 +14,7 @@ import urllib.error
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from wcop_history import collect as collect_history
 
 ROOT = Path("/srv/toupera-agent")
 WORK = ROOT / "private-output" / "site-jobs"
@@ -85,9 +86,11 @@ def source_info(job, address, runtime):
         pass
     return {"state": "não obtida", "compiler": None, "name": None, "files": 0, "origin": None}
 
-def command(args, path, timeout=90, cwd=None):
+def command(args, path, timeout=90, cwd=None, env_extra=None):
     env = dict(os.environ)
     env["PATH"] = "/home/toupera/.local/bin:/home/toupera/.foundry/bin:/usr/local/bin:/usr/bin:/bin"
+    if env_extra:
+        env.update(env_extra)
     with open(path, "w", encoding="utf-8") as out:
         try:
             result = subprocess.run(args, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
@@ -155,7 +158,7 @@ def prepare_source(job, info):
 def tool_line(name, state, detail):
     return {"name": name, "state": state, "detail": detail}
 
-def run_tools(job, source, runtime_path, block_number):
+def run_tools(job, source, runtime_path, block_number, holder=None):
     rows = []
     logs = job / "tools"
     logs.mkdir(mode=0o700)
@@ -163,8 +166,8 @@ def run_tools(job, source, runtime_path, block_number):
     if main:
         stage(job, "Slither", "Compilando a fonte verificada e reunindo sinais.")
         output = job / "slither.json"
-        code = command(["/home/toupera/.local/bin/slither", str(main), "--solc", "/usr/local/bin/solc",
-                        "--solc-args", "--base-path .", "--json", str(output)],
+        code = command(["/home/toupera/.local/bin/slither", str(main), "--solc", str(ROOT / "tools/solc-0.8.27"),
+                        "--solc-args", "--base-path .", "--fail-none", "--json", str(output)],
                        logs / "slither.log", 120, cwd=job / "source")
         try:
             result = jread(output)
@@ -178,7 +181,7 @@ def run_tools(job, source, runtime_path, block_number):
             detail = (str(signals) + " sinais brutos no conjunto; " + str(len(direct)) +
                       " com referência ao arquivo principal; tipos locais: " +
                       (", ".join(kinds[:8]) if kinds else "nenhum") +
-                      "; compilador local 0.8.37; saída " + str(code))
+                      "; compilador local 0.8.27; saída " + str(code))
             rows.append(tool_line("Slither", state, detail))
         except (OSError, ValueError):
             rows.append(tool_line("Slither", "falhou", "fonte não compilou ou não houve saída estruturada; saída " + str(code)))
@@ -203,20 +206,25 @@ def run_tools(job, source, runtime_path, block_number):
         tool_line("Securify2", "não aplicável", "executor legado usa Solidity 0.5.12"),
         tool_line("Manticore", "não aplicável", "executor legado sem validação para este runtime"),
     ])
-    stage(job, "Foundry", "Executando três regras básicas em cópia local do bloco.")
+    stage(job, "Foundry", "Executando regras e sequências em cópia local do bloco.")
     foundry = job / "foundry"
     (foundry / "test").mkdir(parents=True, mode=0o700)
     shutil.copyfile(ROOT / "tools/wcop_readonly.t.sol", foundry / "test/Wcop.t.sol")
-    save(foundry / "foundry.toml", '[profile.default]\nsolc = "/usr/local/bin/solc"\ntest = "test"\noptimizer = true\n')
+    save(foundry / "foundry.toml", '[profile.default]\nsolc = "/srv/toupera-agent/tools/solc-0.8.27"\ntest = "test"\noptimizer = true\n')
     forge_log = logs / "foundry.log"
-    forge_code = command(["/home/toupera/.foundry/bin/forge", "test", "--root", str(foundry),
-                          "--fork-url", RPC, "--fork-block-number", str(block_number), "-vv"],
-                         forge_log, 120)
+    forge_args = ["/home/toupera/.foundry/bin/forge", "test", "--root", str(foundry),
+                  "--fork-url", RPC, "--fork-block-number", str(block_number), "-vv"]
+    if not holder:
+        forge_args.extend(["--match-test", "testUnauthorized|testApproval"])
+    forge_code = command(forge_args, forge_log, 150,
+                         env_extra={"WCOP_HOLDER": holder} if holder else None)
     forge_text = forge_log.read_text(encoding="utf-8", errors="replace")
     passed = re.search(r"(\d+) tests passed, (\d+) failed", forge_text)
-    if forge_code == 0 and passed and passed.group(1) == "3" and passed.group(2) == "0":
-        rows.append(tool_line("Foundry", "executado", "3 regras locais passaram no bloco " + str(block_number) +
-                              ": aprovação, emissão não autorizada e pausa não autorizada; isso não cobre outros caminhos"))
+    expected = 5 if holder else 3
+    if forge_code == 0 and passed and int(passed.group(1)) == expected and passed.group(2) == "0":
+        rows.append(tool_line("Foundry", "executado", str(expected) + " cenários locais passaram no bloco " + str(block_number) +
+                              ": aprovação, emissão e pausa sem permissão" +
+                              (", ida e volta de saldo, gasto de autorização" if holder else "") + "; cópia local"))
     else:
         rows.append(tool_line("Foundry", "limite" if forge_code == 124 else "falhou",
                               "regras locais não concluídas; saída " + str(forge_code)))
@@ -278,6 +286,22 @@ def worker(job_id):
             if code == 0:
                 impl_engine = jread(job / "engine-impl.json")
                 impl_summary = engine_summary(impl_engine)
+        stage(job, "Histórico", "Lendo eventos do endereço desde sua criação até o bloco fixado.")
+        history = None
+        history_error = None
+        try:
+            history = collect_history(address, block_number, request_json, rpc)
+            jwrite(job / "history.json", history)
+        except (ValueError, KeyError, OSError, urllib.error.URLError) as error:
+            history_error = type(error).__name__ + ": " + str(error)[:120]
+            save(job / "history-error.txt", history_error + "\n")
+        sift = None
+        if history and impl_summary:
+            stage(job, "Peneira Rust", "Ordenando dúvidas técnicas do bytecode.")
+            sift_code = command([str(ENGINE), "--wcop-sift", str(job / "engine-impl.json"),
+                                 str(job / "history.json")], job / "sift.json", 30)
+            if sift_code == 0:
+                sift = jread(job / "sift.json")
         result = (
             "# Resultado do motor Rust\n\n"
             + "- Contrato: " + address + "\n"
@@ -309,12 +333,53 @@ def worker(job_id):
                 names = sorted({item.get("name") for item in raw_abi if isinstance(item, dict) and item.get("type") == "function" and item.get("name")})
                 if names:
                     result += "- Funções públicas na ABI: " + ", ".join(names[:45]) + "\n"
+        if history:
+            result += ("\n## Linha do tempo e oferta\n\n"
+                       "- Criação: bloco " + str(history["creation_block"]) + ", transação " + history["creation_tx"] + "\n"
+                       "- Intervalo de eventos: " + str(history["creation_block"]) + " a " + str(block_number) +
+                       "; " + str(history["event_count"]) + " eventos, " + str(history["pages"]) + " página(s) da fonte.\n"
+                       "- Oferta emitida (unidades brutas): " + history["minted_raw"] + "\n"
+                       "- Oferta retirada (unidades brutas): " + history["burned_raw"] + "\n"
+                       "- Oferta observada no bloco (unidades brutas): " + history["supply_on_chain_raw"] + "\n"
+                       "- Balanço entre eventos e oferta: " + ("confere" if history["supply_matches_events"] else "diverge; revisar") + "\n")
+            result += "- Tipos de evento: " + ", ".join(
+                name + "=" + str(count) for name, count in sorted(history["event_counts"].items())) + "\n"
+            upgrades = [event for event in history["timeline"] if event["kind"] == "upgraded"]
+            if upgrades and implementation:
+                result += "- Última mudança de implementação confere com o slot no bloco: " + (
+                    "sim" if upgrades[-1].get("implementation") == implementation else "não; revisar") + "\n"
+            for event in history["timeline"][:18]:
+                result += "- " + event["kind"] + ": bloco " + str(event["block"]) + ", tx " + event["tx"] + ", log " + str(event["log_index"])
+                if event.get("implementation"):
+                    result += ", implementação " + event["implementation"]
+                if event.get("role"):
+                    result += ", papel " + event["role"]
+                if event.get("account"):
+                    result += ", conta " + event["account"]
+                result += "\n"
+            important = [item for item in history["movements"] if item["flow"] in ("mint", "burn")]
+            result += "- Movimentos de oferta: " + str(len(important)) + " registro(s).\n"
+            for event in important[:12]:
+                result += ("- " + event["flow"] + ": " + event["amount_raw"] + " unidades brutas; bloco " +
+                           str(event["block"]) + ", tx " + event["tx"] + ", log " + str(event["log_index"]) + "\n")
+            result += "- Registros completos: history.json privado do trabalho; o texto acima é um resumo.\n"
+        else:
+            result += "\n## Histórico\n\n- Leitura incompleta: " + str(history_error) + "\n"
+        if sift:
+            result += ("\n## Peneira do motor Rust\n\n"
+                       "- Dúvidas iniciais: " + str(sift["input_uncertainties"]) + "\n"
+                       "- Contexto de versão da rede separado: " + str(sift["environment_context_count"]) + "\n"
+                       "- Pontos ordenados para revisão: " + str(sift["selected_count"]) + "\n"
+                       "- A ordem indica onde revisar; não mede chance de falha.\n")
+            for item in sift["selected"][:12]:
+                result += "- PC " + str(item["pc"]) + ": " + item["question"] + "\n"
         save(ROOT / "result_smart.md", result)
         save(job / "result_smart.md", result)
         stage(job, "Ferramentas", "Executando leituras compatíveis e registrando as demais.")
         selected_source = impl_source if impl_source and impl_source.get("source") else source
         selected_runtime = impl_runtime_path or runtime_path
-        rows = run_tools(job, selected_source, selected_runtime, block_number)
+        rows = run_tools(job, selected_source, selected_runtime, block_number,
+                         (history.get("funded_holder") or {}).get("address") if history else None)
         final = result.replace("# Resultado do motor Rust", "# Resultado do contrato", 1)
         final += "\n## Ferramentas\n\n"
         for item in rows:
