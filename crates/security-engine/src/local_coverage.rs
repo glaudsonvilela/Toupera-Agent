@@ -24,6 +24,7 @@ struct RecordedCase {
     sequence: String,
     step: usize,
     operation: String,
+    amount: String,
     status: String,
     trace_steps: Option<usize>,
     observed_jump_sites: Vec<String>,
@@ -61,6 +62,15 @@ pub struct WitnessCase {
 }
 
 #[derive(Serialize)]
+pub struct InputGroupObservation {
+    pub group: String,
+    pub cases: usize,
+    pub observed_branch_outcomes: usize,
+    pub outcomes_not_seen_with_zero_inputs: usize,
+    pub outcomes_unique_to_this_group: usize,
+}
+
+#[derive(Serialize)]
 pub struct LocalCoverageReport {
     pub schema: String,
     pub source_report_sha256: String,
@@ -72,6 +82,8 @@ pub struct LocalCoverageReport {
     pub runtime_sites_not_observed: usize,
     pub observed_sites_with_one_outcome: usize,
     pub operation_observations: Vec<OperationObservation>,
+    pub input_group_observations: Vec<InputGroupObservation>,
+    pub next_scenario_focus: String,
     pub branch_observations: Vec<BranchObservation>,
     pub representative_cases: Vec<WitnessCase>,
     pub representative_case_outcomes: usize,
@@ -118,6 +130,7 @@ pub fn analyze_recorded_scenarios(path: &Path) -> Result<LocalCoverageReport, St
     let mut case_outcomes = Vec::with_capacity(recorded.cases.len());
     let mut site_operations: BTreeMap<usize, BTreeSet<String>> = BTreeMap::new();
     let mut site_cases: BTreeMap<usize, usize> = BTreeMap::new();
+    let mut input_groups: BTreeMap<String, (usize, BTreeSet<(usize, String)>)> = BTreeMap::new();
     for case in &recorded.cases {
         let entry = operations.entry(case.operation.clone()).or_default();
         entry.cases += 1;
@@ -149,6 +162,18 @@ pub fn analyze_recorded_scenarios(path: &Path) -> Result<LocalCoverageReport, St
         }
         entry.sites.extend(sites.iter().copied());
         entry.outcomes.extend(outcomes.iter().cloned());
+        let group = if case.sequence.starts_with("above_limit:") {
+            "above_limit"
+        } else if case.sequence == "deposit_then_redeem" {
+            "ordered_sequence"
+        } else if case.amount == "0" {
+            "zero_amount"
+        } else {
+            "ordinary_positive"
+        };
+        let group_entry = input_groups.entry(group.into()).or_default();
+        group_entry.0 += 1;
+        group_entry.1.extend(outcomes.iter().cloned());
         all_sites.extend(sites);
         all_outcomes.extend(outcomes.iter().cloned());
         case_outcomes.push(outcomes);
@@ -218,6 +243,36 @@ pub fn analyze_recorded_scenarios(path: &Path) -> Result<LocalCoverageReport, St
         .iter()
         .filter(|site| site.outcomes.len() == 1)
         .count();
+    let zero_outcomes = input_groups
+        .get("zero_amount")
+        .map(|(_, outcomes)| outcomes.clone())
+        .unwrap_or_default();
+    let positive_additions = input_groups
+        .get("ordinary_positive")
+        .map(|(_, outcomes)| outcomes.difference(&zero_outcomes).count())
+        .unwrap_or(0);
+    let next_scenario_focus = if !zero_outcomes.is_empty() && positive_additions == 0 {
+        "Ordinary positive amounts did not add a root-frame outcome beyond zero inputs in this snapshot; prioritize source-derived thresholds, different actors, state transitions, and call order".into()
+    } else {
+        "Inspect which input group added root-frame outcomes, then choose source-derived thresholds and state transitions for the remaining paths".into()
+    };
+    let input_group_observations = input_groups
+        .iter()
+        .map(|(group, (case_count, outcomes))| {
+            let other_outcomes: BTreeSet<_> = input_groups
+                .iter()
+                .filter(|(other, _)| *other != group)
+                .flat_map(|(_, (_, outcomes))| outcomes.iter().cloned())
+                .collect();
+            InputGroupObservation {
+                group: group.clone(),
+                cases: *case_count,
+                observed_branch_outcomes: outcomes.len(),
+                outcomes_not_seen_with_zero_inputs: outcomes.difference(&zero_outcomes).count(),
+                outcomes_unique_to_this_group: outcomes.difference(&other_outcomes).count(),
+            }
+        })
+        .collect();
     // Greedy set cover provides a small, reproducible witness set for the
     // outcomes already observed. It does not prove that other paths are absent.
     let mut uncovered = all_outcomes.clone();
@@ -259,6 +314,8 @@ pub fn analyze_recorded_scenarios(path: &Path) -> Result<LocalCoverageReport, St
         runtime_sites_not_observed: recorded.vault_runtime_jump_sites - all_sites.len(),
         observed_sites_with_one_outcome,
         operation_observations,
+        input_group_observations,
+        next_scenario_focus,
         branch_observations,
         representative_case_outcomes: all_outcomes.len(),
         representative_cases,
