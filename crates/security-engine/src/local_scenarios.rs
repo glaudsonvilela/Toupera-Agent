@@ -87,10 +87,14 @@ pub struct LocalScenarioReport {
 #[derive(Clone, Debug, Serialize)]
 pub struct GuidedScenarioEvidence {
     pub variable_lens_sha256: String,
+    pub prior_coverage_sha256: String,
+    pub prior_root_outcome_count: usize,
     pub focus_variable_ast_ids: Vec<i64>,
     pub selected_families: Vec<String>,
     pub selection_basis: String,
     pub executed_sequences: Vec<String>,
+    pub new_root_outcomes: Vec<String>,
+    pub new_root_jump_sites: Vec<usize>,
 }
 
 struct Rpc {
@@ -619,21 +623,29 @@ pub fn run_local_scenarios(
     fork_rpc_url: &str,
     anvil_path: &Path,
 ) -> Result<LocalScenarioReport, String> {
-    run_scenarios(report_path, None, fork_rpc_url, anvil_path)
+    run_scenarios(report_path, None, None, fork_rpc_url, anvil_path)
 }
 
 pub fn run_guided_scenarios(
     report_path: &Path,
     lens_path: &Path,
+    prior_coverage_path: &Path,
     fork_rpc_url: &str,
     anvil_path: &Path,
 ) -> Result<LocalScenarioReport, String> {
-    run_scenarios(report_path, Some(lens_path), fork_rpc_url, anvil_path)
+    run_scenarios(
+        report_path,
+        Some(lens_path),
+        Some(prior_coverage_path),
+        fork_rpc_url,
+        anvil_path,
+    )
 }
 
 fn run_scenarios(
     report_path: &Path,
     lens_path: Option<&Path>,
+    prior_coverage_path: Option<&Path>,
     fork_rpc_url: &str,
     anvil_path: &Path,
 ) -> Result<LocalScenarioReport, String> {
@@ -652,7 +664,9 @@ fn run_scenarios(
     {
         return Err("base report lacks exact onchain runtime identity".into());
     }
-    let guidance = if let Some(path) = lens_path {
+    let (guidance, prior_outcomes) = if let (Some(path), Some(coverage_path)) =
+        (lens_path, prior_coverage_path)
+    {
         let lens_bytes =
             fs::read(path).map_err(|error| format!("cannot read variable lens: {error}"))?;
         let lens: Value = serde_json::from_slice(&lens_bytes)
@@ -664,6 +678,37 @@ fn run_scenarios(
             || lens["identity"]["address"] != base["identity"]["address"]
         {
             return Err("variable lens and fixed base report identities differ".into());
+        }
+        let coverage_bytes = fs::read(coverage_path)
+            .map_err(|error| format!("cannot read prior coverage: {error}"))?;
+        let coverage: Value = serde_json::from_slice(&coverage_bytes)
+            .map_err(|error| format!("invalid prior coverage: {error}"))?;
+        let coverage_sha = hex::encode(Sha256::digest(&coverage_bytes));
+        if coverage["schema"] != "local-coverage-v1"
+            || lens["local_coverage_sha256"] != coverage_sha
+            || coverage["identity"]["base_report_sha256"] != base_report_sha256
+            || coverage["identity"]["runtime_sha256"] != base["identity"]["runtime_sha256"]
+        {
+            return Err("prior coverage does not match the variable lens and fixed report".into());
+        }
+        let mut prior_outcomes = BTreeSet::new();
+        for branch in coverage["branch_observations"]
+            .as_array()
+            .ok_or("prior coverage has no branch observations")?
+        {
+            let pc = branch["pc"].as_u64().ok_or("prior branch PC is invalid")?;
+            for outcome in branch["outcomes"]
+                .as_array()
+                .ok_or("prior branch outcomes are missing")?
+            {
+                let direction = outcome
+                    .as_str()
+                    .ok_or("prior branch direction is invalid")?;
+                if !matches!(direction, "taken" | "not_taken") {
+                    return Err("prior branch direction is invalid".into());
+                }
+                prior_outcomes.insert(format!("{pc}:{direction}"));
+            }
         }
         let variables = lens["variables"]
             .as_array()
@@ -689,15 +734,21 @@ fn run_scenarios(
                 families.insert("asset_state_change".to_owned());
             }
         }
-        Some(GuidedScenarioEvidence {
+        (Some(GuidedScenarioEvidence {
             variable_lens_sha256: hex::encode(Sha256::digest(&lens_bytes)),
+            prior_coverage_sha256: coverage_sha,
+            prior_root_outcome_count: prior_outcomes.len(),
             focus_variable_ast_ids: ids.into_iter().collect(),
             selected_families: families.into_iter().collect(),
             selection_basis: "Source variable names and types select bounded local families; they do not establish path reachability".into(),
             executed_sequences: Vec::new(),
-        })
+            new_root_outcomes: Vec::new(),
+            new_root_jump_sites: Vec::new(),
+        }), prior_outcomes)
+    } else if lens_path.is_none() && prior_coverage_path.is_none() {
+        (None, BTreeSet::new())
     } else {
-        None
+        return Err("guided scenarios require both variable lens and prior coverage".into());
     };
     let chain_id = base
         .pointer("/identity/chain_id")
@@ -1253,6 +1304,17 @@ fn run_scenarios(
                 && vault_outcomes.contains(&format!("{pc}:not_taken"))
         })
         .count();
+    if let Some(focus) = guidance.as_mut() {
+        focus.new_root_outcomes = vault_outcomes
+            .difference(&prior_outcomes)
+            .cloned()
+            .collect();
+        let prior_pcs: BTreeSet<usize> = prior_outcomes
+            .iter()
+            .filter_map(|item| item.split_once(':').and_then(|(pc, _)| pc.parse().ok()))
+            .collect();
+        focus.new_root_jump_sites = vault_observed_pcs.difference(&prior_pcs).copied().collect();
+    }
     Ok(LocalScenarioReport {
         schema: SCHEMA.into(),
         identity,

@@ -146,7 +146,7 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 - [x] Inventariar variáveis da AST multifile verificada e ligá-las a faixas de PCs do runtime com identidade de compilação e confiança explícita; referência em faixa não prova controle do desvio.
 - [x] Implementar seleção automática de cenários locais por limite, ator e mudança de estado com identidade do relatório de variáveis, snapshots e grupos de cobertura.
 - [ ] Resolver aliases de chaves, assembly, efeitos externos/entre transações e viabilidade de caminhos.
-- [ ] Executar cenários guiados no VPS e medir resultados observados novos por grupo em relação à grade anterior.
+- [x] Executar cenários guiados no VPS, conferir hash da cobertura anterior e registrar automaticamente PCs/resultados novos: rodada corrigida com 33 casos, 29 concluídos, quatro reversões de limite, zero falhas RPC/diferenças, ganho de resultados zero; reavaliação com cache manteve 29 zonas/19 quarentenas.
 - [ ] Medir cobertura por função/ramo do vault com denominador confiável e ampliar sequências conforme lacunas observadas.
 - [x] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
 - [x] Publicar métricas de cobertura de blocos, eventos, transações, estados e chamadas de borda, com lacunas de rastro/bytecode explícitas.
