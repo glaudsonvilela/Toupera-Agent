@@ -54,6 +54,7 @@ pub struct ScenarioCase {
     pub trace_steps: Option<usize>,
     pub trace_jump_sites: Option<usize>,
     pub observed_jump_sites: Vec<String>,
+    pub observed_branch_outcomes: Vec<String>,
     pub discrepancies: Vec<String>,
     pub limitations: Vec<String>,
 }
@@ -68,6 +69,8 @@ pub struct LocalScenarioReport {
     pub reverted_transactions: usize,
     pub rpc_failures: usize,
     pub unique_trace_jump_sites: usize,
+    pub unique_branch_outcomes: usize,
+    pub jump_sites_with_both_outcomes: usize,
     pub trace_limitations: Vec<String>,
     pub round_trip_asset_delta: Option<String>,
     pub round_trip_discrepancies: Vec<String>,
@@ -354,24 +357,53 @@ fn send_local(rpc: &Rpc, from: &str, to: &str, data: &str) -> Result<(String, Va
     Err(format!("local receipt unavailable for {hash}"))
 }
 
-fn trace_steps(rpc: &Rpc, hash: &str) -> Result<(usize, Vec<String>), String> {
+fn trace_steps(rpc: &Rpc, hash: &str) -> Result<(usize, Vec<String>, Vec<String>), String> {
     let value = rpc.call(
         "debug_traceTransaction",
-        json!([hash,{"disableMemory":true,"disableStack":true,"disableStorage":true}]),
+        json!([hash,{"disableMemory":true,"disableStack":false,"disableStorage":true}]),
     )?;
     let logs = value
         .get("structLogs")
         .and_then(Value::as_array)
         .ok_or("trace has no structLogs")?;
     let mut jumps = BTreeSet::new();
+    let mut outcomes = BTreeSet::new();
     for log in logs {
         if log.get("op").and_then(Value::as_str) == Some("JUMPI") {
             let depth = log.get("depth").and_then(Value::as_u64).unwrap_or(0);
             let pc = log.get("pc").and_then(Value::as_u64).unwrap_or(0);
             jumps.insert(format!("{depth}:{pc}"));
+            if let Some(stack) = log.get("stack").and_then(Value::as_array) {
+                if stack.len() >= 2 {
+                    if let Some(condition) = stack[stack.len() - 2].as_str() {
+                        if let Ok(condition) = hex_u256_padded(condition) {
+                            outcomes.insert(format!(
+                                "{depth}:{pc}:{}",
+                                if condition == U256::ZERO {
+                                    "not_taken"
+                                } else {
+                                    "taken"
+                                }
+                            ));
+                        }
+                    }
+                }
+            }
         }
     }
-    Ok((logs.len(), jumps.into_iter().collect()))
+    Ok((
+        logs.len(),
+        jumps.into_iter().collect(),
+        outcomes.into_iter().collect(),
+    ))
+}
+
+fn hex_u256_padded(value: &str) -> Result<U256, String> {
+    let bytes = hex::decode(value.trim_start_matches("0x")).map_err(|error| error.to_string())?;
+    if bytes.len() > 32 {
+        return Err("EVM stack word exceeds 32 bytes".into());
+    }
+    Ok(U256::from_be_slice(&bytes))
 }
 
 fn run_case(
@@ -398,6 +430,7 @@ fn run_case(
         trace_steps: None,
         trace_jump_sites: None,
         observed_jump_sites: Vec::new(),
+        observed_branch_outcomes: Vec::new(),
         discrepancies: Vec::new(),
         limitations: Vec::new(),
     };
@@ -454,10 +487,11 @@ fn run_case(
     }
     .into();
     match trace_steps(rpc, &hash) {
-        Ok((steps, jumps)) => {
+        Ok((steps, jumps, outcomes)) => {
             case.trace_steps = Some(steps);
             case.trace_jump_sites = Some(jumps.len());
             case.observed_jump_sites = jumps;
+            case.observed_branch_outcomes = outcomes;
         }
         Err(error) => case
             .limitations
@@ -629,6 +663,7 @@ pub fn run_local_scenarios(
     let mut cases = Vec::new();
     let mut trace_limitations = Vec::new();
     let mut all_jumps = BTreeSet::new();
+    let mut all_outcomes = BTreeSet::new();
     let asset_amounts = [
         U256::from(1),
         U256::from(7),
@@ -664,6 +699,7 @@ pub fn run_local_scenarios(
                 1,
             );
             all_jumps.extend(case.observed_jump_sites.iter().cloned());
+            all_outcomes.extend(case.observed_branch_outcomes.iter().cloned());
             if case.trace_steps.is_none() {
                 trace_limitations.push(format!(
                     "{} {amount}: local trace missing",
@@ -689,6 +725,7 @@ pub fn run_local_scenarios(
         1,
     );
     all_jumps.extend(deposit.observed_jump_sites.iter().cloned());
+    all_outcomes.extend(deposit.observed_branch_outcomes.iter().cloned());
     if deposit.trace_steps.is_none() {
         trace_limitations.push("deposit_then_redeem step 1: local trace missing".into());
     }
@@ -714,6 +751,7 @@ pub fn run_local_scenarios(
             2,
         );
         all_jumps.extend(redeem.observed_jump_sites.iter().cloned());
+        all_outcomes.extend(redeem.observed_branch_outcomes.iter().cloned());
         if redeem.trace_steps.is_none() {
             trace_limitations.push("deposit_then_redeem step 2: local trace missing".into());
         }
@@ -748,11 +786,21 @@ pub fn run_local_scenarios(
         .iter()
         .filter(|case| case.status == "local_rpc_error" || case.status == "state_unavailable")
         .count();
+    let jump_sites_with_both_outcomes = all_jumps
+        .iter()
+        .filter(|site| {
+            all_outcomes.contains(&format!("{site}:taken"))
+                && all_outcomes.contains(&format!("{site}:not_taken"))
+        })
+        .count();
     Ok(LocalScenarioReport {
         schema: SCHEMA.into(), identity,
         execution_scope: "child Anvil fork on 127.0.0.1; no transaction broadcast to source network".into(),
         cases, completed_transactions, reverted_transactions, rpc_failures,
-        unique_trace_jump_sites: all_jumps.len(), trace_limitations,
+        unique_trace_jump_sites: all_jumps.len(),
+        unique_branch_outcomes: all_outcomes.len(),
+        jump_sites_with_both_outcomes,
+        trace_limitations,
         round_trip_asset_delta, round_trip_discrepancies,
         limitations: vec!["Jump sites are aggregate (depth,pc) positions across vault and asset calls, not source-level branch coverage or a completeness percentage".into(),"Scenario actor is the vault owner from the base report; results depend on that account's snapshot balances and approvals".into()],
     })

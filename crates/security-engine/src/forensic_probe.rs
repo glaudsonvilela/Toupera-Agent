@@ -251,6 +251,7 @@ pub struct ForensicCoverage {
     pub local_scenario_completed: Option<usize>,
     pub local_scenario_reverted: Option<usize>,
     pub local_scenario_jump_sites: Option<usize>,
+    pub local_scenario_branch_outcomes: Option<usize>,
     pub evidence_gate: String,
 }
 
@@ -261,6 +262,8 @@ pub struct LocalScenarioEvidence {
     pub reverted_transactions: usize,
     pub rpc_failures: usize,
     pub unique_trace_jump_sites: usize,
+    pub unique_branch_outcomes: usize,
+    pub jump_sites_with_both_outcomes: usize,
     pub review_flags_added: usize,
     pub limitations: Vec<String>,
 }
@@ -2731,6 +2734,8 @@ fn attach_local_scenario_evidence(
         reverted_transactions: number("reverted_transactions"),
         rpc_failures: number("rpc_failures"),
         unique_trace_jump_sites: number("unique_trace_jump_sites"),
+        unique_branch_outcomes: number("unique_branch_outcomes"),
+        jump_sites_with_both_outcomes: number("jump_sites_with_both_outcomes"),
         review_flags_added: added,
         limitations,
     })
@@ -3293,6 +3298,9 @@ pub fn run_forensic_probe(input: &ForensicInput) -> Result<ForensicReport, Strin
         local_scenario_jump_sites: local_scenario_evidence
             .as_ref()
             .map(|item| item.unique_trace_jump_sites),
+        local_scenario_branch_outcomes: local_scenario_evidence
+            .as_ref()
+            .map(|item| item.unique_branch_outcomes),
         evidence_gate: if !history_reconciled {
             "partial"
         } else if call_traces_available < receipts_inspected {

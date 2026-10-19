@@ -4,6 +4,7 @@ mod bytecode;
 mod bytecode_companions;
 mod bytecode_evmole;
 mod bytecode_flow;
+mod cached_reassessment;
 mod callgraph;
 mod cfg;
 mod context_package;
@@ -33,6 +34,7 @@ pub use bytecode_companions::{
 pub use bytecode_evmole::{
     EvmoleControlEdgeEvidence, EvmoleReport, EvmoleSelectorEvidence, EvmoleStorageEvidence,
 };
+pub use cached_reassessment::reassess_cached_map;
 pub use context_package::{
     ArtifactDigests, CachedContextPackage, ContextPackage, ContextSlice, EvidenceExcerpt,
     FunctionDigest, FunctionExcerpt, build_context_package, load_or_build_context_package,

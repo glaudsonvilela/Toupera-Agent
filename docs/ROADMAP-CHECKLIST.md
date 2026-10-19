@@ -121,6 +121,7 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 - [x] Reproduzir no VPS transações históricas selecionadas sem transmissão à rede, com identidade fixa, timeout e rastros privados; 3/3 replays do YieldVault concluíram.
 - [x] Implementar cenários locais em fork Anvil para deposit/mint/withdraw/redeem e sequência deposit→redeem, com snapshots, valores de borda, reversões e pontos `JUMPI` observados; conferir execução no VPS antes de considerar a etapa validada.
 - [x] Aceitar relatório de cenários locais no manifesto, conferir identidade e devolver diferenças à quarentena como pedidos de revisão antes de refazer o mapa; não promover automaticamente a M5.
+- [x] Reaproveitar uma coleta histórica completa por hash/identidade para reavaliar todos os hotspots sem consultar novamente o RPC, com proveniência explícita.
 - [ ] Medir cobertura por função/ramo do vault com denominador confiável e ampliar sequências conforme lacunas observadas.
 - [x] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
 - [x] Publicar métricas de cobertura de blocos, eventos, transações, estados e chamadas de borda, com lacunas de rastro/bytecode explícitas.
@@ -130,6 +131,8 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 Etapa histórica 2026-10-18: `YieldVault` Sepolia teve 818.846 blocos de logs completos desde o deploy, 5 eventos do vault, 2 transferências do asset, 3 recibos, 1 bloco com eventos conferido e 108 chamadas de borda (103 retornaram). `history_reconciled_trace_gaps` registra a reconciliação dessas evidências e a ausência de rastros internos do RPC. Uma tentativa manual de replay terminou por timeout e não forneceu evidência. O item de sequências em fork permanece aberto.
 
 Após autorização para simular no VPS, o job autônomo `toupera-forensic-replay-20261018.service` reproduziu as três transações históricas selecionadas, com rastros e mensagem de execução bem-sucedida, sem timeout. O resultado está somente no diretório privado do VPS; não houve transação enviada à rede. Isto não fecha o item de sequências inéditas em fork nem a cobertura de caminhos.
+
+Os cenários locais no VPS concluíram 18/18 operações, sem reversão nem diferença de estado após corrigir a formatação de zero; depósito→resgate custou 1 unidade mínima do asset. A reavaliação integral com o relatório local percorreu novamente 818.846 blocos após espera para limite do RPC, preservou 29 zonas/19 quarentenas e não alterou prioridades. Ainda falta uma medida de cobertura por função/ramo com denominador confiável e o ramo positivo M4–M8.
 
 
 ### 1. Autorização e escopo
