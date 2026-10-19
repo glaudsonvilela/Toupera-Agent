@@ -350,3 +350,11 @@ Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode 
 - [x] Ampliar valores próximos e opções de autorização e assinatura.
 - [x] Conferir o fluxo completo no VPS: trabalho `f7c70e446f134e78`, +578 PCs, +50 ligações, +38 blocos, 11 passagens para blocos novos, zero diferenças registradas.
 - [ ] Medir mais estados e ligar os caminhos do bytecode a uma nova medição de ramificações da fonte.
+
+## Rodada completa wCOP — 7011fcd042db41e5
+
+- [x] Gerar novamente os três arquivos Markdown no VPS para um bloco fixado.
+- [x] Ler Rust, histórico, cobertura, sequências e saídas das dez ferramentas.
+- [x] Pontuar individualmente 236 registros, 40 escolhas, 30 dúvidas do Rust e 114 sinais do Slither em arquivo novo no Git privado.
+- [x] Distinguir prioridades de revisão de falhas confirmadas; nenhuma falha confirmada nesta rodada.
+- [ ] Ampliar estados e ligar novas saídas do bytecode a uma medição atualizada dos ramos da fonte.

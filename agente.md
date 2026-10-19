@@ -404,3 +404,10 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 - O executor prepara estado apenas na cópia local, mede o caminho seguinte e desfaz a preparação. Valores vizinhos de uma escolha produtiva também entram nas opções; autorização sem limite e assinaturas com valores distintos ampliam o mapa de decisões.
 - Trabalho integrado `f7c70e446f134e78`, bloco `26228428`: 40 escolhas, 18 sequências, +578 PCs, +50 ligações, +38 blocos e 11 passagens para blocos novos; conjunto observado 3048/5377 PCs. Zero diferenças nas verificações feitas; isso não é prova de todos os estados. A medição de ramificações da fonte continua 38/213, pois este ciclo mede bytecode.
 - Resultado e limites em `docs/CICLO-ADAPTATIVO-2026-10-19.md`. `agente.md`, `codex/agent.md` e checklist devem continuar atualizados após cada nova etapa. Código e arquivos privados ficam no VPS; Git privado recebe apenas fonte e documentação.
+
+## Nova rodada completa e fila de revisão (2026-10-19)
+
+- Trabalho `7011fcd042db41e5`, wCOP Ethereum bloco `26228465`: o VPS gerou `smart.md`, `result_smart.md` e `end_smart_result.md` de novo. O relatório `docs/WCOP-RODADA-7011fcd042db41e5.md` guarda hashes dos três arquivos e analisa os resultados do mesmo bloco.
+- O motor Rust e o ciclo local ligaram 3048/5377 PCs; 40 escolhas acrescentaram 578 PCs, 50 ligações e 38 blocos. A fonte recompilada mediu 38/213 ramos; é outra medida e não foi atualizada pelo ciclo do bytecode.
+- Todos os 236 registros da rede, 40 escolhas locais, 30 dúvidas selecionadas do Rust e 114 sinais brutos do Slither receberam pontos de atenção no relatório. Pontos altos são ordem de revisão, não falha confirmada. Não houve diferença registrada nas verificações de estado; Foundry 18/18, Echidna 2/2, Medusa 2/2, Halmos 3/3 sob seus limites.
+- A ligação com o VPS foi feita por SSH com verificação estrita da chave e cifra `chacha20-poly1305@openssh.com`. Arquivos de trabalho continuam privados no VPS; código e relatório foram destinados ao Git privado.
