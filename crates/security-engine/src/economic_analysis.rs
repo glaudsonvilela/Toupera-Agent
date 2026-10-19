@@ -197,6 +197,68 @@ fn rounding_hint(function: &EconomicFunction) -> Option<(&'static str, EvidenceL
     None
 }
 
+// Recognize only the literal ceil-division idiom `(x + d - 1) / d` and
+// the matching floor division `x / d`. Other arithmetic needs a richer AST.
+fn division_formula(expression: &str) -> Option<(String, String, bool)> {
+    let compact: String = expression
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace())
+        .collect();
+    let (left, denominator) = compact.split_once('/')?;
+    if denominator.is_empty()
+        || !denominator
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    {
+        return None;
+    }
+    let ceil_suffix = format!("+{denominator}-1");
+    if let Some(numerator) = left
+        .strip_prefix('(')
+        .and_then(|inner| inner.strip_suffix(')'))
+        .and_then(|inner| inner.strip_suffix(&ceil_suffix))
+    {
+        if !numerator.is_empty() {
+            return Some((numerator.to_owned(), denominator.to_owned(), true));
+        }
+    }
+    if !left.is_empty()
+        && left
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    {
+        return Some((left.to_owned(), denominator.to_owned(), false));
+    }
+    None
+}
+
+fn formula_rounding_difference(
+    execution: &EconomicFunction,
+    preview: &EconomicFunction,
+) -> Option<(EvidenceLocation, EvidenceLocation)> {
+    for executed in &execution.arithmetic {
+        let Some((executed_numerator, executed_denominator, executed_ceil)) =
+            division_formula(&executed.value.0)
+        else {
+            continue;
+        };
+        for proposed in &preview.arithmetic {
+            let Some((preview_numerator, preview_denominator, preview_ceil)) =
+                division_formula(&proposed.value.0)
+            else {
+                continue;
+            };
+            if executed_numerator == preview_numerator
+                && executed_denominator == preview_denominator
+                && executed_ceil != preview_ceil
+            {
+                return Some((executed.location.clone(), proposed.location.clone()));
+            }
+        }
+    }
+    None
+}
+
 fn oracle_conversion(function: &EconomicFunction) -> Vec<EvidenceLocation> {
     function
         .value_flows
@@ -319,6 +381,14 @@ fn deterministic_rules(functions: &[EconomicFunction], collector: &mut Collector
                             "Different rounding may be intentional; verify the operation's exact ERC-4626 and fee semantics",
                             vec![a_loc, b_loc]);
                     }
+                }
+                if let Some((execution_loc, preview_loc)) =
+                    formula_rounding_difference(function, preview)
+                {
+                    collector.add(function, FindingKind::RoundingAsymmetry, "rounding-preview-formula-difference",
+                        "Preview and execution contain matching numerator/denominator divisions with different rounding formulas",
+                        "The preview may have another branch with matching rounding; check which branch is reachable and compare actual amounts",
+                        vec![execution_loc, preview_loc]);
                 }
                 let execution_oracle = oracle_targets(function);
                 let preview_oracle = oracle_targets(preview);

@@ -27,6 +27,7 @@ O parser exige `success=true` e `results.detectors` no JSON do Slither. Importa 
 | `oracle-preview-source-asymmetry` | Preview e execução referenciam alvos de oracle diferentes | OracleFallbackMismatch |
 | `oracle-value-without-modeled-guard` | Valor de oracle alcança conversão/accounting sem guarda modelada desse valor | OracleFallbackMismatch |
 | `rounding-preview-asymmetry` | Direções explícitas de arredondamento diferem entre preview e execução | RoundingAsymmetry |
+| `rounding-preview-formula-difference` | O mesmo numerador e denominador aparecem como `x / d` e `(x + d - 1) / d` no par preview/execução | RoundingAsymmetry |
 | `fee-preview-asymmetry` | Referência observada a fee existe em apenas um lado de preview/execução | FeeBypass |
 | `conversion-scale-asymmetry` | Conversões recíprocas usam expoentes literais decimais diferentes (`1eN` ou `10**N`) | DecimalMismatch |
 | `first-share-donation-sensitivity` | Conversão shares usa supply/assets com ramo zero e `totalAssets` lê `balanceOf`, sem offset virtual literal reconhecido | ShareInflation |
@@ -34,6 +35,8 @@ O parser exige `success=true` e `results.detectors` no JSON do Slither. Importa 
 Os nomes de storage, chamadas e aritmética são indícios sintáticos. Um depósito pode atualizar shares em contrato herdado; uma validação de oracle pode ocorrer no próprio feed; escalas diferentes podem ser corretas para tokens com decimals diferentes. Cada candidato registra essas premissas. Pares de operações ambíguos por overload são omitidos e registrados em `unresolved`, junto das incertezas da reconstrução source. A ausência de candidato não é um atestado de segurança, especialmente com imports, caminhos dinâmicos ou chamadas não resolvidas.
 
 O extrator source agora também preserva chamadas explícitas `mulDiv`, `mulDivUp`, `mulDivDown` e `ceilDiv` como expressões aritméticas com span. Isso permite observar o argumento de arredondamento quando ele aparece no próprio call site; não interpreta helpers arbitrários nem calcula a precisão real da operação.
+
+A regra de fórmula reconhece apenas a forma literal com denominador identificador e numerador idêntico nos dois lados. Ela conserva os dois source spans e mantém `UNVERIFIED` mesmo quando o preview contém uma alternativa com arredondamento compatível: é preciso verificar a condição do ramo e comparar valores em estado local. Expressões equivalentes escritas de outra forma podem ficar fora dessa triagem.
 
 ## Métricas e limite de validação
 

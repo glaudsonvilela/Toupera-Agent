@@ -51,6 +51,8 @@ O M4 usa a IR source-first de um arquivo sem imports. Regras sintáticas não pr
 
 Lacuna observada no piloto M7: `--llm-plan` retornou zero candidatos para `RoundingVaultM7Fixture.sol`, apesar da divergência sintética de arredondamento reproduzida. Ampliar e calibrar a detecção M4 antes de considerar o pipeline completo validado.
 
+A regra `rounding-preview-formula-difference` foi acrescentada para a diferença literal `x / d` versus `(x + d - 1) / d` com o mesmo numerador/denominador. A calibração no VPS e o ramo positivo completo ainda devem ser conferidos antes de marcar o gate como concluído.
+
 ### M5 — Deduplicação e contexto mínimo
 - [x] Calcular hashes de source, runtime opcional normalizado, AST e função, além de compiler e motor.
 - [x] Evitar reanálise de entradas idênticas com cache local por conteúdo.
@@ -137,6 +139,8 @@ Após autorização para simular no VPS, o job autônomo `toupera-forensic-repla
 Os cenários locais no VPS concluíram 18/18 operações, sem reversão nem diferença de estado após corrigir a formatação de zero; depósito→resgate custou 1 unidade mínima do asset. A reavaliação integral com o relatório local percorreu novamente 818.846 blocos após espera para limite do RPC, preservou 29 zonas/19 quarentenas e não alterou prioridades. Ainda falta uma medida de cobertura por função/ramo com denominador confiável e o ramo positivo M4–M8.
 
 A medição final de cenários registrou 72 posições `JUMPI` no conjunto vault+token, 80 resultados e 8 posições vistas nos dois sentidos. Uma reavaliação com dados históricos salvos conservou 818.846 blocos, 29 zonas e 19 quarentenas, sem consultar o RPC nem mudar prioridades. As contagens de desvio não são percentual de cobertura do vault. Continuam abertos o denominador por função/ramo e a passagem positiva M4–M8.
+
+A grade ampliada final no VPS produziu 24 cenários: 22 concluídos, 2 reversões esperadas nos limites, zero diferenças registradas e zero erros de RPC. No vault, 50 dos 110 PCs `JUMPI` estáticos foram observados, com 58 resultados distintos e 8 PCs em ambos os sentidos. A reavaliação com cache vinculada por hash fez zero chamadas ao RPC e manteve 29 zonas/19 quarentenas. Essa fração estática não é cobertura por função ou por ramo alcançável.
 
 
 ### 1. Autorização e escopo

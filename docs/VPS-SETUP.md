@@ -65,6 +65,8 @@ A execução final dos cenários, em `/srv/toupera-agent/private-output/real-tar
 
 A execução `local-scenarios-v5/report.json` separou o frame raiz do vault: 110 PCs `JUMPI` estáticos no runtime, 50 observados, 56 resultados e 6 PCs vistos nos dois sentidos. A reavaliação `cached-reassessment-v2/report.json` importou essas métricas com zero RPC e sem alteração de prioridade. Isso é um denominador estático do runtime, não cobertura de ramos alcançáveis. A grade seguinte acrescenta zero e uma unidade acima de `maxWithdraw`/`maxRedeem`; seu resultado deve ser registrado após execução.
 
+A grade final `local-scenarios-v7/report.json` terminou com 24 cenários, 22 concluídos, 2 reversões de limite, zero falhas de RPC e zero diferenças registradas. O vault teve 110 PCs estáticos, 50 observados, 58 resultados e 8 PCs vistos nos dois sentidos. `cached-reassessment-v3/report.json` importou a grade por hash/identidade, preservou as 29 zonas/19 quarentenas e fez zero consultas ao RPC. Os arquivos ficam em `private-output/real-targets/yield-vault/`.
+
 O M7 acrescenta `--foundry-plan <context.json> <review.json> <source.sol> <private-output-dir>` e `--foundry-run <case-dir> <forge-bin> <solc-bin>`. O primeiro não executa testes; o segundo exige harness local revisado. Os caminhos de `forge` e `solc` instalados estão na tabela acima. Nenhum teste M7 foi executado durante a implementação. Consulte `docs/FOUNDRY-JUDGE.md` antes de usar.
 
 A revisão de código M7 `b945a96` foi sincronizada e compilada em release no VPS sob `toupera` em 2026-10-18. `.deployed-commit` registrou essa revisão antes do complemento documental; nenhum caso Foundry ou análise de alvo foi executado.
