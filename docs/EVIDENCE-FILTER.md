@@ -1,6 +1,6 @@
 # Triagem local de evidências antes da IA
 
-O comando `--evidence-filter` cruza cinco artefatos privados: mapa forense, lente de variáveis, resultados dos cenários no fork, cobertura desses cenários e pacote M5. Ele exige hashes e identidade do mesmo contrato, runtime e bloco. Não consulta RPC nem IA. A execução dos cenários continua sendo feita por `--guided-scenarios` no Anvil local do VPS.
+O comando `--evidence-filter` cruza cinco artefatos privados: mapa forense, lente de variáveis, resultados dos cenários no fork, cobertura desses cenários e pacote M5. Ele exige hashes e identidade do mesmo contrato e bloco. M4/lente/cenários usam hash do runtime exato; M5 registra runtime normalizado e fica ligado ao M4 pelo hash do relatório forense. Não consulta RPC nem IA. A execução dos cenários continua sendo feita por `--guided-scenarios` no Anvil local do VPS.
 
 ```sh
 umask 077

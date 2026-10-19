@@ -104,6 +104,7 @@ pub fn filter_evidence(
         || scenarios["identity"]["base_report_sha256"] != forensic_hash
         || coverage["source_report_sha256"] != scenarios_hash
         || coverage["identity"]["base_report_sha256"] != forensic_hash
+        || lens["local_coverage_sha256"] != coverage_hash
         || package["digests"]["forensic_json_sha256"] != forensic_hash
     {
         return Err("evidence hashes or runtime verification differ".into());
@@ -168,15 +169,14 @@ pub fn filter_evidence(
             return Err("chain or fixed block differs across evidence".into());
         }
     }
-    if scenarios
-        .get("guidance")
-        .is_some_and(|guidance| !guidance.is_null())
-        && scenarios["guidance"]["variable_lens_sha256"] != lens_hash
+    // M5 records normalized runtime (metadata stripped); M4 records exact onchain bytes.
+    // The forensic JSON hash above is the binding between those representations.
+    if package["digests"]["runtime_sha256"]
+        .as_str()
+        .filter(|digest| digest.len() == 64)
+        .is_none()
     {
-        return Err("scenario guidance uses a different variable lens".into());
-    }
-    if package["digests"]["runtime_sha256"] != forensic["identity"]["runtime_sha256"] {
-        return Err("context runtime differs from fixed deployment".into());
+        return Err("context has no normalized runtime digest".into());
     }
 
     let mut focus = Vec::new();
