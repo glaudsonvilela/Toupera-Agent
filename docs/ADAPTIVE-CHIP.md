@@ -23,3 +23,5 @@ Arquivos brutos de rodadas ficam apenas em `private-output/` no VPS. O resumo p�
 ## Medição inicial no VPS (2026-10-19)
 
 O serviço `toupera-adaptive-chip-20261019.service` terminou com status 0. A memória recuperou oito entradas da rodada anterior, deixou de repetir 20 combinações já vistas e afastou quatro variações próximas de comportamento igual. Ordenou 61 candidatos; executou oito casos de feedback e parou por oito sem nova classe nem resultado no ponto alvo. A rodada completa registrou 50 casos, 46 concluídos, quatro reversões, zero falhas RPC e zero diferenças de pré-checagem. Os 50/110 PCs estáticos observados e 58 resultados de desvio permaneceram iguais à rodada anterior. O filtro ficou em `NO_ELIGIBLE_CANDIDATE`; o plano de IA continha zero pedidos. As contagens são desta entrada e deste estado fixado.
+
+A etapa seguinte usa o [plano local](SIMPLE-PLAN.md) como entrada opcional. O chip preserva a própria memória e o plano acrescenta valores diretos, pares de estado e um motivo para encerrar campanhas sem entrada distinta.

@@ -28,3 +28,5 @@ Na rodada de 2026-10-19, o modo guiado acrescentou oito variações locais e par
 Na rodada `precision-v2`, a escolha de entradas incluiu seis valores próximos a mudanças de preview e quatro sequências de ordem/estado. O conjunto de decisões observadas não aumentou; o caminho da IA ficou vazio. O relatório separa medidas observadas de pontos com alcance ainda desconhecido.
 
 O [chip adaptativo](ADAPTIVE-CHIP.md) acrescenta memória entre rodadas ao caminho local. Ele evita repetir a mesma entrada de exploração, compara classes de comportamento e propõe novas variações com limite explícito. A cobertura e o filtro continuam sendo produzidos depois da rodada.
+
+O [plano local](SIMPLE-PLAN.md) agora entra entre a lente/cobertura e a próxima rodada do chip: identifica origens abstratas, calcula limites diretos, propõe ordens por slots observados e mede relações numéricas. Quando não há nova entrada distinta após o platô, registra a parada e impede repetir a rodada.

@@ -13,6 +13,7 @@ mod dataflow;
 mod economic_analysis;
 mod evidence_filter;
 mod evidence_package;
+mod forensic_plan;
 mod forensic_probe;
 mod foundry_judge;
 mod ir;
@@ -53,6 +54,7 @@ pub use evidence_package::{
     EvidenceFact, EvidenceManifest, EvidenceReady, HumanEvidenceReview, finalize_evidence_bundle,
     prepare_evidence_bundle,
 };
+pub use forensic_plan::{ForensicPlan, SourceBenchRow, benchmark_sources, build_forensic_plan};
 pub use forensic_probe::{ForensicInput, ForensicReport, run_forensic_probe};
 pub use foundry_judge::{
     FoundryCase, FoundryCoverage, FoundryPlan, FoundryRejection, FoundryResult, FoundryRun,

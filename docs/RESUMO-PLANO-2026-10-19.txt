@@ -1,0 +1,9 @@
+Resumo simples — plano local (2026-10-19)
+
+O motor Rust agora lê condições simples do código verificado e classes de origem do bytecode, calcula valores dos dois lados de comparações diretas, propõe ordens de operações a partir de slots observados e mede diferenças numéricas. Um plano sem entrada distinta encerra a próxima rodada antes de usar RPC. O chip continua guardando a memória de entradas já vistas.
+
+No contrato fixado, quatro novas ordens foram executadas no VPS. A rodada teve 52 casos (48 concluídos, 4 reversões), sem falha RPC ou diferença de pré-checagem. Não surgiram novos resultados de desvio; a próxima rodada foi encerrada por platô. Foram registradas 240 relações de delta, 16 pares de preview e 48 diferenças contábeis antes/depois, sem divergência nessa entrada. Das 36 decisões de origem única ainda pouco observadas, nenhuma pôde ser ligada com precisão a uma condição simples; 46 de 102 decisões pouco observadas no runtime tiveram ao menos uma classe abstrata de origem.
+
+Em três cenários próprios executados no Anvil local, entradas escolhidas reduziram chamadas RPC e aumentaram os resultados distintos em dois casos; no cenário de loop, perderam dois resultados. Esse limite permanece aberto e está documentado.
+
+Detalhes e código: docs/SIMPLE-PLAN.md e crates/security-engine/src/forensic_plan.rs no Git privado. JSONs detalhados somente no VPS. Estes resultados não demonstram cobertura total nem ganho geral.

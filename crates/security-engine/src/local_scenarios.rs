@@ -145,6 +145,9 @@ pub struct GuidedScenarioEvidence {
     pub state_order_sequence_budget: usize,
     pub state_order_stop_reason: Option<String>,
     pub adaptive_chip: Option<AdaptiveChipReport>,
+    pub forensic_plan_sha256: Option<String>,
+    pub planned_source_cases: usize,
+    pub planned_state_sequences: usize,
 }
 
 struct Rpc {
@@ -835,7 +838,15 @@ pub fn run_local_scenarios(
     fork_rpc_url: &str,
     anvil_path: &Path,
 ) -> Result<LocalScenarioReport, String> {
-    run_scenarios(report_path, None, None, None, fork_rpc_url, anvil_path)
+    run_scenarios(
+        report_path,
+        None,
+        None,
+        None,
+        None,
+        fork_rpc_url,
+        anvil_path,
+    )
 }
 
 pub fn run_guided_scenarios(
@@ -845,12 +856,14 @@ pub fn run_guided_scenarios(
     fork_rpc_url: &str,
     anvil_path: &Path,
     previous_report_path: Option<&Path>,
+    forensic_plan_path: Option<&Path>,
 ) -> Result<LocalScenarioReport, String> {
     run_scenarios(
         report_path,
         Some(lens_path),
         Some(prior_coverage_path),
         previous_report_path,
+        forensic_plan_path,
         fork_rpc_url,
         anvil_path,
     )
@@ -861,6 +874,7 @@ fn run_scenarios(
     lens_path: Option<&Path>,
     prior_coverage_path: Option<&Path>,
     previous_report_path: Option<&Path>,
+    forensic_plan_path: Option<&Path>,
     fork_rpc_url: &str,
     anvil_path: &Path,
 ) -> Result<LocalScenarioReport, String> {
@@ -879,7 +893,10 @@ fn run_scenarios(
     {
         return Err("base report lacks exact onchain runtime identity".into());
     }
-    let (guidance, prior_outcomes, source_boundaries) = if let (Some(path), Some(coverage_path)) =
+    let (mut guidance, prior_outcomes, mut source_boundaries) = if let (
+        Some(path),
+        Some(coverage_path),
+    ) =
         (lens_path, prior_coverage_path)
     {
         let lens_bytes =
@@ -1026,6 +1043,9 @@ fn run_scenarios(
             state_order_sequence_budget: 8,
             state_order_stop_reason: None,
             adaptive_chip: None,
+            forensic_plan_sha256: None,
+            planned_source_cases: 0,
+            planned_state_sequences: 0,
         }), prior_outcomes, source_boundaries)
     } else if lens_path.is_none() && prior_coverage_path.is_none() {
         (None, BTreeSet::new(), Vec::new())
@@ -1063,6 +1083,69 @@ fn run_scenarios(
         if previous_report_path.is_some() {
             return Err("previous report requires guided scenarios".into());
         }
+        None
+    };
+    let forensic_plan = if let Some(path) = forensic_plan_path {
+        let previous = previous_report_path.ok_or("forensic plan requires previous scenarios")?;
+        let lens = lens_path.ok_or("forensic plan requires variable lens")?;
+        let coverage = prior_coverage_path.ok_or("forensic plan requires prior coverage")?;
+        let bytes =
+            fs::read(path).map_err(|error| format!("cannot read forensic plan: {error}"))?;
+        let plan: Value = serde_json::from_slice(&bytes)
+            .map_err(|error| format!("invalid forensic plan: {error}"))?;
+        let file_hash = |path: &Path| -> Result<String, String> {
+            Ok(hex::encode(Sha256::digest(
+                fs::read(path).map_err(|error| error.to_string())?,
+            )))
+        };
+        if plan["schema"] != "forensic-plan-v1"
+            || plan["forensic_report_sha256"] != identity.base_report_sha256
+            || plan["lens_sha256"] != file_hash(lens)?
+            || plan["coverage_sha256"] != file_hash(coverage)?
+            || plan["previous_scenarios_sha256"] != file_hash(previous)?
+            || plan["runtime_sha256"] != identity.runtime_sha256
+            || plan["block_hash"] != identity.block_hash
+            || plan["fixed_contract"] != identity.vault
+        {
+            return Err("forensic plan does not match fixed inputs".into());
+        }
+        if plan["next_round_recommended"] == false {
+            return Err(format!(
+                "local plan stopped: {}",
+                plan["next_round_reason"]
+                    .as_str()
+                    .unwrap_or("no distinct candidate")
+            ));
+        }
+        if let Some(focus) = guidance.as_ref() {
+            if focus.variable_lens_sha256 != file_hash(lens)? {
+                return Err("forensic plan lens differs from guidance".into());
+            }
+        }
+        for item in plan["probes"].as_array().into_iter().flatten() {
+            let Some(operation) = item["operation"].as_str().and_then(Operation::from_name) else {
+                continue;
+            };
+            for (label, key) in [("true", "value_when_true"), ("false", "value_when_false")] {
+                if let Some(amount) = item[key]
+                    .as_str()
+                    .and_then(|value| value.parse::<U256>().ok())
+                {
+                    let pc = item["pc"].as_u64().unwrap_or(0);
+                    source_boundaries.push((operation, amount, format!("pc{pc}_{label}")));
+                }
+            }
+        }
+        source_boundaries.sort_by(|a, b| a.0.name().cmp(b.0.name()).then_with(|| a.1.cmp(&b.1)));
+        source_boundaries.dedup_by(|a, b| a.0.name() == b.0.name() && a.1 == b.1);
+        if let Some(focus) = guidance.as_mut() {
+            focus.forensic_plan_sha256 = Some(hex::encode(Sha256::digest(&bytes)));
+            focus.planned_source_cases = source_boundaries.len();
+            focus.planned_state_sequences =
+                plan["state_plans"].as_array().map_or(0, Vec::len).min(8);
+        }
+        Some(plan)
+    } else {
         None
     };
     let remote = Rpc::new(fork_rpc_url.to_owned())?;
@@ -1814,72 +1897,116 @@ fn run_scenarios(
                 .into(),
             );
         }
-        let planned_sequences = [
-            (
-                "state_deposit",
-                None,
-                Operation::Deposit,
-                U256::ZERO,
-                asset_unit + U256::from(1),
-                asset_unit,
+        let mut planned_sequences = Vec::new();
+        if let Some(plan) = forensic_plan.as_ref() {
+            for item in plan["state_plans"].as_array().into_iter().flatten().take(8) {
+                let (Some(setup), Some(target), Some(setup_amount), Some(target_amount)) = (
+                    item["setup_operation"]
+                        .as_str()
+                        .and_then(Operation::from_name),
+                    item["target_operation"]
+                        .as_str()
+                        .and_then(Operation::from_name),
+                    item["setup_amount"]
+                        .as_str()
+                        .and_then(|s| s.parse::<U256>().ok()),
+                    item["target_amount"]
+                        .as_str()
+                        .and_then(|s| s.parse::<U256>().ok()),
+                ) else {
+                    continue;
+                };
+                planned_sequences.push((
+                    format!("slot_{}_{}", setup.name(), target.name()),
+                    Some(setup),
+                    target,
+                    setup_amount,
+                    target_amount,
+                    U256::ZERO,
+                ));
+            }
+        }
+        planned_sequences.extend(
+            [
+                (
+                    "state_deposit",
+                    None,
+                    Operation::Deposit,
+                    U256::ZERO,
+                    asset_unit + U256::from(1),
+                    asset_unit,
+                ),
+                (
+                    "order_withdraw_deposit",
+                    Some(Operation::Withdraw),
+                    Operation::Deposit,
+                    asset_unit,
+                    asset_unit + U256::from(1),
+                    U256::ZERO,
+                ),
+                (
+                    "state_mint",
+                    None,
+                    Operation::Mint,
+                    U256::ZERO,
+                    share_scale + U256::from(1),
+                    asset_unit,
+                ),
+                (
+                    "order_deposit_mint",
+                    Some(Operation::Deposit),
+                    Operation::Mint,
+                    asset_unit + U256::from(1),
+                    share_scale,
+                    U256::ZERO,
+                ),
+                (
+                    "state_withdraw",
+                    None,
+                    Operation::Withdraw,
+                    U256::ZERO,
+                    asset_unit,
+                    asset_unit + U256::from(1),
+                ),
+                (
+                    "order_mint_redeem",
+                    Some(Operation::Mint),
+                    Operation::Redeem,
+                    share_scale,
+                    share_scale,
+                    U256::ZERO,
+                ),
+                (
+                    "order_redeem_mint",
+                    Some(Operation::Redeem),
+                    Operation::Mint,
+                    share_scale,
+                    share_scale + U256::from(1),
+                    U256::ZERO,
+                ),
+                (
+                    "order_deposit_redeem",
+                    Some(Operation::Deposit),
+                    Operation::Redeem,
+                    asset_unit + U256::from(1),
+                    share_scale,
+                    U256::ZERO,
+                ),
+            ]
+            .into_iter()
+            .map(
+                |(name, setup, target, setup_amount, target_amount, donation)| {
+                    (
+                        name.to_owned(),
+                        setup,
+                        target,
+                        setup_amount,
+                        target_amount,
+                        donation,
+                    )
+                },
             ),
-            (
-                "order_withdraw_deposit",
-                Some(Operation::Withdraw),
-                Operation::Deposit,
-                asset_unit,
-                asset_unit + U256::from(1),
-                U256::ZERO,
-            ),
-            (
-                "state_mint",
-                None,
-                Operation::Mint,
-                U256::ZERO,
-                share_scale + U256::from(1),
-                asset_unit,
-            ),
-            (
-                "order_deposit_mint",
-                Some(Operation::Deposit),
-                Operation::Mint,
-                asset_unit + U256::from(1),
-                share_scale,
-                U256::ZERO,
-            ),
-            (
-                "state_withdraw",
-                None,
-                Operation::Withdraw,
-                U256::ZERO,
-                asset_unit,
-                asset_unit + U256::from(1),
-            ),
-            (
-                "order_mint_redeem",
-                Some(Operation::Mint),
-                Operation::Redeem,
-                share_scale,
-                share_scale,
-                U256::ZERO,
-            ),
-            (
-                "order_redeem_mint",
-                Some(Operation::Redeem),
-                Operation::Mint,
-                share_scale,
-                share_scale + U256::from(1),
-                U256::ZERO,
-            ),
-            (
-                "order_deposit_redeem",
-                Some(Operation::Deposit),
-                Operation::Redeem,
-                asset_unit + U256::from(1),
-                share_scale,
-                U256::ZERO,
-            ),
-        ];
+        );
         let mut sequence_plateau = 0_usize;
         for (label, setup, target, setup_amount, target_amount, donation_amount) in
             planned_sequences
