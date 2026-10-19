@@ -342,3 +342,11 @@ Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode 
 - [x] Ligar o ciclo ao trabalho do painel e ao manifesto do guardião.
 - [x] Conferir a rodada completa no VPS, medir ganhos e ajustar a confirmação das operações locais e a passagem de valores grandes. Trabalho `fe5aa294573f4571`: 18 escolhas, 7 operações locais aplicadas, +34 PCs, +2 transições, zero diferenças registradas; ver `docs/CICLO-ADAPTATIVO-2026-10-19.md`.
 - [ ] Ampliar a gramática e os estados explorados antes de falar em cobertura mais ampla.
+
+## Andar pelo mapa — etapa 2
+
+- [x] Usar saídas adjacentes ainda não vistas na escolha Rust.
+- [x] Montar sequências curtas e desfazê-las na cópia local.
+- [x] Ampliar valores próximos e opções de autorização e assinatura.
+- [x] Conferir o fluxo completo no VPS: trabalho `f7c70e446f134e78`, +578 PCs, +50 ligações, +38 blocos, 11 passagens para blocos novos, zero diferenças registradas.
+- [ ] Medir mais estados e ligar os caminhos do bytecode a uma nova medição de ramificações da fonte.

@@ -729,6 +729,10 @@ def worker(job_id):
                       " PCs e " + str(adaptive_summary["new_edges"]) +
                       " transições novas além da leitura inicial; estado " +
                       str(adaptive_summary["status"]) + ".\n")
+            final += ("- Sequências curtas na cópia local: " + str(adaptive_summary.get("setup_attempts", 0)) +
+                      "; " + str(adaptive_summary.get("new_blocks", 0)) +
+                      " blocos novos e " + str(adaptive_summary.get("frontier_crossings", 0)) +
+                      " passagens de bloco visto para bloco novo.\n")
             final += ("- Diferenças a revisar no ciclo: " +
                       str(len(adaptive_summary.get("deviations") or [])) +
                       "; nenhuma é conclusão automática. Arquivos detalhados no VPS privado.\n")

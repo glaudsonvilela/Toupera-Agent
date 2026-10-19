@@ -397,3 +397,10 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 - O trabalhador chama o ciclo após a leitura inicial, confere os caminhos pelo Rust e inclui os arquivos `adaptive*.json` no manifesto. O guardião verifica identidade, hashes, bloco e contagens antes de classificar a afirmação. Não há envio de transações à rede pública.
 - Trabalho integrado `fe5aa294573f4571`, bloco `26228348`: 18 escolhas, 7 operações aplicadas somente na cópia local, 34 PCs e 2 transições novos além da leitura inicial (2504/5377 PCs em conjunto). O ciclo parou após doze escolhas sem ganho; não houve diferença registrada nas verificações de estado feitas. A reconciliação Rust teve zero erros e o guardião marcou apenas a afirmação limitada do ciclo como `OBSERVADO`.
 - O executor aguarda o recibo local antes de considerar uma operação aplicada e preserva valores grandes como inteiros decimais exatos entre Python e Rust. Detalhes e limites: `docs/CICLO-ADAPTATIVO-2026-10-19.md`.
+
+## Etapa 2 do ciclo — andar pelo mapa (2026-10-19)
+
+- O Rust passou a olhar para saídas adjacentes ainda não visitadas e para o ganho real das escolhas anteriores. Ele escolhe entre operações simples e sequências curtas, com limite de 40 escolhas.
+- O executor prepara estado apenas na cópia local, mede o caminho seguinte e desfaz a preparação. Valores vizinhos de uma escolha produtiva também entram nas opções; autorização sem limite e assinaturas com valores distintos ampliam o mapa de decisões.
+- Trabalho integrado `f7c70e446f134e78`, bloco `26228428`: 40 escolhas, 18 sequências, +578 PCs, +50 ligações, +38 blocos e 11 passagens para blocos novos; conjunto observado 3048/5377 PCs. Zero diferenças nas verificações feitas; isso não é prova de todos os estados. A medição de ramificações da fonte continua 38/213, pois este ciclo mede bytecode.
+- Resultado e limites em `docs/CICLO-ADAPTATIVO-2026-10-19.md`. `agente.md`, `codex/agent.md` e checklist devem continuar atualizados após cada nova etapa. Código e arquivos privados ficam no VPS; Git privado recebe apenas fonte e documentação.
