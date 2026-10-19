@@ -176,6 +176,7 @@ pub struct FunctionSourceCoverage {
 pub struct SourceCoverageSummary {
     pub runtime_static_jump_sites: usize,
     pub uniquely_mapped_static_jump_sites: usize,
+    pub broad_range_mapped_jump_sites: usize,
     pub unattributed_static_jump_sites: usize,
     pub observed_attributed_jump_sites: usize,
     pub observed_attributed_outcomes: usize,
@@ -1406,6 +1407,7 @@ impl Walker<'_> {
             source_coverage: SourceCoverageSummary {
                 runtime_static_jump_sites: 0,
                 uniquely_mapped_static_jump_sites: 0,
+                broad_range_mapped_jump_sites: 0,
                 unattributed_static_jump_sites: 0,
                 observed_attributed_jump_sites: 0,
                 observed_attributed_outcomes: 0,
@@ -1930,9 +1932,6 @@ fn pc_hints(
         let Some(range) = map_by_pc.get(pc).copied().flatten() else {
             continue;
         };
-        if range.end.saturating_sub(range.start) > 256 {
-            continue;
-        }
         let candidates: Vec<_> = function_ranges
             .iter()
             .filter(|function| {
@@ -1953,7 +1952,12 @@ fn pc_hints(
             function_ast_id: function.ast_id,
             origin_kind: function.kind.clone(),
             observed_outcomes: outcomes.clone(),
-            confidence: "verified_source_origin_not_runtime_caller".into(),
+            confidence: if range.end.saturating_sub(range.start) > 256 {
+                "verified_function_enclosure_broad_not_runtime_caller"
+            } else {
+                "verified_function_enclosure_not_runtime_caller"
+            }
+            .into(),
         });
         let entry = by_function
             .entry(function.ast_id)
@@ -1976,6 +1980,10 @@ fn pc_hints(
     let source_coverage = SourceCoverageSummary {
         runtime_static_jump_sites: static_pcs.len(),
         uniquely_mapped_static_jump_sites: origins.len(),
+        broad_range_mapped_jump_sites: origins
+            .iter()
+            .filter(|origin| origin.confidence.contains("broad"))
+            .count(),
         unattributed_static_jump_sites: static_pcs.len() - origins.len(),
         observed_attributed_jump_sites: origins
             .iter()
