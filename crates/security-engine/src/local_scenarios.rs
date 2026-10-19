@@ -9,9 +9,10 @@ use std::process::{Child, Command, Stdio};
 use std::thread::sleep;
 use std::time::Duration;
 
+use crate::adaptive_chip::{AdaptiveChip, AdaptiveChipReport};
 use alloy_primitives::U256;
 use reqwest::blocking::Client;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest as Sha2Digest, Sha256};
 use sha3::{Digest as Sha3Digest, Keccak256};
@@ -30,7 +31,7 @@ pub struct LocalScenarioIdentity {
     pub base_report_sha256: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ScenarioState {
     pub total_assets: String,
     pub total_supply: String,
@@ -39,7 +40,7 @@ pub struct ScenarioState {
     pub actor_share_balance: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ScenarioCase {
     pub sequence: String,
     pub step: usize,
@@ -143,6 +144,7 @@ pub struct GuidedScenarioEvidence {
     pub state_order_sequences_executed: usize,
     pub state_order_sequence_budget: usize,
     pub state_order_stop_reason: Option<String>,
+    pub adaptive_chip: Option<AdaptiveChipReport>,
 }
 
 struct Rpc {
@@ -833,7 +835,7 @@ pub fn run_local_scenarios(
     fork_rpc_url: &str,
     anvil_path: &Path,
 ) -> Result<LocalScenarioReport, String> {
-    run_scenarios(report_path, None, None, fork_rpc_url, anvil_path)
+    run_scenarios(report_path, None, None, None, fork_rpc_url, anvil_path)
 }
 
 pub fn run_guided_scenarios(
@@ -842,11 +844,13 @@ pub fn run_guided_scenarios(
     prior_coverage_path: &Path,
     fork_rpc_url: &str,
     anvil_path: &Path,
+    previous_report_path: Option<&Path>,
 ) -> Result<LocalScenarioReport, String> {
     run_scenarios(
         report_path,
         Some(lens_path),
         Some(prior_coverage_path),
+        previous_report_path,
         fork_rpc_url,
         anvil_path,
     )
@@ -856,6 +860,7 @@ fn run_scenarios(
     report_path: &Path,
     lens_path: Option<&Path>,
     prior_coverage_path: Option<&Path>,
+    previous_report_path: Option<&Path>,
     fork_rpc_url: &str,
     anvil_path: &Path,
 ) -> Result<LocalScenarioReport, String> {
@@ -1020,6 +1025,7 @@ fn run_scenarios(
             state_order_sequences_executed: 0,
             state_order_sequence_budget: 8,
             state_order_stop_reason: None,
+            adaptive_chip: None,
         }), prior_outcomes, source_boundaries)
     } else if lens_path.is_none() && prior_coverage_path.is_none() {
         (None, BTreeSet::new(), Vec::new())
@@ -1043,6 +1049,21 @@ fn run_scenarios(
         block_hash: required_string(&base, "/identity/block_hash")?.to_ascii_lowercase(),
         runtime_sha256: required_string(&base, "/identity/runtime_sha256")?.to_owned(),
         base_report_sha256,
+    };
+    let mut chip = if guidance.is_some() {
+        Some(AdaptiveChip::load(
+            previous_report_path,
+            prior_coverage_path.ok_or("guided prior coverage missing")?,
+            &identity.base_report_sha256,
+            &identity.runtime_sha256,
+            &identity.block_hash,
+            &prior_outcomes,
+        )?)
+    } else {
+        if previous_report_path.is_some() {
+            return Err("previous report requires guided scenarios".into());
+        }
+        None
     };
     let remote = Rpc::new(fork_rpc_url.to_owned())?;
     verify_rpc(&remote, &identity)?;
@@ -1314,6 +1335,9 @@ fn run_scenarios(
     revert_snapshot(&local, &round_trip_snapshot)?;
     let mut guidance = guidance;
     if let Some(focus) = guidance.as_mut() {
+        chip.as_mut()
+            .ok_or("guided chip missing")?
+            .seed_baseline(&cases);
         if focus
             .selected_families
             .iter()
@@ -1613,41 +1637,33 @@ fn run_scenarios(
             }
             revert_snapshot(&local, &id)?;
         }
-        // Local feedback round: perturb amounts near observed economic scales.
-        // Snapshots keep every attempt independent; stop on a coverage plateau.
-        let asset_neighbors = [
-            asset_unit.saturating_sub(U256::from(1)),
-            asset_unit + U256::from(1),
-            asset_unit * U256::from(2) - U256::from(1),
-            asset_unit * U256::from(2) + U256::from(1),
-        ];
+        // The chip compares normalized behavior, skips repeated inputs and
+        // ranks bounded alternatives using previously observed transitions.
+        let chip = chip.as_mut().ok_or("guided chip missing")?;
         let share_scale = (supply / U256::from(1000)).max(U256::from(1));
-        let share_neighbors = [
-            share_scale.saturating_sub(U256::from(1)),
-            share_scale + U256::from(1),
-            share_scale * U256::from(2) - U256::from(1),
-            share_scale * U256::from(2) + U256::from(1),
-        ];
-        let mut plateau = 0_usize;
+        let actor_budget = baseline
+            .actor_asset_balance
+            .parse::<U256>()
+            .unwrap_or(U256::ZERO);
+        let share_budget = (supply / U256::from(100)).max(U256::from(1));
         for (operation, amount, label) in &source_boundaries {
-            if focus.feedback_cases_executed >= focus.feedback_case_budget || plateau >= 8 {
+            if focus.feedback_cases_executed >= focus.feedback_case_budget || chip.plateau() >= 8 {
                 break;
             }
-            let actor_budget = baseline
-                .actor_asset_balance
-                .parse::<U256>()
-                .unwrap_or(U256::ZERO);
-            let share_budget = (supply / U256::from(100)).max(U256::from(1));
             let available = if matches!(operation, Operation::Deposit | Operation::Withdraw) {
                 actor_budget
             } else {
                 share_budget
             };
-            if *amount > available {
+            let scale = if matches!(operation, Operation::Deposit | Operation::Withdraw) {
+                asset_unit
+            } else {
+                share_scale
+            };
+            if *amount > available || !chip.consider(operation.name(), *amount, scale) {
                 continue;
             }
             let id = snapshot(&local)?;
-            let before_count = observed_root_outcomes(&all_outcomes, &focus.target_source_pcs);
             let case = run_case(
                 &local,
                 &identity.vault,
@@ -1659,6 +1675,7 @@ fn run_scenarios(
                 1,
                 "state_comparison",
             );
+            chip.observe(&case, &focus.target_source_pcs);
             append_guided_case(
                 &mut cases,
                 &mut all_jumps,
@@ -1670,15 +1687,9 @@ fn run_scenarios(
             focus.feedback_cases_executed += 1;
             focus.source_boundary_cases += 1;
             revert_snapshot(&local, &id)?;
-            plateau =
-                if observed_root_outcomes(&all_outcomes, &focus.target_source_pcs) > before_count {
-                    0
-                } else {
-                    plateau + 1
-                };
         }
         for operation in [Operation::Mint, Operation::Redeem] {
-            if focus.feedback_cases_executed >= focus.feedback_case_budget || plateau >= 8 {
+            if focus.feedback_cases_executed >= focus.feedback_case_budget || chip.plateau() >= 8 {
                 break;
             }
             let pivot = share_scale;
@@ -1686,15 +1697,22 @@ fn run_scenarios(
             match preview_change_boundary(&local, &identity.vault, operation, pivot, window) {
                 Ok((Some(boundary), queries)) => {
                     focus.preview_boundary_queries += queries;
-                    for amount in [boundary - U256::from(1), boundary, boundary + U256::from(1)] {
+                    for amount in [
+                        boundary.saturating_sub(U256::from(1)),
+                        boundary,
+                        boundary.saturating_add(U256::from(1)),
+                    ] {
                         if focus.feedback_cases_executed >= focus.feedback_case_budget
-                            || plateau >= 8
+                            || chip.plateau() >= 8
                         {
                             break;
                         }
+                        if amount > share_budget
+                            || !chip.consider(operation.name(), amount, share_scale)
+                        {
+                            continue;
+                        }
                         let id = snapshot(&local)?;
-                        let before_count =
-                            observed_root_outcomes(&all_outcomes, &focus.target_source_pcs);
                         let case = run_case(
                             &local,
                             &identity.vault,
@@ -1706,6 +1724,7 @@ fn run_scenarios(
                             1,
                             "state_comparison",
                         );
+                        chip.observe(&case, &focus.target_source_pcs);
                         append_guided_case(
                             &mut cases,
                             &mut all_jumps,
@@ -1717,13 +1736,6 @@ fn run_scenarios(
                         focus.feedback_cases_executed += 1;
                         focus.preview_boundary_cases += 1;
                         revert_snapshot(&local, &id)?;
-                        plateau = if observed_root_outcomes(&all_outcomes, &focus.target_source_pcs)
-                            > before_count
-                        {
-                            0
-                        } else {
-                            plateau + 1
-                        };
                     }
                 }
                 Ok((None, queries)) => {
@@ -1739,61 +1751,68 @@ fn run_scenarios(
                 )),
             }
         }
-        'feedback: for index in 0..4 {
-            for (operation, amount) in [
-                (Operation::Deposit, asset_neighbors[index]),
-                (Operation::Mint, share_neighbors[index]),
-                (Operation::Withdraw, asset_neighbors[index]),
-                (Operation::Redeem, share_neighbors[index]),
-            ] {
-                if focus.feedback_cases_executed >= focus.feedback_case_budget {
-                    focus.feedback_stop_reason = Some("case_budget_reached".into());
-                    break 'feedback;
-                }
-                if plateau >= 8 {
-                    focus.feedback_stop_reason =
-                        Some("eight_cases_without_new_target_outcome".into());
-                    break 'feedback;
-                }
-                let id = snapshot(&local)?;
-                let before_count = observed_root_outcomes(&all_outcomes, &focus.target_source_pcs);
-                let case = run_case(
-                    &local,
-                    &identity.vault,
-                    &identity.asset,
-                    &identity.actor,
-                    operation,
-                    amount,
-                    format!("guided_feedback:{}:{amount}", operation.name()),
-                    1,
-                    "state_comparison",
-                );
-                append_guided_case(
-                    &mut cases,
-                    &mut all_jumps,
-                    &mut all_outcomes,
-                    &mut trace_limitations,
-                    focus,
-                    case,
-                );
-                focus.feedback_cases_executed += 1;
-                revert_snapshot(&local, &id)?;
-                plateau = if observed_root_outcomes(&all_outcomes, &focus.target_source_pcs)
-                    > before_count
-                {
-                    0
-                } else {
-                    plateau + 1
-                };
-                if plateau >= 8 {
-                    focus.feedback_stop_reason =
-                        Some("eight_cases_without_new_target_outcome".into());
-                    break 'feedback;
-                }
+        let candidates = chip.candidates(
+            asset_unit,
+            share_scale,
+            &focus.target_source_functions,
+            focus.feedback_case_budget.saturating_mul(4),
+        );
+        for (name, amount) in candidates {
+            if focus.feedback_cases_executed >= focus.feedback_case_budget {
+                focus.feedback_stop_reason = Some("case_budget_reached".into());
+                break;
             }
+            if chip.plateau() >= 8 {
+                focus.feedback_stop_reason =
+                    Some("eight_cases_without_new_behavior_or_target_outcome".into());
+                break;
+            }
+            let available = if matches!(name.as_str(), "deposit" | "withdraw") {
+                actor_budget
+            } else {
+                share_budget
+            };
+            if amount > available {
+                continue;
+            }
+            let Some(operation) = Operation::from_name(&name) else {
+                continue;
+            };
+            let id = snapshot(&local)?;
+            let case = run_case(
+                &local,
+                &identity.vault,
+                &identity.asset,
+                &identity.actor,
+                operation,
+                amount,
+                format!("guided_feedback:{}:{amount}", operation.name()),
+                1,
+                "state_comparison",
+            );
+            chip.observe(&case, &focus.target_source_pcs);
+            append_guided_case(
+                &mut cases,
+                &mut all_jumps,
+                &mut all_outcomes,
+                &mut trace_limitations,
+                focus,
+                case,
+            );
+            focus.feedback_cases_executed += 1;
+            revert_snapshot(&local, &id)?;
         }
         if focus.feedback_stop_reason.is_none() {
-            focus.feedback_stop_reason = Some("case_budget_reached".into());
+            focus.feedback_stop_reason = Some(
+                if chip.plateau() >= 8 {
+                    "eight_cases_without_new_behavior_or_target_outcome"
+                } else if focus.feedback_cases_executed >= focus.feedback_case_budget {
+                    "case_budget_reached"
+                } else {
+                    "no_more_distinct_candidates"
+                }
+                .into(),
+            );
         }
         let planned_sequences = [
             (
@@ -2122,6 +2141,14 @@ fn run_scenarios(
             .filter_map(|item| item.split_once(':').and_then(|(pc, _)| pc.parse().ok()))
             .collect();
         focus.new_root_jump_sites = vault_observed_pcs.difference(&prior_pcs).copied().collect();
+        focus.adaptive_chip = chip.take().map(|chip| {
+            chip.finish(
+                focus
+                    .feedback_stop_reason
+                    .as_deref()
+                    .unwrap_or("not_started"),
+            )
+        });
     }
     Ok(LocalScenarioReport {
         schema: SCHEMA.into(),

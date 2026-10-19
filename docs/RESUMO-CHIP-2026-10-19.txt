@@ -1,0 +1,7 @@
+Resumo simples — chip adaptativo (2026-10-19)
+
+O motor Rust agora guarda uma memória curta de entradas e resultados da rodada anterior. Ele evita repetir o mesmo valor na mesma operação, reconhece variações próximas com comportamento igual, procura intervalos que mudaram e para quando oito tentativas não acrescentam informação observável. A memória só é aceita se pertencer ao mesmo contrato, bloco, runtime e cobertura.
+
+Rodada privada no VPS: 8 observações recuperadas; 20 entradas repetidas e 4 vizinhos semelhantes evitados; 61 opções ordenadas; 8 novas tentativas de feedback; 50 casos totais (46 concluídos, 4 reversões), sem falha de comunicação nem diferença de pré-checagem. Não houve nova classe de comportamento ou novo resultado nos pontos acompanhados. O filtro não encaminhou pedido à IA.
+
+Código e documentação: repositório privado Toupera-Agent. Dados detalhados: somente em /srv/toupera-agent/private-output/real-targets/yield-vault/precision-chip-v1/. Os números descrevem esta rodada e não demonstram que todos os caminhos foram percorridos.

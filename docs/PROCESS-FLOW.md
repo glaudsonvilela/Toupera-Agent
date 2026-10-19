@@ -11,7 +11,7 @@ flowchart LR
     D -- Plano local --> F[Cenários no Anvil do VPS]
     F --> G[Estado, recibos, SLOAD/SSTORE e decisões JUMPI]
     G --> C
-    G --> K[Triagem local: dependências, variações e parada por platô]
+    G --> K[Chip Rust: memória de comportamento, escolha e parada]
     K --> C
     K -- novos valores e ordens dentro do orçamento --> F
     K --> H[Contexto mínimo para IA, se elegível]
@@ -26,3 +26,5 @@ Na medição privada do YieldVault, 41 dos 110 PCs `JUMPI` estáticos têm orige
 Na rodada de 2026-10-19, o modo guiado acrescentou oito variações locais e parou pelo critério de platô: 44 casos ao todo, 40 concluídos, quatro reversões esperadas, zero resultados novos. O plano externo ficou vazio. Veja [triagem local](EVIDENCE-FILTER.md).
 
 Na rodada `precision-v2`, a escolha de entradas incluiu seis valores próximos a mudanças de preview e quatro sequências de ordem/estado. O conjunto de decisões observadas não aumentou; o caminho da IA ficou vazio. O relatório separa medidas observadas de pontos com alcance ainda desconhecido.
+
+O [chip adaptativo](ADAPTIVE-CHIP.md) acrescenta memória entre rodadas ao caminho local. Ele evita repetir a mesma entrada de exploração, compara classes de comportamento e propõe novas variações com limite explícito. A cobertura e o filtro continuam sendo produzidos depois da rodada.

@@ -2,6 +2,8 @@
 
 O comando `--evidence-filter` cruza cinco artefatos privados: mapa forense, lente de variáveis, resultados dos cenários no fork, cobertura desses cenários e pacote M5. Ele exige hashes e identidade do mesmo contrato e bloco. M4/lente/cenários usam hash do runtime exato; M5 registra runtime normalizado e fica ligado ao M4 pelo hash do relatório forense. Não consulta RPC nem IA. A execução dos cenários continua sendo feita por `--guided-scenarios` no Anvil local do VPS.
 
+A seleção de valores desse modo pode usar o [chip adaptativo](ADAPTIVE-CHIP.md). Suas classes e prioridades orientam somente a coleta local; não substituem as exigências de identidade e diferença repetida deste filtro.
+
 ```sh
 umask 077
 security-engine --evidence-filter forensic.json lens.json scenarios.json coverage.json context.json > filter.json

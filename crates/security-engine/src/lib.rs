@@ -1,5 +1,6 @@
 //! Foundational types for focused Solidity/EVM economic security analysis.
 
+mod adaptive_chip;
 mod bytecode;
 mod bytecode_companions;
 mod bytecode_evmole;
