@@ -58,6 +58,7 @@ pub struct VariableEdge {
     pub source_span: Option<SourceSpan>,
     pub expression: Option<String>,
     pub confidence: String,
+    pub evidence_source: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -83,6 +84,9 @@ pub struct VariableLensReport {
     pub category_counts: BTreeMap<String, usize>,
     pub declaration_role_counts: BTreeMap<String, usize>,
     pub dependency_edge_count: usize,
+    pub ssa_dependency_edge_count: usize,
+    pub ssa_unmatched_declaration_operands: usize,
+    pub ssa_report_sha256: Option<String>,
     pub variables_without_source_use: usize,
     pub variables_with_read_without_writer: usize,
     pub observed_root_jump_sites: usize,
@@ -178,6 +182,7 @@ pub fn build_variable_lens(
     manifest_path: &Path,
     forensic_path: &Path,
     local_coverage_path: &Path,
+    ssa_path: Option<&Path>,
 ) -> Result<VariableLensReport, String> {
     let (_, manifest_value) = read_json(manifest_path)?;
     let manifest: ForensicInput = serde_json::from_value(manifest_value)
@@ -266,6 +271,16 @@ pub fn build_variable_lens(
     walker.collect_declarations(ast, &root, "");
     walker.attach_layout(&solc);
     walker.walk(ast, &root, "read");
+    let (ssa_added, ssa_unmatched, ssa_sha) = if let Some(path) = ssa_path {
+        let (bytes, ssa) = read_json(path)?;
+        if ssa["schema"] != "slither-ssa-v1" || ssa["source_sha256"] != digest(&source_bytes) {
+            return Err("SlithIR SSA report does not match the analysis source".into());
+        }
+        let (added, unmatched) = walker.import_ssa(&ssa)?;
+        (added, unmatched, Some(digest(&bytes)))
+    } else {
+        (0, 0, None)
+    };
     let mut report = walker.finish(
         forensic["identity"].clone(),
         digest(&source_bytes),
@@ -278,6 +293,9 @@ pub fn build_variable_lens(
         .filter(|hint| !hint.verified_variable_ast_ids.is_empty())
         .count();
     report.pc_source_hints = pc_source_hints;
+    report.ssa_dependency_edge_count = ssa_added;
+    report.ssa_unmatched_declaration_operands = ssa_unmatched;
+    report.ssa_report_sha256 = ssa_sha;
     Ok(report)
 }
 
@@ -495,6 +513,7 @@ impl Walker<'_> {
                     source_span: span.clone(),
                     expression: expression.clone(),
                     confidence: "direct_syntax".into(),
+                    evidence_source: "solc_ast".into(),
                 });
             }
         }
@@ -607,6 +626,86 @@ impl Walker<'_> {
         for child in Self::children(node) {
             self.walk(child, &current, mode);
         }
+    }
+
+    fn import_ssa(&mut self, report: &Value) -> Result<(usize, usize), String> {
+        let operations = report["operations"]
+            .as_array()
+            .ok_or("SlithIR SSA operations are missing")?;
+        if report["operation_count"].as_u64() != Some(operations.len() as u64) {
+            return Err("SlithIR SSA operation count differs".into());
+        }
+        let declaration_positions: BTreeMap<(usize, String), i64> = self
+            .declarations
+            .iter()
+            .filter_map(|(id, record)| {
+                Some((
+                    (
+                        record.declaration_span.as_ref()?.start_byte(),
+                        record.name.clone(),
+                    ),
+                    *id,
+                ))
+            })
+            .collect();
+        let mut anchors: BTreeMap<String, i64> = BTreeMap::new();
+        let mut unmatched = BTreeSet::new();
+        let mut graph: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for operation in operations {
+            let write = &operation["write"];
+            let write_key = write["key"]
+                .as_str()
+                .ok_or("SlithIR SSA write key is missing")?;
+            anchor_ssa_operand(write, &declaration_positions, &mut anchors, &mut unmatched);
+            let reads = operation["reads"]
+                .as_array()
+                .ok_or("SlithIR SSA reads are missing")?;
+            for read in reads {
+                let read_key = read["key"]
+                    .as_str()
+                    .ok_or("SlithIR SSA read key is missing")?;
+                anchor_ssa_operand(read, &declaration_positions, &mut anchors, &mut unmatched);
+                graph
+                    .entry(read_key.into())
+                    .or_default()
+                    .insert(write_key.into());
+            }
+        }
+        let mut new_edges = BTreeSet::new();
+        for (start_key, from_id) in &anchors {
+            let mut visited = BTreeSet::new();
+            let mut queue = VecDeque::from([start_key.clone()]);
+            while let Some(current) = queue.pop_front() {
+                if let Some(next) = graph.get(&current) {
+                    for key in next {
+                        if !visited.insert(key.clone()) {
+                            continue;
+                        }
+                        if let Some(to_id) = anchors.get(key) {
+                            if to_id != from_id {
+                                let function = start_key.split(':').nth(1).unwrap_or("").to_owned();
+                                new_edges.insert((*from_id, *to_id, function));
+                            }
+                        }
+                        queue.push_back(key.clone());
+                    }
+                }
+            }
+        }
+        let count = new_edges.len();
+        for (from, to, function) in new_edges {
+            self.edges.push(VariableEdge {
+                from_ast_id: from,
+                to_ast_id: to,
+                relation: "slithir_ssa_dependency".into(),
+                function,
+                source_span: None,
+                expression: None,
+                confidence: "inferred_ssa".into(),
+                evidence_source: "slither_ssa".into(),
+            });
+        }
+        Ok((count, unmatched.len()))
     }
 
     fn finish(
@@ -728,6 +827,9 @@ impl Walker<'_> {
             category_counts,
             declaration_role_counts,
             dependency_edge_count: self.edges.len(),
+            ssa_dependency_edge_count: 0,
+            ssa_unmatched_declaration_operands: 0,
+            ssa_report_sha256: None,
             variables_without_source_use: without_use,
             variables_with_read_without_writer: read_without_writer,
             observed_root_jump_sites,
@@ -746,6 +848,26 @@ impl Walker<'_> {
                 "Priority is an explainable review ordering, not a probability of a problem".into(),
             ],
         })
+    }
+}
+
+fn anchor_ssa_operand(
+    operand: &Value,
+    positions: &BTreeMap<(usize, String), i64>,
+    anchors: &mut BTreeMap<String, i64>,
+    unmatched: &mut BTreeSet<String>,
+) {
+    let (Some(key), Some(name), Some(start)) = (
+        operand["key"].as_str(),
+        operand["name"].as_str(),
+        operand["start"].as_u64(),
+    ) else {
+        return;
+    };
+    if let Some(id) = positions.get(&(start as usize, name.to_owned())) {
+        anchors.insert(key.into(), *id);
+    } else {
+        unmatched.insert(key.into());
     }
 }
 
