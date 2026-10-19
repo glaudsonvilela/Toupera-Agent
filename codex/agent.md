@@ -4,13 +4,14 @@
 
 - O usuário exige que o Rust automatize a reconstrução histórica, a análise de transações e estado, invariantes, simulação e retorno da quarentena ao mapa, sem depender da IA para criar o contexto. O mapa/sondagem atual é triagem; não chamá-lo de scanner forense completo.
 - Atualizar `agente.md` e `docs/ROADMAP-CHECKLIST.md` ao concluir cada etapa. Marcar cobertura parcial e falhas de RPC explicitamente; artefatos de alvo em `private-output/`; preservar `web/` não rastreado.
-- Pedido vigente: não executar simulações nesta sessão; deixar a implementação compilada no VPS. Não confundir leitura histórica ou `eth_call` com replay de execução.
+- Pedido vigente: executar simulações somente no VPS, em processo autônomo, e verificar o resultado. Não simular no ambiente local desta sessão nem confundir leitura histórica ou `eth_call` com replay de execução.
 
 ## Etapa histórica concluída, 2026-10-18
 
 - O motor Rust usa `alloy-primitives::U256`; seleciona RPC com maior histórico após validar chain/bloco/runtime; varre logs do vault e transferências do asset desde o deploy em lotes, com erros e alcance explícitos; cruza transações/recibos, eventos, cap, owner, supply e balanço por bloco. Tenta `debug_traceTransaction`, registrando a lacuna quando não há acesso. Divergências observadas chegam à quarentena e ao mapa refeito; a saída inclui `coverage`.
 - Execução de leitura já feita em YieldVault Sepolia: 818.846 blocos, 5 eventos do vault, 2 transferências do asset, 3 recibos, 1 bloco com eventos conferido, 108 chamadas de borda (103 retornaram). `coverage.evidence_gate=history_reconciled_trace_gaps`: nenhum rastro interno (RPC HTTP 429), 299 itens de bytecode não resolvidos, sem simulação de sequência ou prova de segurança. Ver `docs/REAL-EVM-PILOT.md` e `docs/FORENSIC-QUARANTINE.md`.
-- Próximos gates: sequências locais em fork com cobertura mensurável, calibração M4, ramo positivo M5–M8. Não marcar esses itens como concluídos. Nesta etapa, compilar e instalar no VPS sem rodar simulações ou testes.
+- Próximos gates: sequências locais em fork com cobertura mensurável, calibração M4, ramo positivo M5–M8. Não marcar esses itens como concluídos. Uma tentativa manual de replay anterior ao pedido recente terminou por timeout e não forneceu evidência; não repetir simulações no ambiente local. Código `67de987` publicado no Git privado e compilado no VPS sob `toupera`; sem testes nesta atualização.
+- Replay autônomo autorizado para o VPS após aquela tentativa. `scripts/run-forensic-replay.sh` confere identidade, executa no máximo três `cast run --no-bal` com timeout de 240 s e salva rastros/resumo privados. Registrar se o job gerou rastros; sucesso do `cast` não valida vulnerabilidade nem substitui sequência de operações em fork.
 
 ## Ciclo forense/quarentena, 2026-10-18
 

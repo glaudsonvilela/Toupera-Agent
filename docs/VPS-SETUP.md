@@ -53,6 +53,10 @@ A execução local dessa fixture produziu 4 registros de IR. Slither analisou a 
 
 O servidor não contém `.git` nem credenciais para acessar o repositório privado. Atualizações do projeto devem ser enviadas novamente a partir de um checkout autorizado e recompiladas. A revisão implantada fica em `.deployed-commit`. Não existem serviço `systemd`, endpoint HTTP, banco de dados ou chave da API DeepSeek configurados. O CLI aceita um arquivo Solidity sem imports e um caminho opcional para `solc`, ou `--bytecode <runtime.hex>`; a comparação com saída local do compilador usa `--compare-bytecode`. O modo M6 pode chamar DeepSeek apenas com opções explícitas e chave no ambiente; ainda não foi executado.
 
+### Replay forense local no VPS
+
+`scripts/run-forensic-replay.sh <relatório-forense.json> <rpc-url> <diretório-de-saída>` lê até três hashes de transação do relatório e usa `cast run --no-bal` para reproduzi-los localmente, sem transmitir transações à rede. Antes do replay, confere chain ID, hash do bloco fixado e SHA-256 do runtime com o RPC. Cada replay tem limite de 240 segundos; `results.ndjson`, `summary.json`, proveniência e rastros ficam no diretório privado. O exit code do `cast` indica apenas se o rastro foi gerado; divergência econômica ainda exige comparação de estado, eventos e revisão. Use um job `systemd-run` com `User=toupera`, limite de memória/CPU e `RuntimeMaxSec` para execução autônoma após desconectar do SSH. Nenhum endereço ou segredo de RPC deve ser gravado no Git.
+
 O M7 acrescenta `--foundry-plan <context.json> <review.json> <source.sol> <private-output-dir>` e `--foundry-run <case-dir> <forge-bin> <solc-bin>`. O primeiro não executa testes; o segundo exige harness local revisado. Os caminhos de `forge` e `solc` instalados estão na tabela acima. Nenhum teste M7 foi executado durante a implementação. Consulte `docs/FOUNDRY-JUDGE.md` antes de usar.
 
 A revisão de código M7 `b945a96` foi sincronizada e compilada em release no VPS sob `toupera` em 2026-10-18. `.deployed-commit` registrou essa revisão antes do complemento documental; nenhum caso Foundry ou análise de alvo foi executado.

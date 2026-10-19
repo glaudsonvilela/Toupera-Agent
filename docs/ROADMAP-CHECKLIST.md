@@ -124,7 +124,7 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 - [ ] Medir cobertura de caminhos e custo de RPC/IA em campanhas representativas.
 - [ ] Validar o ramo positivo completo com alvo autorizado, reprodução Foundry e revisão M8 antes de declarar o scanner forense pronto.
 
-Etapa histórica 2026-10-18: `YieldVault` Sepolia teve 818.846 blocos de logs completos desde o deploy, 5 eventos do vault, 2 transferências do asset, 3 recibos, 1 bloco com eventos conferido e 108 chamadas de borda (103 retornaram). `history_reconciled_trace_gaps` registra a reconciliação dessas evidências e a ausência de rastros internos. Nenhuma simulação foi executada nesta etapa; o item de sequências em fork permanece aberto.
+Etapa histórica 2026-10-18: `YieldVault` Sepolia teve 818.846 blocos de logs completos desde o deploy, 5 eventos do vault, 2 transferências do asset, 3 recibos, 1 bloco com eventos conferido e 108 chamadas de borda (103 retornaram). `history_reconciled_trace_gaps` registra a reconciliação dessas evidências e a ausência de rastros internos. Uma tentativa manual de replay terminou por timeout e não forneceu evidência; não houve nova tentativa após a instrução do usuário. O item de sequências em fork permanece aberto.
 
 
 ### 1. Autorização e escopo

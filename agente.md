@@ -4,13 +4,15 @@
 
 O usuário rejeitou tratar o mapa atual como auditoria forense completa. O motor deve produzir o contexto por conta própria, usando aritmética EVM de 256 bits, cronologia integral desde o deploy quando o RPC permitir, transações/recibos/rastros, evolução de estado, invariantes econômicas, simulação local e cobertura mensurável. O segundo motor de quarentena recebe divergências concretas; o primeiro refaz o mapa. IA só interpreta hipóteses ainda ambíguas depois dos filtros determinísticos.
 
-Registrar progresso em `docs/ROADMAP-CHECKLIST.md` e neste arquivo a cada etapa. Não marcar como concluídos replay de execução de transações, rastros internos, fuzzing ou cobertura total enquanto não houver execução e evidência. Artefatos de alvo seguem privados. Preservar `web/` não rastreado. Instrução atual do usuário: não executar simulações nesta sessão; apenas deixar a implementação no VPS.
+Registrar progresso em `docs/ROADMAP-CHECKLIST.md` e neste arquivo a cada etapa. Não marcar como concluídos replay de execução de transações, rastros internos, fuzzing ou cobertura total enquanto não houver execução e evidência. Artefatos de alvo seguem privados. Preservar `web/` não rastreado. Instrução atual do usuário: executar simulações somente no VPS, em processo autônomo, e verificar se ele consegue; não simular no ambiente local desta sessão.
 
 ## Etapa mais recente — cronologia forense automática (2026-10-18)
 
 - `forensic_probe.rs` usa `alloy-primitives::U256`, busca logs desde o deploy quando o RPC fornece arquivo, seleciona endpoint pela profundidade histórica depois de confirmar identidade, agrega mint/burn e transferências do asset, lê transações/recibos, tenta rastros internos, confere snapshots de estado nos blocos com eventos, propaga divergências à quarentena e emite métricas `coverage`.
 - Na leitura já realizada de YieldVault Sepolia: 818.846 blocos inclusivos desde o deploy, 5 eventos do vault, 2 transferências do asset, 3 recibos e 1 bloco histórico com eventos verificado; 108 chamadas de borda, 103 retornaram. Não houve divergência observada nas relações conferidas. O RPC negou `debug_traceTransaction` com HTTP 429; `history_reconciled_trace_gaps` indica essa lacuna. Há 299 itens de bytecode não resolvidos. Isso não comprova segurança nem cobertura de caminhos.
-- Nenhuma simulação deve ser executada por esta etapa. Sequências em fork, cobertura de ramos, M4 positivo e reprodução M7/M8 continuam pendentes. Nesta atualização, apenas formatação/compilação serão verificadas; não rodar testes sem novo pedido.
+- Uma tentativa manual de replay anterior ao pedido mais recente terminou por timeout e não forneceu evidência. Não executar novas simulações nesta etapa. Sequências em fork, cobertura de ramos, M4 positivo e reprodução M7/M8 continuam pendentes. Formatação e compilação foram verificadas; testes não foram rodados nesta atualização.
+- Revisão de código `67de987` publicada no Git privado e compilada em release no VPS sob `toupera`; nenhum comando de simulação executado durante a implantação.
+- Após nova autorização do usuário, `scripts/run-forensic-replay.sh` foi preparado para replay de até três transações históricas no VPS, com identidade fixa, timeout, rastros e resumo privados. Seu resultado ainda deve ser registrado após a execução autônoma; não equiparar replay ao fechamento do scanner.
 
 ## Etapa mais recente — mapa forense e quarentena (2026-10-18)
 
