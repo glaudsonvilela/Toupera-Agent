@@ -12,6 +12,8 @@ mkdir -m 700 -p private-output
 
 O plano aceita o pacote M5 bruto ou o envelope `{cache_hit, cache_key, package}` do CLI. Só entram candidatos `UNVERIFIED` com evidência, perguntas de invariantes e trecho de função. Duplicatas com mesmo contrato, função, categoria e hash de source da função são removidas. O corpo enviado é reconstruído a partir de uma lista explícita de campos do slice: função, até três funções relacionadas, evidências, storage, aritmética, alvos de oracle, chamadas, perguntas e incertezas. O pacote M5 inteiro, outros arquivos e JSON bruto do Slither não são enviados. A saída do plano ainda contém trechos privados; proteja o arquivo.
 
+Se a triagem M4 produzir zero candidatos, `--llm-review <context.json>` devolve um relatório vazio local (`provider=none`, zero chamadas/tokens) sem exigir provedor, chave ou permissão de envio. M7 recebe zero casos e M8 permanece sem entrada. Isso foi observado no [piloto Sepolia](REAL-EVM-PILOT.md) e não implica que o alvo esteja seguro.
+
 ## Chamada externa opcional
 
 O comando abaixo **envia esses trechos privados à DeepSeek**. Use-o somente para um alvo cujo escopo permita esse processamento externo. A chave é lida de `TOUPERA_DEEPSEEK_API_KEY` no ambiente e não aparece em argumento de linha de comando nem em arquivo do projeto.

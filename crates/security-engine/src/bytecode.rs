@@ -133,10 +133,20 @@ pub struct BytecodeSourceComparison {
     pub source_name: String,
     pub contract_name: String,
     pub normalized_runtime_match: Option<bool>,
+    pub immutable_masked_runtime_match: Option<bool>,
+    pub immutable_values: Vec<BytecodeImmutableValue>,
     pub matched_methods: Vec<BytecodeMethodMatch>,
     pub unmatched_source_methods: Vec<String>,
     pub unmatched_bytecode_selectors: Vec<String>,
     pub unresolved: Vec<Uncertainty>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BytecodeImmutableValue {
+    pub source_ast_id: String,
+    pub start_pc: usize,
+    pub length: usize,
+    pub onchain_hex: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -281,6 +291,8 @@ pub fn compare_with_solc_contract(
         .and_then(|contracts| contracts.get(contract_name))
         .ok_or_else(|| format!("solc JSON has no contract {source_name}:{contract_name}"))?;
     let mut unresolved = Vec::new();
+    let mut immutable_masked_runtime_match = None;
+    let mut immutable_values = Vec::new();
     let normalized_runtime_match = match contract
         .pointer("/evm/deployedBytecode/object")
         .and_then(Value::as_str)
@@ -290,7 +302,71 @@ pub fn compare_with_solc_contract(
                 let code_size = metadata
                     .as_ref()
                     .map_or(compiled.len(), |item| item.start_pc);
-                Some(encode_hex(&compiled[..code_size]) == analysis.normalized_hex)
+                let direct = encode_hex(&compiled[..code_size]) == analysis.normalized_hex;
+                if let Some(refs) = contract
+                    .pointer("/evm/deployedBytecode/immutableReferences")
+                    .and_then(Value::as_object)
+                    .filter(|refs| !refs.is_empty())
+                {
+                    let onchain = hex::decode(&analysis.normalized_hex)
+                        .map_err(|error| format!("invalid normalized analysis hex: {error}"))?;
+                    let mut patched = compiled[..code_size].to_vec();
+                    let mut occupied = BTreeSet::new();
+                    let mut valid = patched.len() == onchain.len();
+                    for (source_ast_id, entries) in refs {
+                        let Some(entries) = entries.as_array() else {
+                            valid = false;
+                            break;
+                        };
+                        for entry in entries {
+                            let (Some(start), Some(length)) = (
+                                entry.get("start").and_then(Value::as_u64),
+                                entry.get("length").and_then(Value::as_u64),
+                            ) else {
+                                valid = false;
+                                break;
+                            };
+                            let (Ok(start), Ok(length)) =
+                                (usize::try_from(start), usize::try_from(length))
+                            else {
+                                valid = false;
+                                break;
+                            };
+                            let Some(end) = start.checked_add(length) else {
+                                valid = false;
+                                break;
+                            };
+                            if length == 0
+                                || end > patched.len()
+                                || (start..end).any(|pc| !occupied.insert(pc))
+                            {
+                                valid = false;
+                                break;
+                            }
+                            patched[start..end].copy_from_slice(&onchain[start..end]);
+                            immutable_values.push(BytecodeImmutableValue {
+                                source_ast_id: source_ast_id.clone(),
+                                start_pc: start,
+                                length,
+                                onchain_hex: encode_hex(&onchain[start..end]),
+                            });
+                        }
+                        if !valid {
+                            break;
+                        }
+                    }
+                    if valid && !immutable_values.is_empty() {
+                        immutable_masked_runtime_match = Some(patched == onchain);
+                    } else {
+                        immutable_values.clear();
+                        unresolved.push(Uncertainty {
+                            kind: UncertaintyKind::AmbiguousSemantics,
+                            detail: "compiler immutable references are malformed or outside the runtime code".into(),
+                            location: None,
+                        });
+                    }
+                }
+                Some(direct)
             }
             Err(_) => {
                 unresolved.push(Uncertainty {
@@ -360,7 +436,9 @@ pub fn compare_with_solc_contract(
                     signature: signature.clone(),
                     selector,
                     destination_pc,
-                    economic_operation: if normalized_runtime_match == Some(true) {
+                    economic_operation: if normalized_runtime_match == Some(true)
+                        || immutable_masked_runtime_match == Some(true)
+                    {
                         operation_from_signature(signature)
                     } else {
                         None
@@ -411,6 +489,8 @@ pub fn compare_with_solc_contract(
         source_name: source_name.to_owned(),
         contract_name: contract_name.to_owned(),
         normalized_runtime_match,
+        immutable_masked_runtime_match,
+        immutable_values,
         matched_methods,
         unmatched_source_methods,
         unmatched_bytecode_selectors,
@@ -1005,5 +1085,37 @@ fn uncertainty(artifact: &str, pc: usize, detail: &str) -> Uncertainty {
             artifact: artifact.to_owned(),
             pc,
         })),
+    }
+}
+
+#[cfg(test)]
+mod immutable_comparison_tests {
+    use super::{compare_with_solc_contract, reconstruct_bytecode_hex};
+    use serde_json::json;
+
+    #[test]
+    fn constructor_immutable_bytes_can_be_compared_without_hiding_other_differences() {
+        let analysis = reconstruct_bytecode_hex("runtime.hex", "6002600000").unwrap();
+        let output = json!({
+            "contracts": {"Target.sol": {"Target": {"evm": {
+                "deployedBytecode": {
+                    "object": "6001600000",
+                    "immutableReferences": {"7": [{"start": 1, "length": 1}]}
+                },
+                "methodIdentifiers": {}
+            }}}}
+        });
+        let compared =
+            compare_with_solc_contract(&analysis, &output.to_string(), "Target.sol", "Target")
+                .unwrap();
+        assert_eq!(compared.normalized_runtime_match, Some(false));
+        assert_eq!(compared.immutable_masked_runtime_match, Some(true));
+        assert_eq!(compared.immutable_values[0].onchain_hex, "02");
+
+        let changed = reconstruct_bytecode_hex("runtime.hex", "6002600100").unwrap();
+        let mismatch =
+            compare_with_solc_contract(&changed, &output.to_string(), "Target.sol", "Target")
+                .unwrap();
+        assert_eq!(mismatch.immutable_masked_runtime_match, Some(false));
     }
 }

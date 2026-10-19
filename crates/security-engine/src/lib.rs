@@ -19,10 +19,10 @@ use serde::Serialize;
 
 pub use bytecode::{
     BytecodeAnalysis, BytecodeBlock, BytecodeEffect, BytecodeEffectKind, BytecodeEntrySummary,
-    BytecodeInstruction, BytecodeMetadata, BytecodeMethodMatch, BytecodeSelector,
-    BytecodeSourceComparison, BytecodeValueFlow, BytecodeValueOrigin, BytecodeValueOriginKind,
-    BytecodeValueSinkKind, compare_with_solc_contract, normalized_runtime_hex,
-    reconstruct_bytecode_hex,
+    BytecodeImmutableValue, BytecodeInstruction, BytecodeMetadata, BytecodeMethodMatch,
+    BytecodeSelector, BytecodeSourceComparison, BytecodeValueFlow, BytecodeValueOrigin,
+    BytecodeValueOriginKind, BytecodeValueSinkKind, compare_with_solc_contract,
+    normalized_runtime_hex, reconstruct_bytecode_hex,
 };
 pub use bytecode_companions::{
     CompanionAnalysis, GigahorseBlock, GigahorseReport, HeimdallFunction, HeimdallReport,
@@ -34,6 +34,7 @@ pub use bytecode_evmole::{
 pub use context_package::{
     ArtifactDigests, CachedContextPackage, ContextPackage, ContextSlice, EvidenceExcerpt,
     FunctionDigest, FunctionExcerpt, build_context_package, load_or_build_context_package,
+    load_or_build_context_package_with_evm_version,
 };
 pub use economic_analysis::{
     EconomicAnalysisMetrics, EconomicAnalysisReport, EconomicCandidate, SlitherSignal,
@@ -58,11 +59,11 @@ pub use ir::{
 pub use llm_review::{
     CachingProvider, DeepSeekProvider, HypothesisProvider, ModelConclusion, PreparedRequest,
     ProviderReply, RateCard, ReviewItem, ReviewMetrics, ReviewPlan, ReviewReport, TokenUsage,
-    prepare_review_plan, run_review,
+    empty_review_report, prepare_review_plan, run_review,
 };
 pub use source::{
-    compile_source_ast_file, compile_source_ast_text, reconstruct_from_ast_json,
-    reconstruct_source_file,
+    compile_source_ast_file, compile_source_ast_text, compile_source_ast_text_with_evm_version,
+    reconstruct_from_ast_json, reconstruct_source_file,
 };
 
 /// Stable identity of a contract in an analysis target.

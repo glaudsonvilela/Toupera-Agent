@@ -50,6 +50,8 @@ M8 snapshots a case into a private evidence bundle. A report can reach `REPORT_R
 
 The M7 judge records observed fuzz runs and target LCOV coverage; optional invariant handler calls/reverts remain separate from verified economic calls to the target. The synthetic pilot measured these outputs. The M4 candidate selector did not flag that fixture, so the pilot cases were prepared manually and the full M4–M7 path remains unvalidated.
 
+A [real Sepolia pilot](docs/REAL-EVM-PILOT.md) connected verified multi-file source and deployed runtime for an ERC-4626 vault through M1–M6. The compiler's two constructor immutables explain the runtime differences; M4 found no eligible candidate, so M7 correctly created no case and M8 had no evidence to package. This validates the empty path on a real EVM target, while the positive candidate path still needs calibration and an authorized case.
+
 ## Development
 
 ```sh

@@ -33,7 +33,7 @@ O recorte M2 cobre um arquivo Solidity sem imports. O grafo estrutural source-le
 - [x] Registrar observações e inferências recuperadas com PC, confiança e incertezas.
 - [x] Manter comportamento ambíguo como desconhecido; comparar runtime normalizado e métodos com saída local do solc quando disponível.
 
-O fechamento M3 cobre somente runtime EVM legado fornecido explicitamente: interpretação abstrata limitada de stack e memória por palavras, com limite de propagação. Os caminhos econômicos são dependências genéricas até escrita de storage, valor/alvo/entrada de chamada, condição ou retorno, sem atribuir identidade de oracle, asset ou share ao bytecode isolado. Dispatch fora do padrão direto, saltos ainda dinâmicos, memória parcial, ABI desconhecida, EOF e creation code permanecem em `unresolved` ou fora do recorte. A comparação local com source só atribui rótulos econômicos quando o runtime normalizado coincide byte a byte. Não é decompilador completo nem detector de vulnerabilidade. Ver [reconstrução de bytecode](BYTECODE-RECONSTRUCTION.md).
+O fechamento M3 cobre somente runtime EVM legado fornecido explicitamente: interpretação abstrata limitada de stack e memória por palavras, com limite de propagação. Os caminhos econômicos são dependências genéricas até escrita de storage, valor/alvo/entrada de chamada, condição ou retorno, sem atribuir identidade de oracle, asset ou share ao bytecode isolado. Dispatch fora do padrão direto, saltos ainda dinâmicos, memória parcial, ABI desconhecida, EOF e creation code permanecem em `unresolved` ou fora do recorte. A comparação local com source só atribui rótulos econômicos quando o runtime normalizado coincide byte a byte ou quando toda divergência está em faixas `immutableReferences` fornecidas pelo compilador; as duas condições ficam separadas no JSON. Não é decompilador completo nem detector de vulnerabilidade. Ver [reconstrução de bytecode](BYTECODE-RECONSTRUCTION.md).
 
 Complemento após M3: EVMole 0.9.4 fornece uma segunda leitura local de selectors, argumentos, mutabilidade, storage e CFG. Suas propostas permanecem separadas e tentativas; divergências são registradas, não incorporadas automaticamente ao grafo nativo. A comparação com source pode aproveitar selector ABI exclusivo do EVMole, ainda com confiança `Tentative`.
 
@@ -57,7 +57,7 @@ Lacuna observada no piloto M7: `--llm-plan` retornou zero candidatos para `Round
 - [x] Montar slices limitados com função, chamadas, storage, aritmética, oracle e invariantes relevantes.
 - [x] Manter saída local sem envio ao LLM ou do repositório inteiro por padrão.
 
-O M5 opera no recorte source-backed do M2/M4, um arquivo sem imports. Runtime opcional é só fingerprint; não é ligado ao source sem comparação exata. O cache privado guarda o pacote reduzido e invalida ao mudar entrada, compilador ou motor. Os limites e o formato estão em [Pacote de Contexto](CONTEXT-PACKAGE.md). Economia de tokens e taxa de acertos permanecem sem benchmark até a validação solicitada após a implementação completa.
+O M5 opera no recorte source-backed do M2/M4, um arquivo sem imports. Runtime opcional é só fingerprint; não é ligado ao source sem comparação separada. O cache privado guarda o pacote reduzido e invalida ao mudar entrada, compilador, motor ou versão EVM informada. Os limites e o formato estão em [Pacote de Contexto](CONTEXT-PACKAGE.md). Economia de tokens e taxa de acertos permanecem sem benchmark geral.
 
 ### M6 — Hipóteses do LLM
 - [x] Definir interface Rust desacoplada do fornecedor e primeiro adaptador DeepSeek.
@@ -92,6 +92,17 @@ Critérios e prioridade por ferramenta: [Estratégia de ferramentas](TOOLING-STR
 - [x] Implementar gate que só marca `REPORT_READY` após duas execuções positivas, integridade dos artefatos e atestados de revisão humana; gate não acionado nesta etapa.
 
 O M8 está implementado no recorte de um arquivo source-first, com reprodução e revisão reais pendentes. `--evidence-plan` pode criar um pacote `PENDING_REPRODUCTION`; `--evidence-finalize` falha até haver um resultado M7 positivo e revisão humana completa. Ver [Evidência e entrega](EVIDENCE-DELIVERY.md).
+
+### Piloto em contrato EVM real — Sepolia, 2026-10-18
+
+- [x] Fixar endereço, chain ID, bloco, hash do runtime e source verificado de `YieldVault`.
+- [x] Recompilar o bundle multifile com as configurações do deploy e comparar runtime, incluindo faixas `immutable`.
+- [x] Passar a visão achatada por M1/M2, runtime por M3, e unir a triagem Slither no pacote M4/M5.
+- [x] Registrar plano M6 vazio e provar que nenhuma chamada DeepSeek foi necessária.
+- [x] Confirmar que M7 gera zero casos e que M8 não libera relatório sem caso.
+- [ ] Validar o ramo automático **com candidato** M4→M5→M6→M7→M8 em alvo autorizado ou fixture calibrada; o contrato Sepolia não produziu candidato.
+
+Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero candidatos é parada correta para este alvo, não uma avaliação de segurança completa nem prova de conexão do ramo positivo.
 
 ## Ciclo por alvo auditado
 

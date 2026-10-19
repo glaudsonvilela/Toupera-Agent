@@ -14,7 +14,7 @@ use crate::source::{function_id, parse_span};
 use crate::{
     ContractId, EconomicAnalysisMetrics, EconomicCandidate, EconomicFunction, EvidenceLocation,
     FindingKind, FunctionId, SourceSpan, Uncertainty, analyze_economic_functions,
-    compile_source_ast_text, normalized_runtime_hex, reconstruct_from_ast_json,
+    compile_source_ast_text_with_evm_version, normalized_runtime_hex, reconstruct_from_ast_json,
 };
 
 const PACKAGE_SCHEMA: &str = "m5-context-v1";
@@ -32,6 +32,8 @@ pub struct ArtifactDigests {
     pub ast_sha256: String,
     pub runtime_sha256: Option<String>,
     pub slither_json_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evm_version: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -377,6 +379,7 @@ pub fn build_context_package(
         ast_sha256: sha256(&ast_bytes),
         runtime_sha256,
         slither_json_sha256: slither_json.map(|value| sha256(value.as_bytes())),
+        evm_version: None,
     };
     let mut slices = Vec::new();
     let mut unresolved = analysis.unresolved;
@@ -457,6 +460,24 @@ pub fn load_or_build_context_package(
     slither_json: Option<&str>,
     runtime_hex: Option<&str>,
 ) -> Result<CachedContextPackage, String> {
+    load_or_build_context_package_with_evm_version(
+        source_path,
+        solc_path,
+        cache_dir,
+        slither_json,
+        runtime_hex,
+        None,
+    )
+}
+
+pub fn load_or_build_context_package_with_evm_version(
+    source_path: &Path,
+    solc_path: &Path,
+    cache_dir: &Path,
+    slither_json: Option<&str>,
+    runtime_hex: Option<&str>,
+    evm_version: Option<&str>,
+) -> Result<CachedContextPackage, String> {
     let source = fs::read_to_string(source_path)
         .map_err(|error| format!("cannot read {}: {error}", source_path.display()))?;
     let source_name = source_path
@@ -487,11 +508,12 @@ pub fn load_or_build_context_package(
     let slither_sha256 = slither_json.map(|value| sha256(value.as_bytes()));
     let key = sha256(
         format!(
-            "{PACKAGE_SCHEMA}\n{}\n{compiler_sha256}\n{engine_sha256}\n{}\n{}\n{}",
+            "{PACKAGE_SCHEMA}\n{}\n{compiler_sha256}\n{engine_sha256}\n{}\n{}\n{}\n{}",
             source_name,
             sha256(source.as_bytes()),
             slither_sha256.as_deref().unwrap_or("-"),
-            runtime_sha256.as_deref().unwrap_or("-")
+            runtime_sha256.as_deref().unwrap_or("-"),
+            evm_version.unwrap_or("-")
         )
         .as_bytes(),
     );
@@ -536,6 +558,10 @@ pub fn load_or_build_context_package(
                         .pointer("/digests/slither_json_sha256")
                         .and_then(Value::as_str)
                         == slither_sha256.as_deref()
+                    && package
+                        .pointer("/digests/evm_version")
+                        .and_then(Value::as_str)
+                        == evm_version
                 {
                     return Ok(CachedContextPackage {
                         cache_hit: true,
@@ -548,8 +574,9 @@ pub fn load_or_build_context_package(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(format!("cannot read cache {}: {error}", path.display())),
     }
-    let solc_json = compile_source_ast_text(source_name, &source, solc_path)?;
-    let built = build_context_package(
+    let solc_json =
+        compile_source_ast_text_with_evm_version(source_name, &source, solc_path, evm_version)?;
+    let mut built = build_context_package(
         source_name,
         &source,
         &solc_json,
@@ -558,6 +585,7 @@ pub fn load_or_build_context_package(
         slither_json,
         runtime_hex,
     )?;
+    built.digests.evm_version = evm_version.map(str::to_owned);
     let package = serde_json::to_value(&built)
         .map_err(|error| format!("cannot encode context package: {error}"))?;
     let bytes = serde_json::to_vec(&package)

@@ -51,12 +51,30 @@ pub fn compile_source_ast_text(
     source: &str,
     solc_path: &Path,
 ) -> Result<String, String> {
+    compile_source_ast_text_with_evm_version(source_name, source, solc_path, None)
+}
+
+/// Compile a single source with an explicit EVM target when the verified
+/// deployment used opcodes unavailable in solc's default EVM version.
+pub fn compile_source_ast_text_with_evm_version(
+    source_name: &str,
+    source: &str,
+    solc_path: &Path,
+    evm_version: Option<&str>,
+) -> Result<String, String> {
     let mut sources = Map::new();
     sources.insert(source_name.to_owned(), json!({ "content": source }));
+    let mut settings = json!({ "outputSelection": { "*": { "": ["ast"] } } });
+    if let Some(version) = evm_version {
+        if version.is_empty() || !version.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+            return Err("EVM version must be a nonempty alphabetic solc identifier".into());
+        }
+        settings["evmVersion"] = json!(version);
+    }
     let input = json!({
         "language": "Solidity",
         "sources": sources,
-        "settings": { "outputSelection": { "*": { "": ["ast"] } } }
+        "settings": settings
     });
 
     let mut compiler = Command::new(solc_path)

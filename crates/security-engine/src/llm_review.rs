@@ -366,6 +366,23 @@ pub struct ReviewReport {
     pub stopped_after_error: bool,
 }
 
+/// Close an empty candidate batch locally. No provider, key or network is
+/// needed when deterministic triage found nothing to review.
+pub fn empty_review_report(plan: &ReviewPlan) -> ReviewReport {
+    ReviewReport {
+        schema: PLAN_SCHEMA.into(),
+        provider: "none".into(),
+        metrics: ReviewMetrics {
+            candidates_in_package: plan.candidates_in_package,
+            eligible_candidates: plan.eligible_candidates,
+            skipped_candidates: plan.skipped_candidates,
+            ..ReviewMetrics::default()
+        },
+        items: Vec::new(),
+        stopped_after_error: false,
+    }
+}
+
 fn bounded(value: &str, max_bytes: usize) -> String {
     let mut end = value.len().min(max_bytes);
     while !value.is_char_boundary(end) {

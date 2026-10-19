@@ -7,14 +7,17 @@ umask 077
 mkdir -m 700 -p private-output
 ./target/release/security-engine --context-package Vault.sol private-output/context-cache /usr/local/bin/solc > private-output/context.json
 ./target/release/security-engine --context-package Vault.sol private-output/context-cache /usr/local/bin/solc --slither slither.json --bytecode runtime.hex > private-output/context.json
+./target/release/security-engine --context-package flattened.sol private-output/context-cache ./solc-0.8.24 --evm-version cancun --slither slither.json --bytecode runtime.hex > private-output/context.json
 ```
 
 `solc-path` deve apontar para o arquivo executável do compilador, pois seus bytes entram na chave do cache. `--slither` aceita o JSON local opcional do M4; `--bytecode` aceita um runtime hex legado opcional. O runtime é normalizado, com remoção de metadados Solidity reconhecidos, e **somente identificado por hash**. Não se presume que corresponda ao source fornecido. Arquivos de saída podem conter trechos de código privado; use `umask 077`, diretórios privados e retenção controlada.
 
+`--evm-version` informa ao `solc` o alvo de compilação do deploy quando a versão padrão não aceita os opcodes presentes. O identificador entra no pacote e na chave do cache. Para um contrato multifile, o arquivo achatado é apenas uma visão de análise: faça a verificação de identidade com o bundle original e o runtime separadamente, como no [piloto Sepolia](REAL-EVM-PILOT.md).
+
 ## Chaves e reuso
 
 - SHA-256 do source exato, do executável `solc`, do binário do motor, da AST compilada e de cada função com corpo. Quando informado, registra também SHA-256 do JSON Slither e dos bytes do runtime normalizado.
-- A chave do cache combina versão do formato, nome do arquivo, source, compilador, motor, Slither e runtime. Um acerto válido pula `solc`, reconstrução da IR, triagem M4 e montagem dos slices. Mudança no motor ou em qualquer entrada invalida esse resultado.
+- A chave do cache combina versão do formato, nome do arquivo, source, compilador, motor, Slither, runtime e versão EVM opcional. Um acerto válido pula `solc`, reconstrução da IR, triagem M4 e montagem dos slices. Mudança no motor ou em qualquer entrada invalida esse resultado.
 - O cache é local, em diretório modo `0700`, com entradas regulares modo `0600`; o CLI rejeita entradas públicas. `cache_hit` distingue reuso de construção. O cache armazena apenas o pacote reduzido, não o source completo, o JSON bruto do Slither nem a resposta do compilador.
 
 ## Conteúdo de cada slice
