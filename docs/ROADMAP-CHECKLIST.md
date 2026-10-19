@@ -7,7 +7,7 @@ Esta lista acompanha a construção do Toupera Agent e o ciclo completo de anál
 - [x] Criar homepage responsiva em `homepage/`, com a marca alinhada a `toupeiraagente.tech` e a referência visual do usuário.
 - [x] Implementar fumaça, partículas, luz, parallax e etapas interativas, com pausa e respeito a movimento reduzido.
 - [x] Conferir desktop/mobile, navegação por teclado, controles e arquivos da página.
-- [ ] Publicar a raiz do domínio no VPS com HTTPS e verificar os redirecionamentos.
+- [x] Publicar a raiz do domínio no VPS com HTTPS e verificar os redirecionamentos (200 IPv4/IPv6, HTTP 308, www 301).
 
 Esta homepage apresenta a tecnologia; não executa análises públicas nem expõe os relatórios privados do motor.
 

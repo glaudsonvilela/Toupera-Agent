@@ -27,3 +27,5 @@ O serviço web usa o usuário `caddy`; o motor continua sob `toupera`. As única
 ## Conferência desta versão
 
 Antes da publicação: sintaxe JavaScript, resposta HTTP local, aparência desktop e mobile (390 × 844), navegação das abas por clique e teclado, pausa dos efeitos e ausência de mensagens de erro no navegador. Não houve execução de cenários de contratos durante a criação da homepage.
+
+Publicação concluída em 2026-10-19 UTC (2026-10-18 local): release `04a1473`, HTTPS 200 em IPv4/IPv6, HTTP 308 para HTTPS, `www` 301 para o domínio principal, assets 200 e caminho `private-output/` 404. Caddy 2.11.7 ativo e habilitado, com certificados Let's Encrypt. A página em produção foi aberta no navegador, com fonte e imagem carregadas e sem erros no console.

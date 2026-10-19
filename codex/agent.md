@@ -5,6 +5,7 @@
 - O usuário autorizou criar e publicar a homepage em `toupeiraagente.tech` e pediu corrigir a marca para **Toupeira Agente**. O nome histórico do repo não foi alterado.
 - Código estático em `homepage/`, com imagem ImageGen, fumaça/partículas Canvas, luz, parallax, abas por teclado e pausa de animações. Preservar `web/` não rastreado. Nenhum endpoint público para o motor ou seus relatórios foi criado.
 - Conferidos desktop/mobile, botões, teclado e pausa. Caddy preparado para servir apenas os arquivos públicos em `/var/www/toupeiraagente/current`; registrar estado final de HTTPS depois da publicação. Ver `homepage/README.md`.
+- Homepage publicada: HTTPS 200 em IPv4/IPv6, certificados Let's Encrypt, HTTP→HTTPS 308 e www→apex 301. Caddy 2.11.7 ativo/habilitado, TCP 80/443 liberadas no UFW. Release web `04a1473` em `/var/www/toupeiraagente/releases/`, selecionada por `current`; marcador web separado em `/var/www/toupeiraagente/.deployed-commit`. Produção conferida no navegador sem erros, assets 200 e caminho privado 404. Não confundir publicação da homepage com disponibilização pública do motor Rust.
 
 ## Objetivo ativo de engenharia forense
 

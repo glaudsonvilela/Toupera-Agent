@@ -1,6 +1,12 @@
 # VPS de desenvolvimento e análise
 
-Estado verificado em 2026-10-18 para `srv2074743.hstgr.cloud` (Hostinger KVM 4). Este servidor executa o motor localmente. O adaptador DeepSeek M6 está no CLI, mas não há chave, chamada externa, API ou serviço web implantado.
+Estado verificado em 2026-10-18 para `srv2074743.hstgr.cloud` (Hostinger KVM 4). Este servidor executa o motor localmente. O adaptador DeepSeek M6 está no CLI, mas não há chave ou API do motor implantada. A homepage pública foi adicionada conforme registro abaixo.
+
+## Homepage pública — Toupeira Agente
+
+`https://toupeiraagente.tech/` serve a homepage estática de `homepage/`. A marca foi corrigida conforme o domínio. Caddy 2.11.7, do repositório oficial, está ativo e habilitado, com certificados Let's Encrypt e renovação automática. HTTP redireciona para HTTPS (308); `www` redireciona para o domínio principal (301). IPv4 `177.7.53.155` e IPv6 `2a02:4780:75:933f::1` retornaram HTTPS 200. UFW permite TCP 80/443 além do SSH.
+
+A raiz `/var/www/toupeiraagente/current` aponta para a release `04a1473` em `releases/`. Só index, CSS, JS, robots, sitemap e assets são públicos. O usuário `caddy` não recebeu acesso aos relatórios privados de `toupera`. A API administrativa permanece em loopback. O marcador `/var/www/toupeiraagente/.deployed-commit` identifica a release web; o marcador do motor em `/srv/toupera-agent/` permanece separado. Navegador desktop/mobile, controles, teclado, assets e redirecionamentos foram conferidos. Prompt e licença da arte/fonte estão em `homepage/README.md` e `homepage/assets/`.
 
 ## Recursos e acesso
 

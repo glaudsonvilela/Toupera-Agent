@@ -5,6 +5,7 @@
 - Pedido do usuário: criar e publicar uma homepage visual em `toupeiraagente.tech`, baseada na referência do robô branco/azul, com fumaça e animações. A marca pública deve ser **Toupeira Agente**, alinhada ao domínio.
 - Implementação em `homepage/`, separada do `web/` não rastreado de outro fluxo. HTML/CSS/JS estáticos, fundo ImageGen derivado da referência, fonte local, fumaça Canvas, partículas, luz e etapas interativas. Não há formulário público conectado ao motor.
 - Conferidos no navegador desktop/mobile: composição, abas, navegação por teclado e pausa dos efeitos. Preparada configuração Caddy/HTTPS para a publicação solicitada; registrar resultado de produção ao concluir. Ver `homepage/README.md` para assets, prompt e estrutura de publicação.
+- Publicação concluída: `https://toupeiraagente.tech/` retorna 200 em IPv4/IPv6; HTTP redireciona por 308 e `www` por 301 ao domínio principal. Caddy 2.11.7 instalado pelo repositório oficial, ativo e habilitado, com certificados Let's Encrypt para ambos os hosts. UFW libera TCP 80/443 além do SSH. Raiz pública `/var/www/toupeiraagente/current`, release `04a1473`; somente arquivos da homepage. Artefatos privados retornam 404. Navegador de produção sem erros; imagem WebP 172.206 bytes e fonte local. Versão web em `/var/www/toupeiraagente/.deployed-commit`, separada do marcador do motor.
 
 ## Objetivo ativo — scanner forense automático em Rust (2026-10-18)
 
