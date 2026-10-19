@@ -59,6 +59,8 @@ pub struct ScenarioCase {
     pub trace_jump_sites: Option<usize>,
     pub observed_jump_sites: Vec<String>,
     pub observed_branch_outcomes: Vec<String>,
+    pub root_storage_reads: Vec<String>,
+    pub root_storage_writes: Vec<String>,
     pub discrepancies: Vec<String>,
     pub limitations: Vec<String>,
 }
@@ -71,6 +73,7 @@ pub struct ObservedSequenceTransition {
     pub actor: String,
     pub state_continuity: bool,
     pub changed_fields: Vec<String>,
+    pub prior_writes_read_next: Vec<String>,
     pub evidence_class: String,
 }
 
@@ -428,7 +431,15 @@ fn append_guided_case(
     cases.push(case);
 }
 
-fn trace_steps(rpc: &Rpc, hash: &str) -> Result<(usize, Vec<String>, Vec<String>), String> {
+struct TraceEvidence {
+    steps: usize,
+    jumps: Vec<String>,
+    outcomes: Vec<String>,
+    root_storage_reads: Vec<String>,
+    root_storage_writes: Vec<String>,
+}
+
+fn trace_steps(rpc: &Rpc, hash: &str) -> Result<TraceEvidence, String> {
     let value = rpc.call(
         "debug_traceTransaction",
         json!([hash,{"disableMemory":true,"disableStack":false,"disableStorage":true}]),
@@ -439,9 +450,31 @@ fn trace_steps(rpc: &Rpc, hash: &str) -> Result<(usize, Vec<String>, Vec<String>
         .ok_or("trace has no structLogs")?;
     let mut jumps = BTreeSet::new();
     let mut outcomes = BTreeSet::new();
+    let mut root_storage_reads = BTreeSet::new();
+    let mut root_storage_writes = BTreeSet::new();
     for log in logs {
+        let depth = log.get("depth").and_then(Value::as_u64).unwrap_or(0);
+        if depth == 1 {
+            if let Some(kind) = log.get("op").and_then(Value::as_str) {
+                if matches!(kind, "SLOAD" | "SSTORE") {
+                    if let Some(slot) = log
+                        .get("stack")
+                        .and_then(Value::as_array)
+                        .and_then(|stack| stack.last())
+                        .and_then(Value::as_str)
+                        .and_then(|word| hex_u256_padded(word).ok())
+                    {
+                        let slot = format!("0x{}", hex::encode(slot.to_be_bytes::<32>()));
+                        if kind == "SLOAD" {
+                            root_storage_reads.insert(slot);
+                        } else {
+                            root_storage_writes.insert(slot);
+                        }
+                    }
+                }
+            }
+        }
         if log.get("op").and_then(Value::as_str) == Some("JUMPI") {
-            let depth = log.get("depth").and_then(Value::as_u64).unwrap_or(0);
             let pc = log.get("pc").and_then(Value::as_u64).unwrap_or(0);
             jumps.insert(format!("{depth}:{pc}"));
             if let Some(stack) = log.get("stack").and_then(Value::as_array) {
@@ -462,11 +495,13 @@ fn trace_steps(rpc: &Rpc, hash: &str) -> Result<(usize, Vec<String>, Vec<String>
             }
         }
     }
-    Ok((
-        logs.len(),
-        jumps.into_iter().collect(),
-        outcomes.into_iter().collect(),
-    ))
+    Ok(TraceEvidence {
+        steps: logs.len(),
+        jumps: jumps.into_iter().collect(),
+        outcomes: outcomes.into_iter().collect(),
+        root_storage_reads: root_storage_reads.into_iter().collect(),
+        root_storage_writes: root_storage_writes.into_iter().collect(),
+    })
 }
 
 fn hex_u256_padded(value: &str) -> Result<U256, String> {
@@ -516,6 +551,8 @@ fn run_case(
         trace_jump_sites: None,
         observed_jump_sites: Vec::new(),
         observed_branch_outcomes: Vec::new(),
+        root_storage_reads: Vec::new(),
+        root_storage_writes: Vec::new(),
         discrepancies: Vec::new(),
         limitations: Vec::new(),
     };
@@ -593,11 +630,13 @@ fn run_case(
             .push("operation completed above the reported limit; review limit semantics".into());
     }
     match trace_steps(rpc, &hash) {
-        Ok((steps, jumps, outcomes)) => {
-            case.trace_steps = Some(steps);
-            case.trace_jump_sites = Some(jumps.len());
-            case.observed_jump_sites = jumps;
-            case.observed_branch_outcomes = outcomes;
+        Ok(trace) => {
+            case.trace_steps = Some(trace.steps);
+            case.trace_jump_sites = Some(trace.jumps.len());
+            case.observed_jump_sites = trace.jumps;
+            case.observed_branch_outcomes = trace.outcomes;
+            case.root_storage_reads = trace.root_storage_reads;
+            case.root_storage_writes = trace.root_storage_writes;
         }
         Err(error) => case
             .limitations
@@ -1467,6 +1506,12 @@ fn run_scenarios(
                     && after.actor_asset_balance == next_before.actor_asset_balance
                     && after.actor_share_balance == next_before.actor_share_balance,
                 changed_fields,
+                prior_writes_read_next: previous
+                    .root_storage_writes
+                    .iter()
+                    .filter(|slot| next.root_storage_reads.contains(slot))
+                    .cloned()
+                    .collect(),
                 evidence_class: "observed_in_child_anvil_sequence".into(),
             })
         })
