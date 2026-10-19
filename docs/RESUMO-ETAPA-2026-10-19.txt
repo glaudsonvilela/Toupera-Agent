@@ -1,0 +1,10 @@
+TOUPERA — RESUMO DA ETAPA (2026-10-19)
+
+1. O motor Rust ganhou um filtro local entre a coleta de dados e a etapa de IA. Ele confere os hashes dos arquivos, o contrato, o bloco e as versões dos relatórios.
+2. As variáveis são ordenadas pelas relações com funções econômicas, percorrendo até quatro ligações de dependência. O relatório aponta pontos observados em apenas um sentido e sugere famílias de novas entradas.
+3. O modo de cenários no VPS passou a variar valores perto das escalas de asset e shares. Limite: 16 casos adicionais; parada antecipada depois de oito casos sem resultado novo.
+4. A etapa de IA passou a exigir o arquivo do filtro. Ela recebe uma candidata somente quando uma diferença concreta aparece em duas sequências distintas, com dados locais consistentes.
+5. Na rodada do VPS houve 44 casos: 40 concluídos e quatro reversões esperadas. As oito variações adicionais pararam pelo critério de platô. Não surgiu decisão nova nem diferença registrada. O filtro gerou zero candidatas elegíveis e zero pedidos à IA. Nenhuma chamada à API foi feita.
+6. O código foi formatado e compilado. A rodada local foi executada somente no VPS. Os arquivos detalhados permanecem privados no servidor.
+
+Limite atual: o motor ainda não cria novas ordens e estados a partir da condição específica de cada ponto observado. O resultado desta rodada não determina que todos os comportamentos do contrato foram cobertos.

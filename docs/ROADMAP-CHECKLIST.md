@@ -202,3 +202,5 @@ A grade ampliada final no VPS produziu 24 cenários: 22 concluídos, 2 reversõe
 ## Estados do achado
 
 `UNVERIFIED → REJECTED | REPRODUCED → CONFIRMED → REPORT_READY`
+
+Etapa de triagem 2026-10-19: o modo guiado executou oito variações próximas às escalas observadas, parou pelo platô e gerou 44 casos (40 concluídos, quatro reversões esperadas), zero decisões novas e zero diferenças. O filtro M4/lente/cenários/cobertura/M5 manteve zero chaves elegíveis e plano M6 vazio. Dependências são percorridas até quatro arestas para priorizar variáveis ligadas a usos econômicos; alcançar o limite não prova completude. Artefatos no VPS privado, sem API.

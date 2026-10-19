@@ -1,7 +1,7 @@
 //! Deterministic, local evidence triage before an external review request.
 //! Scores direct the next bounded scenario round; scores never promote a finding.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::path::Path;
 
@@ -19,6 +19,7 @@ pub struct FocusVariable {
     pub name: String,
     pub scope: String,
     pub score: i64,
+    pub distance_to_economic_use: usize,
     pub reasons: Vec<String>,
 }
 
@@ -179,6 +180,84 @@ pub fn filter_evidence(
         return Err("context has no normalized runtime digest".into());
     }
 
+    let economic_functions = [
+        "deposit",
+        "mint",
+        "withdraw",
+        "redeem",
+        "totalassets",
+        "converttoshares",
+        "converttoassets",
+        "previewdeposit",
+        "previewmint",
+        "previewwithdraw",
+        "previewredeem",
+        "maxdeposit",
+        "maxmint",
+        "maxwithdraw",
+        "maxredeem",
+    ];
+    let mut incoming: BTreeMap<i64, Vec<i64>> = BTreeMap::new();
+    for edge in lens["edges"].as_array().ok_or("dependency edges missing")? {
+        if let (Some(from), Some(to)) = (edge["from_ast_id"].as_i64(), edge["to_ast_id"].as_i64()) {
+            incoming.entry(to).or_default().push(from);
+        }
+    }
+    let mut distances = BTreeMap::<i64, usize>::new();
+    let mut queue = VecDeque::new();
+    for item in lens["variables"]
+        .as_array()
+        .ok_or("variable list missing")?
+    {
+        let Some(id) = item["ast_id"].as_i64() else {
+            continue;
+        };
+        let direct = item["uses"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|use_site| {
+                use_site["function"].as_str().is_some_and(|name| {
+                    economic_functions.contains(&name.to_ascii_lowercase().as_str())
+                })
+            });
+        if direct {
+            distances.insert(id, 0);
+            queue.push_back(id);
+        }
+    }
+    for link in lens["state_transition_links"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        let relevant = ["writer_function", "reader_function"].iter().any(|field| {
+            link[*field].as_str().is_some_and(|name| {
+                economic_functions.contains(&name.to_ascii_lowercase().as_str())
+            })
+        });
+        if relevant {
+            if let Some(id) = link["state_variable_ast_id"].as_i64() {
+                if let std::collections::btree_map::Entry::Vacant(entry) = distances.entry(id) {
+                    entry.insert(0);
+                    queue.push_back(id);
+                }
+            }
+        }
+    }
+    while let Some(id) = queue.pop_front() {
+        let distance = distances[&id];
+        if distance >= 4 {
+            continue;
+        }
+        for predecessor in incoming.get(&id).into_iter().flatten() {
+            if let std::collections::btree_map::Entry::Vacant(entry) = distances.entry(*predecessor)
+            {
+                entry.insert(distance + 1);
+                queue.push_back(*predecessor);
+            }
+        }
+    }
     let mut focus = Vec::new();
     for item in lens["variables"]
         .as_array()
@@ -187,7 +266,10 @@ pub fn filter_evidence(
         let Some(ast_id) = item["ast_id"].as_i64() else {
             continue;
         };
-        let score = item["priority_score"].as_i64().unwrap_or(0);
+        let Some(distance) = distances.get(&ast_id).copied() else {
+            continue;
+        };
+        let score = item["priority_score"].as_i64().unwrap_or(0) + 24_i64 / (distance as i64 + 1);
         if score <= 0 {
             continue;
         }
@@ -199,14 +281,16 @@ pub fn filter_evidence(
             .take(8)
             .map(str::to_owned)
             .collect::<Vec<_>>();
-        if item["declaration_role"] == "state" {
+        if item["category"] == "persistent_state" {
             reasons.push("state_declaration".into());
         }
+        reasons.push(format!("upstream_hops_to_economic_use:{distance}"));
         focus.push(FocusVariable {
             ast_id,
             name: item["name"].as_str().unwrap_or("").to_owned(),
             scope: item["scope"].as_str().unwrap_or("").to_owned(),
             score,
+            distance_to_economic_use: distance,
             reasons,
         });
     }

@@ -115,10 +115,12 @@ A revisão de código M5 `acd4d48` foi sincronizada e compilada em release no VP
 
 ## Revisão de hipóteses M6
 
-`--llm-plan <context.json>` monta o plano de perguntas sem rede. `--llm-review <context.json> --provider deepseek --allow-external --review-cache <diretório-privado>` pode enviar slices à API DeepSeek quando a chave `TOUPERA_DEEPSEEK_API_KEY` estiver no ambiente e o escopo permitir processamento externo. O cache de respostas exige `0700`/`0600`. Nenhuma chave foi instalada e nenhuma chamada DeepSeek foi executada nesta etapa. O CLI não roda como serviço. Leia `docs/LLM-REVIEW.md` antes de usar o modo externo.
+`--llm-plan <context.json> --evidence-filter <filter.json>` monta o plano de perguntas sem rede. `--llm-review <context.json> --evidence-filter <filter.json> --provider deepseek --allow-external --review-cache <diretório-privado>` pode enviar slices à API DeepSeek quando a chave `TOUPERA_DEEPSEEK_API_KEY` estiver no ambiente e o escopo permitir processamento externo. O cache de respostas exige `0700`/`0600`. Nenhuma chave foi instalada e nenhuma chamada DeepSeek foi executada nesta etapa. O CLI não roda como serviço. Leia `docs/LLM-REVIEW.md` antes de usar o modo externo.
 
 A revisão de código M6 `6ff127a` foi sincronizada e compilada em release no VPS sob `toupera` em 2026-10-18. O marcador `.deployed-commit` registrou essa revisão antes do complemento documental final; nenhum plano M6, chamada DeepSeek ou fixture foi executado no VPS.
 
 ## Operação segura
 
 Use apenas fontes próprias, forks locais ou programas com autorização explícita. Antes de analisar outro alvo, confirme o escopo. Nunca registre chave da API, senha ou chave SSH privada no repositório, nos argumentos de linha de comando ou nos logs. A chave DeepSeek deverá ser injetada no ambiente apenas quando o uso externo for autorizado; ela não foi instalada. Não exponha `anvil` na rede pública.
+
+Rodada de triagem local 2026-10-19: serviço transitório `toupera-evidence-feedback-20261019.service` terminou com status 0. Artefatos privados em `private-output/real-targets/yield-vault/evidence-filter-v1/`: 44 casos, oito variações adicionais, parada após oito sem resultado novo; 40 operações concluídas, quatro reversões esperadas, zero falhas RPC ou divergências entre pré-checagem e transação. Filtro: zero diferença observada, zero chaves elegíveis e plano M6 de zero pedidos. A API não foi chamada. A versão final do filtro prioriza dependências até quatro arestas antes dos usos econômicos.
