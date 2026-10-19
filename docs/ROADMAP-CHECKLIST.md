@@ -2,6 +2,15 @@
 
 Esta lista acompanha a construção do Toupera Agent e o ciclo completo de análise de cada alvo. Uma hipótese só avança com evidência suficiente.
 
+## Homepage pública — Toupeira Agente
+
+- [x] Criar homepage responsiva em `homepage/`, com a marca alinhada a `toupeiraagente.tech` e a referência visual do usuário.
+- [x] Implementar fumaça, partículas, luz, parallax e etapas interativas, com pausa e respeito a movimento reduzido.
+- [x] Conferir desktop/mobile, navegação por teclado, controles e arquivos da página.
+- [ ] Publicar a raiz do domínio no VPS com HTTPS e verificar os redirecionamentos.
+
+Esta homepage apresenta a tecnologia; não executa análises públicas nem expõe os relatórios privados do motor.
+
 ## Construção do motor
 
 ### M0 — Fundação

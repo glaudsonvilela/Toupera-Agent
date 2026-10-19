@@ -1,5 +1,11 @@
 # Instruções para futuras sessões do Codex
 
+## Homepage pública — Toupeira Agente
+
+- O usuário autorizou criar e publicar a homepage em `toupeiraagente.tech` e pediu corrigir a marca para **Toupeira Agente**. O nome histórico do repo não foi alterado.
+- Código estático em `homepage/`, com imagem ImageGen, fumaça/partículas Canvas, luz, parallax, abas por teclado e pausa de animações. Preservar `web/` não rastreado. Nenhum endpoint público para o motor ou seus relatórios foi criado.
+- Conferidos desktop/mobile, botões, teclado e pausa. Caddy preparado para servir apenas os arquivos públicos em `/var/www/toupeiraagente/current`; registrar estado final de HTTPS depois da publicação. Ver `homepage/README.md`.
+
 ## Objetivo ativo de engenharia forense
 
 - O usuário exige que o Rust automatize a reconstrução histórica, a análise de transações e estado, invariantes, simulação e retorno da quarentena ao mapa, sem depender da IA para criar o contexto. O mapa/sondagem atual é triagem; não chamá-lo de scanner forense completo.

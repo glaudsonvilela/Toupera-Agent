@@ -1,0 +1,26 @@
+{
+    admin localhost:2019
+}
+
+toupeiraagente.tech {
+    root * /var/www/toupeiraagente/current
+    encode zstd gzip
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options DENY
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+        Strict-Transport-Security "max-age=31536000"
+        -Server
+    }
+    @assets path /assets/*
+    header @assets Cache-Control "public, max-age=86400"
+    @documents path / /index.html /style.css /app.js
+    header @documents Cache-Control "no-cache"
+    file_server
+}
+
+www.toupeiraagente.tech {
+    redir https://toupeiraagente.tech{uri} permanent
+}

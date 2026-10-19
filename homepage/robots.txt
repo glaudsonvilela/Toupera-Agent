@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://toupeiraagente.tech/sitemap.xml

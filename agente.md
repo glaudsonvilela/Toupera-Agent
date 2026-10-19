@@ -1,5 +1,11 @@
 # Memória operacional — Toupera Agent
 
+## Homepage pública — Toupeira Agente
+
+- Pedido do usuário: criar e publicar uma homepage visual em `toupeiraagente.tech`, baseada na referência do robô branco/azul, com fumaça e animações. A marca pública deve ser **Toupeira Agente**, alinhada ao domínio.
+- Implementação em `homepage/`, separada do `web/` não rastreado de outro fluxo. HTML/CSS/JS estáticos, fundo ImageGen derivado da referência, fonte local, fumaça Canvas, partículas, luz e etapas interativas. Não há formulário público conectado ao motor.
+- Conferidos no navegador desktop/mobile: composição, abas, navegação por teclado e pausa dos efeitos. Preparada configuração Caddy/HTTPS para a publicação solicitada; registrar resultado de produção ao concluir. Ver `homepage/README.md` para assets, prompt e estrutura de publicação.
+
 ## Objetivo ativo — scanner forense automático em Rust (2026-10-18)
 
 O usuário rejeitou tratar o mapa atual como auditoria forense completa. O motor deve produzir o contexto por conta própria, usando aritmética EVM de 256 bits, cronologia integral desde o deploy quando o RPC permitir, transações/recibos/rastros, evolução de estado, invariantes econômicas, simulação local e cobertura mensurável. O segundo motor de quarentena recebe divergências concretas; o primeiro refaz o mapa. IA só interpreta hipóteses ainda ambíguas depois dos filtros determinísticos.
