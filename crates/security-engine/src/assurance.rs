@@ -283,6 +283,10 @@ pub fn guard_wcop_job(job: &Path) -> Result<Value, String> {
         "trace-reconcile.json",
         "scenarios.json",
         "coverage.json",
+        "adaptive.json",
+        "adaptive-state.json",
+        "adaptive-trace.json",
+        "adaptive-reconcile.json",
     ];
     let mut reasons = Vec::<String>::new();
     let mut intact = HashSet::new();
@@ -514,6 +518,36 @@ pub fn guard_wcop_job(job: &Path) -> Result<Value, String> {
                 "propriedade ou vínculo da fonte não concluído"
             },
             &["scope.json"],
+        ));
+    }
+    if ["adaptive.json", "adaptive-state.json", "adaptive-trace.json", "adaptive-reconcile.json"]
+        .iter().all(|name| intact.contains(name)) {
+        let summary = json_at(job, "adaptive.json", 1_000_000)?;
+        let state = json_at(job, "adaptive-state.json", 5_000_000)?;
+        let adaptive_trace = json_at(job, "adaptive-trace.json", 5_000_000)?;
+        let review = json_at(job, "adaptive-reconcile.json", 5_000_000)?;
+        let trace_bytes = bytes_at(job, "adaptive-trace.json", 5_000_000)?;
+        let code_hash = engine.as_ref()
+            .and_then(|value| value["normalized_hex"].as_str())
+            .and_then(|value| code_bytes(value).ok())
+            .map(|value| digest(&value));
+        let valid = identity_ok
+            && summary["contract"].as_str() == Some(address)
+            && summary["block"].as_u64() == Some(block)
+            && summary["engine_code_sha256"].as_str() == code_hash.as_deref()
+            && summary["trace_sha256"].as_str() == Some(digest(&trace_bytes).as_str())
+            && summary["attempts"].as_u64() == state["attempts"].as_array().map(|v| v.len() as u64)
+            && summary["attempts"].as_u64().is_some_and(|v| v <= 40)
+            && summary["combined_pcs"].as_u64() == state["visited_pcs"].as_array().map(|v| v.len() as u64)
+            && adaptive_trace["engine_code_sha256"] == summary["engine_code_sha256"]
+            && review["engine_code_sha256"] == summary["engine_code_sha256"]
+            && review["trace_errors"].as_u64() == Some(0);
+        claims.push(claim(
+            "adaptive", "Ciclo local orientado por resultados",
+            if valid { "OBSERVADO" } else { "INCONCLUSIVO" },
+            if valid { "tentativas limitadas e caminhos novos ligados ao runtime fixado" }
+            else { "ciclo ou identidade incompletos" },
+            &["adaptive.json", "adaptive-state.json", "adaptive-trace.json", "adaptive-reconcile.json"],
         ));
     }
     if intact.contains("tools.json") {

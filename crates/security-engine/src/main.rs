@@ -9,7 +9,7 @@ use security_engine::{
     build_variable_lens, compare_with_solc_contract, empty_review_report, filter_evidence,
     finalize_evidence_bundle, gate_review_plan, guard_wcop_job, import_gigahorse_tac,
     import_heimdall_abi, judge_foundry_case, load_or_build_context_package_with_forensic,
-    prepare_evidence_bundle_with_guard, prepare_foundry_cases, prepare_review_plan, reassess_cached_map,
+    plan_adaptive_step, prepare_evidence_bundle_with_guard, prepare_foundry_cases, prepare_review_plan, reassess_cached_map,
     reconcile_trace, reconstruct_bytecode_hex, reconstruct_source_file, reject_foundry_case,
     run_forensic_probe, run_guided_scenarios, run_local_scenarios, run_review,
 };
@@ -22,6 +22,28 @@ fn main() -> ExitCode {
         );
         return ExitCode::FAILURE;
     };
+    if source == "--wcop-adapt-plan" {
+        let arguments: Vec<_> = args.collect();
+        if arguments.len() != 2 {
+            eprintln!("usage: security-engine --wcop-adapt-plan <engine.json> <state.json>");
+            return ExitCode::FAILURE;
+        }
+        let result = (|| -> Result<serde_json::Value, String> {
+            let engine: serde_json::Value = serde_json::from_slice(&fs::read(&arguments[0]).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            let state: serde_json::Value = serde_json::from_slice(&fs::read(&arguments[1]).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            plan_adaptive_step(&engine, &state)
+        })();
+        return match result {
+            Ok(value) => {
+                if serde_json::to_writer(std::io::stdout(), &value).is_err() { return ExitCode::FAILURE; }
+                println!();
+                ExitCode::SUCCESS
+            }
+            Err(error) => { eprintln!("{error}"); ExitCode::FAILURE }
+        };
+    }
     if source == "--wcop-guard" {
         let arguments: Vec<_> = args.collect();
         if arguments.len() != 1 {

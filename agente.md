@@ -388,3 +388,12 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 - A rede continua compartilhada para leituras RPC e consulta de fonte. Não há isolamento de rede por ferramenta nem garantia formal; o processo coordenador do painel mantém acesso aos trabalhos para reunir resultados.
 
 - Rodada final `3fdf10704a64482c`: isolamento por execução ativo, outro trabalho oculto, seis ferramentas aplicáveis concluídas, 18/18 cenários locais, caminhos reconciliados e decisão Rust vinculada com ressalva. Pacote M8 ligado permanece `PENDING_REPRODUCTION`. Ver `docs/ISOLAMENTO-E-VINCULO-M8-2026-10-19.md`.
+
+
+## Ciclo adaptativo local — etapa 1 (2026-10-19)
+
+- O Rust ganhou `--wcop-adapt-plan <engine.json> <state.json>`. Ele valida o runtime fixado, aceita apenas candidatos limitados do wCOP, lê as observações anteriores e escolhe a próxima combinação por ganho real de PCs/transições, famílias pouco usadas e blocos ainda não vistos. O limite é 32 tentativas ou doze sem ganho.
+- `tools/wcop_adaptive.py` executa a escolha só na cópia Anvil do bloco. Gera combinações de transferência, autorização, emissão, retirada, pausa e papéis a partir de contas observadas; após cada resultado entrega ao Rust o ganho visto. Compara variações de oferta, saldos, autorização e estado de pausa; divergências ficam como sinais para revisão, não como falhas confirmadas.
+- O trabalhador chama o ciclo após a leitura inicial, confere os caminhos pelo Rust e inclui os arquivos `adaptive*.json` no manifesto. O guardião verifica identidade, hashes, bloco e contagens antes de classificar a afirmação. Não há envio de transações à rede pública.
+- Trabalho integrado `fe5aa294573f4571`, bloco `26228348`: 18 escolhas, 7 operações aplicadas somente na cópia local, 34 PCs e 2 transições novos além da leitura inicial (2504/5377 PCs em conjunto). O ciclo parou após doze escolhas sem ganho; não houve diferença registrada nas verificações de estado feitas. A reconciliação Rust teve zero erros e o guardião marcou apenas a afirmação limitada do ciclo como `OBSERVADO`.
+- O executor aguarda o recibo local antes de considerar uma operação aplicada e preserva valores grandes como inteiros decimais exatos entre Python e Rust. Detalhes e limites: `docs/CICLO-ADAPTATIVO-2026-10-19.md`.

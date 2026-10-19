@@ -334,3 +334,11 @@ Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode 
 - [x] Separar cada ferramenta por namespaces de montagem/PID/IPC/host, com um único trabalho visível e gravável; Mythril usa cache privado. A rede permanece compartilhada para leituras.
 
 - Rodada final `3fdf10704a64482c`: trabalho privado isolado, seis ferramentas aplicáveis concluídas, 18/18 cenários Foundry e vínculo M8 em `PENDING_REPRODUCTION`. Resultado documentado em `docs/ISOLAMENTO-E-VINCULO-M8-2026-10-19.md`.
+
+## Ciclo adaptativo local
+
+- [x] Planejador Rust orientado por feedback do runtime e das tentativas anteriores.
+- [x] Executor local gera combinações de operação/conta/valor e registra diferenças para revisão.
+- [x] Ligar o ciclo ao trabalho do painel e ao manifesto do guardião.
+- [x] Conferir a rodada completa no VPS, medir ganhos e ajustar a confirmação das operações locais e a passagem de valores grandes. Trabalho `fe5aa294573f4571`: 18 escolhas, 7 operações locais aplicadas, +34 PCs, +2 transições, zero diferenças registradas; ver `docs/CICLO-ADAPTATIVO-2026-10-19.md`.
+- [ ] Ampliar a gramática e os estados explorados antes de falar em cobertura mais ampla.

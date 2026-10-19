@@ -1,6 +1,7 @@
 //! Foundational types for focused Solidity/EVM economic security analysis.
 
 mod adaptive_chip;
+mod adaptive_cycle;
 mod assurance;
 mod bytecode;
 mod bytecode_companions;
@@ -27,6 +28,7 @@ mod variable_lens;
 
 use serde::Serialize;
 
+pub use adaptive_cycle::plan_adaptive_step;
 pub use assurance::guard_wcop_job;
 pub use bytecode::{
     BytecodeAnalysis, BytecodeBlock, BytecodeEffect, BytecodeEffectKind, BytecodeEntrySummary,

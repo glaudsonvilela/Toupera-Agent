@@ -402,7 +402,9 @@ def snapshot_manifest(job, address, block_number, block_hash, implementation, sl
     names = ("smart.md", "runtime.hex", "implementation.hex", "engine.json",
              "engine-impl.json", "compiler-input.json", "compiler-output.json",
              "scope.json", "history.json", "roles.json", "tools.json",
-             "trace.json", "trace-reconcile.json", "scenarios.json", "coverage.json")
+             "trace.json", "trace-reconcile.json", "scenarios.json", "coverage.json",
+             "adaptive.json", "adaptive-state.json", "adaptive-trace.json",
+             "adaptive-reconcile.json")
     artifacts = {}
     for name in names:
         path = job / name
@@ -571,6 +573,8 @@ def worker(job_id):
                          roles, implementation)
         deep = deep_review(job, impl_source, impl_runtime, impl_engine if impl_summary else None, roles)
         trace_review = None
+        adaptive_summary = None
+        adaptive_review = None
         if history and roles and impl_summary:
             stage(job, "Caminhos", "Lendo PCs da implementação em cópia local do bloco.")
             try:
@@ -586,6 +590,23 @@ def worker(job_id):
                     save(job / "trace-error.txt", "motor não concluiu a ligação dos caminhos\n")
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.TimeoutExpired) as error:
                 save(job / "trace-error.txt", type(error).__name__ + ": " + str(error)[:160] + "\n")
+        if trace_review and trace_review.get("trace_errors") == 0:
+            stage(job, "Ciclo", "Escolhendo a próxima operação pelo ganho observado na cópia local.")
+            adaptive_code = command([sys.executable, str(ROOT / "tools/wcop_adaptive.py"), job_id],
+                                    job / "tools/adaptive.log", 270)
+            if adaptive_code == 0 and (job / "adaptive-trace.json").is_file():
+                review_code = command([str(ENGINE), "--wcop-trace",
+                                       str(job / "engine-impl.json"),
+                                       str(job / "adaptive-trace.json")],
+                                      job / "adaptive-reconcile.json", 45)
+                if review_code == 0:
+                    adaptive_summary = jread(job / "adaptive.json")
+                    adaptive_review = jread(job / "adaptive-reconcile.json")
+                else:
+                    save(job / "adaptive-error.txt", "ligação dos caminhos não concluiu\n")
+            else:
+                save(job / "adaptive-error.txt", "ciclo local não concluiu; saída " +
+                     str(adaptive_code) + "\n")
         for item in rows:
             if item["name"] in ("Echidna", "Medusa"):
                 state = (deep.get("fuzzers") or {}).get(item["name"])
@@ -702,6 +723,17 @@ def worker(job_id):
                       " transições observadas ainda fora do mapa estático. Dúvidas em PCs visitados: " +
                       str(trace_review["observed_uncertainties"]) + ".\n")
             final += ("- A leitura reúne chamadas isoladas e uma sequência local; PCs restantes podem aparecer em outros estados.\n")
+        if adaptive_summary and adaptive_review:
+            final += ("- Ciclo orientado por resultados: " + str(adaptive_summary["attempts"]) +
+                      " escolhas locais; " + str(adaptive_summary["new_pcs"]) +
+                      " PCs e " + str(adaptive_summary["new_edges"]) +
+                      " transições novas além da leitura inicial; estado " +
+                      str(adaptive_summary["status"]) + ".\n")
+            final += ("- Diferenças a revisar no ciclo: " +
+                      str(len(adaptive_summary.get("deviations") or [])) +
+                      "; nenhuma é conclusão automática. Arquivos detalhados no VPS privado.\n")
+        elif (job / "adaptive-error.txt").is_file():
+            final += "- Ciclo orientado por resultados: inconclusivo nesta rodada.\n"
         for error in deep.get("errors") or []:
             final += "- Limite: " + error + ".\n"
         final += ("- Ainda sem cobertura total de caminhos e estados; uma função exercitada uma vez pode ter "
