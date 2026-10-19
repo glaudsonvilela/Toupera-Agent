@@ -19,6 +19,12 @@ Registrar progresso em `docs/ROADMAP-CHECKLIST.md` e neste arquivo a cada etapa.
 - A conclusão vale apenas para o estado e a grade observados. A correspondência PC→função Solidity, alcance dos 60 PCs não vistos e cobertura de estados ainda não foram medidos. Não tratar o resumo como aprovação do contrato.
 - Nova proposta pesquisada em fontes primárias: [segunda leitura por variável](docs/VARIABLE-LENS.md). Inventariar cada declaração e seguir origem→transformação→guarda→escrita/efeito com AST/layout, SlithIR SSA e source maps; Gigahorse é apoio tentativo quando source não corresponde. O motor ainda não executa a cadeia completa. Próximo recorte: inventário com proveniência, depois ligação a PCs e geração de estados no VPS. Atualizar `codex/agent.md` após cada etapa.
 
+## Etapa implementada — primeiro grafo por variável
+
+- `--variable-lens` valida manifesto/relatórios/hashes e executa offline no VPS. `variable-lens-v4.json` registrou 742 declarações do source achatado, 180 relações sintáticas, 7 variáveis de estado persistente, 2 `immutable`; 50 PCs `JUMPI` observados, 18 faixas amplas sem atribuição e 17 faixas curtas com referências candidatas. Não houve novo fork, RPC ou IA.
+- Exemplo de cadeia: `cap_`/`newCap` → `depositCap` → `cap` em `maxDeposit`, com spans e layout da compilação de análise (slot 6). Não atribuir esse slot ao runtime implantado sem validação específica. Fonte verificada e source achatado têm AST IDs diferentes; os PCs mantêm vínculo apenas tentativo por source map.
+- Leia `docs/VARIABLE-LENS.md`. Próximos gates: dependências SSA do Slither, fluxo entre funções/chaves, ligação forte source verificado→runtime e cenários novos de estado/ator/ordem no VPS. Atualizar `codex/agent.md` e checklist após a próxima etapa; preservar `web/`.
+
 ## Etapa mais recente — cronologia forense automática (2026-10-18)
 
 - `forensic_probe.rs` usa `alloy-primitives::U256`, busca logs desde o deploy quando o RPC fornece arquivo, seleciona endpoint pela profundidade histórica depois de confirmar identidade, agrega mint/burn e transferências do asset, lê transações/recibos, tenta rastros internos, confere snapshots de estado nos blocos com eventos, propaga divergências à quarentena e emite métricas `coverage`.

@@ -139,8 +139,10 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 - [x] Gerar casos de valor zero e um acima de `maxWithdraw`/`maxRedeem` quando disponíveis no fork local, registrando reversão ou conclusão sem inferência automática.
 - [x] Resumir resultados de decisão por operação e grupo de entrada a partir dos rastros existentes, sem novo RPC; `local-coverage-v2` no VPS mostra 56/58 resultados já vistos com entradas zero.
 - [x] Pesquisar e documentar o desenho da segunda leitura por variável, com AST/layout, SlithIR SSA, source map e fatias de dependência; ver [cadeia de variáveis](VARIABLE-LENS.md).
-- [ ] Implementar inventário de todas as declarações e cadeias por variável com proveniência, incluindo parâmetros/locais, storage, transient e membros de estruturas/mappings.
-- [ ] Ligar cadeias do source a PCs do runtime com confiança explícita e usar limiares/estado/ator/ordem para gerar novos cenários no VPS; medir ganho de resultados observados.
+- [x] Implementar primeiro inventário AST/layout de todas as declarações do source de análise, com leituras, escritas, guardas, atribuições e fatias transitivas por AST ID; execução offline no VPS: 742 declarações e 180 relações. Categorias não presentes no contrato continuam representadas quando declaradas.
+- [x] Alinhar PCs observados ao source map verificado com identidade de runtime conferida, sem unir ASTs distintas por nome; 18/50 faixas amplas ficam sem atribuição, 17/50 têm referências candidatas em faixa curta.
+- [ ] Cruzar SSA do Slither com o grafo Rust e resolver fluxo entre funções, chaves de mappings, arrays, assembly e efeitos externos com proveniência.
+- [ ] Ligar variáveis do source verificado ao runtime com identidade forte e usar limiares/estado/ator/ordem para gerar novos cenários no VPS; medir ganho de resultados observados.
 - [ ] Medir cobertura por função/ramo do vault com denominador confiável e ampliar sequências conforme lacunas observadas.
 - [x] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
 - [x] Publicar métricas de cobertura de blocos, eventos, transações, estados e chamadas de borda, com lacunas de rastro/bytecode explícitas.

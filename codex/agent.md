@@ -17,7 +17,12 @@
 ## Resumo de caminhos e segunda leitura por variável
 
 - O Rust `--local-coverage` já roda no VPS sobre `private-output/real-targets/yield-vault/local-scenarios-v7/report.json`, sem novo cenário/RPC. `local-coverage-v2.json`: 24 casos, 110 PCs `JUMPI` estáticos, 50 observados, 58 resultados; zero em quatro chamadas já observa 56, 16 positivos comuns não acrescentam resultado, dois casos acima de limite acrescentam dois. Atribuição por operação é pelo nome da chamada principal, sem PC→função comprovado.
-- Leia `docs/VARIABLE-LENS.md` antes de implementar a nova leitura: fontes oficiais Solidity/Slither, SAILFISH e Gigahorse, grafo de variáveis e fatias nos dois sentidos. O documento é proposta pesquisada, não execução do motor. Próximos gates: inventário completo AST/layout/SSA com proveniência; PC/source map; estados, atores e ordens derivados de limiares, simulados somente no VPS. Preservar `web/` não rastreado e atualizar este arquivo e `agente.md` em cada etapa.
+- Leia `docs/VARIABLE-LENS.md`: fontes oficiais Solidity/Slither, SAILFISH e Gigahorse, grafo de variáveis e fatias nos dois sentidos. Os itens concluídos e pendentes constam da seção seguinte. Preservar `web/` não rastreado e atualizar este arquivo e `agente.md` em cada etapa.
+
+## Primeiro recorte de variáveis executado no VPS
+
+- `--variable-lens` compila AST + storageLayout do source de análise, valida hashes/identidade do relatório forense e `local-coverage`, e produz grafo sintático de atribuições, usos e fatias transitivas. No VPS, `variable-lens-v4.json`: 742 declarações, 180 arestas, 7 estados persistentes, 2 `immutable`. `depositCap` recebe `cap_`/`newCap` e alimenta `cap` em `maxDeposit` na AST achatada.
+- O bundle verificado oferece source map dos PCs: 18/50 faixas amplas foram deliberadamente deixadas sem variável; 17/50 PCs têm referência candidata em faixa curta, marcada tentativa. Não misturar IDs da AST achatada e verificada nem afirmar que uma referência em faixa controla o PC. Sem novo fork/RPC/IA. Leia `docs/VARIABLE-LENS.md`; faltam SSA, fluxo entre funções e novos cenários guiados por estado no VPS. Atualizar ambos os arquivos de agente e o checklist depois de cada etapa. Preservar `web/` não rastreado.
 
 ## Etapa histórica concluída, 2026-10-18
 
