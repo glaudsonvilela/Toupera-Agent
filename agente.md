@@ -488,3 +488,7 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 ## Desvios dirigidos no runtime wCOP (2026-10-19)
 
 - Leia `docs/WCOP-DESVIOS-DIRIGIDOS-2026-10-19.md` e `resumo.md`. Vinte e dois casos locais elevaram a observação a 155/169 PCs `JUMPI` estáticos, com 54 vistos nos dois sentidos, 101 em um e 14 não observados. `permit` válido alterou nonce/allowance como esperado em snapshot e a mesma assinatura foi recusada na repetição. Não há falha confirmada; os JSONs ficam privados.
+
+## Triagem residual do runtime wCOP (2026-10-19)
+
+- Leia `docs/WCOP-GUARDAS-RESIDUAIS-2026-10-19.md` e `resumo.md`. Catorze casos locais adicionais elevaram a 66 os PCs `JUMPI` vistos nos dois sentidos: 155/169 PCs observados, 89 em um sentido, 14 ainda não vistos. Dos 89, 9 são dispatcher, 31 entrada não pagável, 25 utilitário ABI gerado e 24 guardas de execução. Nenhuma falha foi confirmada. JSONs privados no VPS; nenhuma transação na rede principal.
