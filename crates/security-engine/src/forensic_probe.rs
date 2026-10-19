@@ -366,25 +366,45 @@ impl Rpc {
     }
 
     fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        let response = self
-            .client
-            .post(&self.url)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}))
-            .send()
-            .map_err(|error| format!("{method} transport error: {error}"))?;
-        if !response.status().is_success() {
-            return Err(format!("{method} HTTP {}", response.status()));
+        for attempt in 0..7 {
+            if self.url.starts_with("https://") {
+                std::thread::sleep(Duration::from_millis(120));
+            }
+            let response = self
+                .client
+                .post(&self.url)
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}))
+                .send()
+                .map_err(|error| format!("{method} transport error: {error}"))?;
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<u64>().ok())
+                .map(|seconds| Duration::from_secs(seconds.min(60)));
+            if response.status().as_u16() == 429 && attempt < 6 {
+                std::thread::sleep(
+                    retry_after.unwrap_or_else(|| Duration::from_secs((1u64 << attempt).min(32))),
+                );
+                continue;
+            }
+            if !response.status().is_success() {
+                return Err(format!("{method} HTTP {}", response.status()));
+            }
+            let value: Value = response
+                .json()
+                .map_err(|error| format!("{method} invalid JSON: {error}"))?;
+            if let Some(error) = value.get("error") {
+                return Err(format!("{method} RPC error: {error}"));
+            }
+            return value
+                .get("result")
+                .cloned()
+                .ok_or_else(|| format!("{method} missing result"));
         }
-        let value: Value = response
-            .json()
-            .map_err(|error| format!("{method} invalid JSON: {error}"))?;
-        if let Some(error) = value.get("error") {
-            return Err(format!("{method} RPC error: {error}"));
-        }
-        value
-            .get("result")
-            .cloned()
-            .ok_or_else(|| format!("{method} missing result"))
+        Err(format!(
+            "{method} rate limit persisted after bounded retries"
+        ))
     }
 
     fn code(&self, address: &str, block: u64) -> Result<String, String> {
