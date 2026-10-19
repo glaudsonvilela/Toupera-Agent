@@ -25,6 +25,7 @@
 - Primeira grade ampliada VPS: 24 casos, 22 concluídos, 2 reversões de limites, zero RPC falho. Dois avisos eram `-0` em deposit/mint de zero; `expected_deltas` agora usa uma única função de sinal para todos os quatro métodos. Repetir e só então registrar ausência de diferenças. Métrica vault 110 estáticos/50 vistos/58 resultados/8 PCs nos dois sentidos.
 - Grade final `local-scenarios-v7`: 24 casos, 22 concluídos, 2 reversões de limites, zero falhas de RPC/diferenças; round trip `-1`. `cached-reassessment-v3` aceitou hash/identidade, conservou 29 zonas/19 quarentenas e fez zero RPC. Vault 110 PCs estáticos/50 vistos/58 resultados/8 PCs nos dois sentidos. Relatórios privados só no VPS.
 - Ajuste M4 pendente de conferência no VPS: comparar divisão literal para baixo `x / d` e para cima `(x + d - 1) / d` entre preview/execução, exigindo mesmo numerador/denominador. Resultado continua `UNVERIFIED` e não comprova o ramo M4→M8.
+- Calibração M4 no VPS concluída: 1 candidata `RoundingAsymmetry`/`UNVERIFIED` em `withdraw(uint256)` com 2 source spans na fixture M7. M5 produziu 1 slice e plano M6 offline 1 pedido, sem API. O source tem ramo alternativo compatível, portanto conferir `faultyPreview` por instância. Os casos M7 prévios eram manuais; ligação positiva completa até M8 segue aberta.
 
 ## Ciclo forense/quarentena, 2026-10-18
 

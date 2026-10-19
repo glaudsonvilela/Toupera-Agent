@@ -26,3 +26,7 @@ O `--context-package` analisou a fixture, mas o `--llm-plan` retornou **zero** c
 Artefatos brutos, incluindo JSON, traces, LCOV, revisão e contraexemplo Halmos, permanecem no VPS em `/srv/toupera-agent/private-output/m7-pilot-v2/` com acesso restrito. O piloto não gerou relatório de vulnerabilidade real nem `REPORT_READY`.
 
 O empacotador M8 foi acionado apenas para conferir a transição de estados: o pacote positivo ficou `PENDING_HUMAN_REVIEW` com 11 artefatos, e o pacote negativo ficou `REJECTED` com 13 artefatos. `--evidence-finalize` recusou o pacote rejeitado. Não foi preenchida revisão humana de relatório nem gerado `REPORT_READY`.
+
+## Calibração posterior da entrada M4
+
+Após o piloto, o M4 passou a reconhecer a diferença literal entre `numerator / totalAssets` no preview e `(numerator + totalAssets - 1) / totalAssets` na execução. No VPS, `--economic-candidates` gerou 1 candidato `RoundingAsymmetry`, `UNVERIFIED`, para `withdraw(uint256)`, com os dois source spans. O M5 gerou 1 slice e `--llm-plan` selecionou 1 pedido offline. A fixture contém ambos os ramos de preview; por isso a candidata não afirma que o ramo divergente esteja ativo em toda instância. O M6 não enviou dados à API nessa passagem, e os casos M7 anteriores continuam sendo preparações manuais. O vínculo positivo completo até M8 ainda não foi executado.

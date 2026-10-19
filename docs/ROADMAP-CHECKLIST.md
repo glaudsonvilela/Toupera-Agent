@@ -53,6 +53,8 @@ Lacuna observada no piloto M7: `--llm-plan` retornou zero candidatos para `Round
 
 A regra `rounding-preview-formula-difference` foi acrescentada para a diferença literal `x / d` versus `(x + d - 1) / d` com o mesmo numerador/denominador. A calibração no VPS e o ramo positivo completo ainda devem ser conferidos antes de marcar o gate como concluído.
 
+Calibração no VPS: a fixture M7 gerou 1 candidata `UNVERIFIED` com 2 source spans; M5 produziu 1 slice e o plano offline M6 selecionou 1 pedido. A candidata cobre uma possibilidade condicionada por `faultyPreview`; não é veredito sobre o ramo corrigido. Não houve chamada de IA, novo caso M7 ou pacote M8 nessa passagem.
+
 ### M5 — Deduplicação e contexto mínimo
 - [x] Calcular hashes de source, runtime opcional normalizado, AST e função, além de compiler e motor.
 - [x] Evitar reanálise de entradas idênticas com cache local por conteúdo.

@@ -28,6 +28,8 @@ O sinal Slither `incorrect-equality` em `YieldVault.maxMint(address)` aponta `ma
 
 Este piloto valida entrada real, identidade source/runtime com `immutable`, reconstrução e **saída vazia segura** de M4→M7. Ele não valida o ramo positivo M4→M5→M6→M7→M8. O [piloto sintético M7](M7-PILOT.md) exercitou reprodução, rejeição e empacotamento por casos manuais, mas sua divergência não foi selecionada por M4. Antes de declarar o caminho inteiro conectado, calibrar M4 nessa fixture conhecida e repetir a passagem automática com um candidato autorizado, um harness específico revisado e evidência M8. Não inferir segurança do YieldVault a partir de zero candidatos.
 
+Atualização posterior: a calibração M4 na fixture conhecida agora gera 1 candidata `UNVERIFIED`; M5 criou 1 slice e o plano M6 offline selecionou 1 pedido. A seleção não altera o resultado de zero candidatos do YieldVault nem transforma o piloto manual M7 em passagem automática completa. A revisão M6, o vínculo de caso M7 e a revisão M8 ainda precisam de uma execução própria.
+
 ## Extensão forense automática
 
 O [ciclo Rust de mapa e quarentena](FORENSIC-QUARANTINE.md) foi executado no mesmo bloco. O RPC primário não serviu o estado fixado na repetição; o fallback `sepolia.gateway.tenderly.co` só foi aceito após conferir chain ID, hash do bloco e runtime exato. O mapa teve 29 zonas e 19 casos de quarentena; 78 `eth_call` de borda e 15 relações observadas foram registrados. As funções `deposit`, `mint`, `withdraw` e `redeem` ficaram no topo porque as chamadas herdadas chegam a `_totalSupply`, `_mint`/`_burn` e ao asset externo. A quarentena rastreou também `depositCap` e `_asset`, com leitores, escritores, source spans, fluxos, PCs e limitações por caso.
