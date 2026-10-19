@@ -43,10 +43,13 @@ pub struct ScenarioState {
 pub struct ScenarioCase {
     pub sequence: String,
     pub step: usize,
+    pub actor: String,
     pub operation: String,
     pub amount: String,
     pub expectation: String,
     pub preview: Option<String>,
+    pub preflight: String,
+    pub preflight_detail: Option<String>,
     pub status: String,
     pub transaction_hash: Option<String>,
     pub gas_used: Option<u64>,
@@ -61,14 +64,29 @@ pub struct ScenarioCase {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct ObservedSequenceTransition {
+    pub sequence: String,
+    pub from_step: usize,
+    pub to_step: usize,
+    pub actor: String,
+    pub state_continuity: bool,
+    pub changed_fields: Vec<String>,
+    pub evidence_class: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct LocalScenarioReport {
     pub schema: String,
     pub identity: LocalScenarioIdentity,
     pub execution_scope: String,
     pub cases: Vec<ScenarioCase>,
+    pub observed_sequence_transitions: Vec<ObservedSequenceTransition>,
     pub completed_transactions: usize,
     pub reverted_transactions: usize,
     pub rpc_failures: usize,
+    pub preflight_completed: usize,
+    pub preflight_rejected_or_unavailable: usize,
+    pub preflight_transaction_mismatches: usize,
     pub unique_trace_jump_sites: usize,
     pub unique_branch_outcomes: usize,
     pub jump_sites_with_both_outcomes: usize,
@@ -480,10 +498,13 @@ fn run_case(
     let mut case = ScenarioCase {
         sequence,
         step,
+        actor: actor.into(),
         operation: operation.name().into(),
         amount: amount.to_string(),
         expectation: expectation.into(),
         preview: None,
+        preflight: "not_run".into(),
+        preflight_detail: None,
         status: "not_started".into(),
         transaction_hash: None,
         gas_used: None,
@@ -525,6 +546,16 @@ fn run_case(
             calldata(operation.signature(), Some(amount), &[actor, actor])
         }
     };
+    match rpc.call(
+        "eth_call",
+        json!([{"from":actor,"to":vault,"data":data},"latest"]),
+    ) {
+        Ok(_) => case.preflight = "call_completed".into(),
+        Err(error) => {
+            case.preflight = "call_rejected_or_unavailable".into();
+            case.preflight_detail = Some(error.chars().take(240).collect());
+        }
+    }
     let (hash, receipt) = match send_local(rpc, actor, vault, &data) {
         Ok(value) => value,
         Err(error) => {
@@ -548,6 +579,13 @@ fn run_case(
         _ => "receipt_status_missing",
     }
     .into();
+    if case.preflight == "call_completed" && case.status == "reverted" {
+        case.discrepancies
+            .push("preflight completed but local transaction reverted".into());
+    } else if case.preflight == "call_rejected_or_unavailable" && case.status == "completed" {
+        case.discrepancies
+            .push("preflight rejected or was unavailable but local transaction completed".into());
+    }
     if expectation == "above_reported_limit" && case.status == "completed" {
         case.discrepancies
             .push("operation completed above the reported limit; review limit semantics".into());
@@ -1263,6 +1301,60 @@ fn run_scenarios(
         .iter()
         .filter(|case| case.status == "completed")
         .count();
+    let observed_sequence_transitions = cases
+        .windows(2)
+        .filter_map(|pair| {
+            let [previous, next] = pair else { return None };
+            if previous.sequence != next.sequence
+                || previous.actor != next.actor
+                || previous.step.checked_add(1) != Some(next.step)
+                || previous.status != "completed"
+            {
+                return None;
+            }
+            let (Some(before), Some(after), Some(next_before)) =
+                (&previous.before, &previous.after, &next.before)
+            else {
+                return None;
+            };
+            let changed_fields = [
+                ("total_assets", &before.total_assets, &after.total_assets),
+                ("total_supply", &before.total_supply, &after.total_supply),
+                (
+                    "vault_asset_balance",
+                    &before.vault_asset_balance,
+                    &after.vault_asset_balance,
+                ),
+                (
+                    "actor_asset_balance",
+                    &before.actor_asset_balance,
+                    &after.actor_asset_balance,
+                ),
+                (
+                    "actor_share_balance",
+                    &before.actor_share_balance,
+                    &after.actor_share_balance,
+                ),
+            ]
+            .into_iter()
+            .filter(|(_, before, after)| before != after)
+            .map(|(name, _, _)| name.into())
+            .collect();
+            Some(ObservedSequenceTransition {
+                sequence: previous.sequence.clone(),
+                from_step: previous.step,
+                to_step: next.step,
+                actor: previous.actor.clone(),
+                state_continuity: after.total_assets == next_before.total_assets
+                    && after.total_supply == next_before.total_supply
+                    && after.vault_asset_balance == next_before.vault_asset_balance
+                    && after.actor_asset_balance == next_before.actor_asset_balance
+                    && after.actor_share_balance == next_before.actor_share_balance,
+                changed_fields,
+                evidence_class: "observed_in_child_anvil_sequence".into(),
+            })
+        })
+        .collect();
     let reverted_transactions = cases
         .iter()
         .filter(|case| case.status == "reverted")
@@ -1270,6 +1362,22 @@ fn run_scenarios(
     let rpc_failures = cases
         .iter()
         .filter(|case| case.status == "local_rpc_error" || case.status == "state_unavailable")
+        .count();
+    let preflight_completed = cases
+        .iter()
+        .filter(|case| case.preflight == "call_completed")
+        .count();
+    let preflight_rejected_or_unavailable = cases
+        .iter()
+        .filter(|case| case.preflight == "call_rejected_or_unavailable")
+        .count();
+    let preflight_transaction_mismatches = cases
+        .iter()
+        .filter(|case| {
+            case.discrepancies
+                .iter()
+                .any(|item| item.starts_with("preflight "))
+        })
         .count();
     let jump_sites_with_both_outcomes = all_jumps
         .iter()
@@ -1321,9 +1429,13 @@ fn run_scenarios(
         execution_scope:
             "child Anvil fork on 127.0.0.1; no transaction broadcast to source network".into(),
         cases,
+        observed_sequence_transitions,
         completed_transactions,
         reverted_transactions,
         rpc_failures,
+        preflight_completed,
+        preflight_rejected_or_unavailable,
+        preflight_transaction_mismatches,
         unique_trace_jump_sites: all_jumps.len(),
         unique_branch_outcomes: all_outcomes.len(),
         jump_sites_with_both_outcomes,

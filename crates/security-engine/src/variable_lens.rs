@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::path::Path;
 
+use alloy_primitives::U256;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -24,6 +25,7 @@ pub struct LayoutPosition {
 #[derive(Clone, Debug, Serialize)]
 pub struct VariableUse {
     pub kind: String,
+    pub contract: String,
     pub function: String,
     pub source_span: Option<SourceSpan>,
     pub expression: Option<String>,
@@ -68,9 +70,55 @@ pub struct IndexedAccess {
     pub key_expression: Option<String>,
     pub expression: Option<String>,
     pub function: String,
+    pub contract: String,
     pub access: String,
     pub collection_kind: String,
+    pub key_identity_kind: String,
+    pub key_identity: Option<String>,
+    pub parent_key_identities: Vec<Option<String>>,
     pub source_span: Option<SourceSpan>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct KeyAliasRelation {
+    pub left_access: usize,
+    pub right_access: usize,
+    pub base_ast_ids: Vec<i64>,
+    pub relation: String,
+    pub confidence: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct StateTransitionLink {
+    pub state_variable_ast_id: i64,
+    pub writer_contract: String,
+    pub writer_function: String,
+    pub reader_contract: String,
+    pub reader_function: String,
+    pub key_relation: String,
+    pub confidence: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EffectBoundary {
+    pub kind: String,
+    pub contract: String,
+    pub function: String,
+    pub method: Option<String>,
+    pub receiver_type: Option<String>,
+    pub source_variable_ast_ids: Vec<i64>,
+    pub source_span: Option<SourceSpan>,
+    pub expression: Option<String>,
+    pub effect_class: String,
+    pub yul_operations: Vec<String>,
+    pub literal_storage_slots: Vec<AssemblySlotUse>,
+    pub confidence: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AssemblySlotUse {
+    pub operation: String,
+    pub slot: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -100,6 +148,43 @@ pub struct PcSourceHint {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct PcSourceOrigin {
+    pub pc: usize,
+    pub source_file: String,
+    pub declaring_contract: String,
+    pub function: String,
+    pub function_ast_id: i64,
+    pub origin_kind: String,
+    pub observed_outcomes: Vec<String>,
+    pub confidence: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct FunctionSourceCoverage {
+    pub source_file: String,
+    pub declaring_contract: String,
+    pub function: String,
+    pub function_ast_id: i64,
+    pub origin_kind: String,
+    pub mapped_static_jump_sites: usize,
+    pub observed_jump_sites: usize,
+    pub observed_outcomes: usize,
+    pub sites_with_both_outcomes: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SourceCoverageSummary {
+    pub runtime_static_jump_sites: usize,
+    pub uniquely_mapped_static_jump_sites: usize,
+    pub unattributed_static_jump_sites: usize,
+    pub observed_attributed_jump_sites: usize,
+    pub observed_attributed_outcomes: usize,
+    pub function_source_coverage: Vec<FunctionSourceCoverage>,
+    pub pc_source_origins: Vec<PcSourceOrigin>,
+    pub denominator_kind: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct VariableLensReport {
     pub schema: String,
     pub identity: Value,
@@ -113,6 +198,11 @@ pub struct VariableLensReport {
     pub cross_function_edge_count: usize,
     pub indexed_access_count: usize,
     pub indexed_accesses: Vec<IndexedAccess>,
+    pub key_alias_relations: Vec<KeyAliasRelation>,
+    pub key_alias_pairs_truncated: bool,
+    pub state_transition_links: Vec<StateTransitionLink>,
+    pub state_transition_links_truncated: bool,
+    pub effect_boundaries: Vec<EffectBoundary>,
     pub ssa_dependency_edge_count: usize,
     pub ssa_unmatched_declaration_operands: usize,
     pub ssa_report_sha256: Option<String>,
@@ -122,6 +212,7 @@ pub struct VariableLensReport {
     pub observed_root_branch_outcomes: usize,
     pub pc_hints_with_variables: usize,
     pub pc_source_hints: Vec<PcSourceHint>,
+    pub source_coverage: SourceCoverageSummary,
     pub verified_variables: Vec<VerifiedVariable>,
     pub variables: Vec<VariableRecord>,
     pub edges: Vec<VariableEdge>,
@@ -135,12 +226,15 @@ struct Walker<'a> {
     declarations: BTreeMap<i64, VariableRecord>,
     edges: Vec<VariableEdge>,
     indexed_accesses: Vec<IndexedAccess>,
+    effect_boundaries: Vec<EffectBoundary>,
     functions: BTreeMap<i64, FunctionSummary>,
 }
 
 struct FunctionSummary {
     parameters: Vec<i64>,
     return_sources: Vec<i64>,
+    visibility: String,
+    mutability: String,
 }
 
 #[derive(Clone)]
@@ -256,7 +350,7 @@ pub fn build_variable_lens(
     {
         return Err("compiler output or runtime differs from the fixed report".into());
     }
-    let (pc_source_hints, verified_variables) =
+    let (pc_source_hints, verified_variables, source_coverage) =
         pc_hints(&manifest, &comparison, &coverage, &runtime_bytes)?;
     let source = std::str::from_utf8(&source_bytes)
         .map_err(|error| format!("source is not UTF-8: {error}"))?;
@@ -302,6 +396,7 @@ pub fn build_variable_lens(
         declarations: BTreeMap::new(),
         edges: Vec::new(),
         indexed_accesses: Vec::new(),
+        effect_boundaries: Vec::new(),
         functions: BTreeMap::new(),
     };
     let root = Context {
@@ -335,6 +430,7 @@ pub fn build_variable_lens(
         .count();
     report.pc_source_hints = pc_source_hints;
     report.verified_variables = verified_variables;
+    report.source_coverage = source_coverage;
     report.ssa_dependency_edge_count = ssa_added;
     report.ssa_unmatched_declaration_operands = ssa_unmatched;
     report.ssa_report_sha256 = ssa_sha;
@@ -515,6 +611,8 @@ impl Walker<'_> {
                     FunctionSummary {
                         parameters,
                         return_sources: returns.into_iter().collect(),
+                        visibility: node["visibility"].as_str().unwrap_or("unknown").into(),
+                        mutability: node["stateMutability"].as_str().unwrap_or("unknown").into(),
                     },
                 );
             }
@@ -596,6 +694,139 @@ impl Walker<'_> {
         }
     }
 
+    fn record_effect_call(&mut self, node: &Value, context: &Context) {
+        let member = &node["expression"];
+        if member["nodeType"] != "MemberAccess" {
+            return;
+        }
+        let method = member["memberName"].as_str().unwrap_or("");
+        let receiver_type = member["expression"]["typeDescriptions"]["typeString"]
+            .as_str()
+            .unwrap_or("");
+        let referenced = member["referencedDeclaration"].as_i64();
+        let summary = referenced.and_then(|id| self.functions.get(&id));
+        let (kind, effect_class) = if matches!(method, "call" | "delegatecall" | "staticcall")
+            && receiver_type.starts_with("address")
+        {
+            (
+                "low_level_call",
+                if method == "staticcall" {
+                    "read_or_revert"
+                } else {
+                    "unknown_external_or_storage_effect"
+                },
+            )
+        } else if matches!(method, "send" | "transfer")
+            && receiver_type.starts_with("address payable")
+        {
+            ("native_value_call", "external_state_change_possible")
+        } else if receiver_type.starts_with("contract ")
+            && !summary
+                .is_some_and(|item| matches!(item.visibility.as_str(), "internal" | "private"))
+        {
+            (
+                "contract_call",
+                if summary.is_some_and(|item| matches!(item.mutability.as_str(), "view" | "pure")) {
+                    "read_or_revert"
+                } else {
+                    "external_state_change_possible"
+                },
+            )
+        } else {
+            return;
+        };
+        let mut refs = BTreeSet::new();
+        Self::refs(node, &mut refs);
+        refs.retain(|id| self.declarations.contains_key(id));
+        self.effect_boundaries.push(EffectBoundary {
+            kind: kind.into(),
+            contract: context.contract.clone(),
+            function: context.function.clone(),
+            method: Some(method.into()),
+            receiver_type: Some(receiver_type.into()),
+            source_variable_ast_ids: refs.into_iter().collect(),
+            source_span: self.node_span(node),
+            expression: self.expression(node),
+            effect_class: effect_class.into(),
+            yul_operations: Vec::new(),
+            literal_storage_slots: Vec::new(),
+            confidence: "source_call_boundary".into(),
+        });
+    }
+
+    fn record_assembly(&mut self, node: &Value, context: &Context) {
+        fn operations(
+            node: &Value,
+            output: &mut BTreeSet<String>,
+            slots: &mut Vec<AssemblySlotUse>,
+        ) {
+            if node["nodeType"] == "YulFunctionCall" {
+                if let Some(name) = node["functionName"]["name"].as_str() {
+                    output.insert(name.into());
+                    if matches!(name, "sload" | "sstore" | "tload" | "tstore") {
+                        if let Some(slot) =
+                            node["arguments"].as_array().and_then(|args| args.first())
+                        {
+                            if slot["nodeType"] == "YulLiteral" {
+                                if let Some(value) = slot["value"].as_str() {
+                                    let parsed = if let Some(hex) = value.strip_prefix("0x") {
+                                        U256::from_str_radix(hex, 16)
+                                    } else {
+                                        U256::from_str_radix(value, 10)
+                                    };
+                                    if let Ok(parsed) = parsed {
+                                        slots.push(AssemblySlotUse {
+                                            operation: name.into(),
+                                            slot: parsed.to_string(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            for child in Walker::children(node) {
+                operations(child, output, slots);
+            }
+        }
+        let mut names = BTreeSet::new();
+        let mut slots = Vec::new();
+        operations(node, &mut names, &mut slots);
+        slots.sort_by(|a, b| (&a.operation, &a.slot).cmp(&(&b.operation, &b.slot)));
+        slots.dedup_by(|a, b| a.operation == b.operation && a.slot == b.slot);
+        self.effect_boundaries.push(EffectBoundary {
+            kind: "inline_assembly".into(),
+            contract: context.contract.clone(),
+            function: context.function.clone(),
+            method: None,
+            receiver_type: None,
+            source_variable_ast_ids: Vec::new(),
+            source_span: self.node_span(node),
+            expression: self.expression(node),
+            effect_class: if names.iter().any(|name| {
+                matches!(
+                    name.as_str(),
+                    "sstore"
+                        | "tstore"
+                        | "call"
+                        | "delegatecall"
+                        | "create"
+                        | "create2"
+                        | "selfdestruct"
+                )
+            }) {
+                "storage_or_external_effect_possible"
+            } else {
+                "opaque_assembly_boundary"
+            }
+            .into(),
+            yul_operations: names.into_iter().collect(),
+            literal_storage_slots: slots,
+            confidence: "source_assembly_boundary".into(),
+        });
+    }
+
     fn refs(node: &Value, output: &mut BTreeSet<i64>) {
         if let Some(id) = node["referencedDeclaration"].as_i64() {
             if id >= 0 {
@@ -635,11 +866,70 @@ impl Walker<'_> {
         if let Some(variable) = self.declarations.get_mut(&id) {
             variable.uses.push(VariableUse {
                 kind: kind.into(),
+                contract: context.contract.clone(),
                 function: context.function.clone(),
                 source_span,
                 expression,
             });
         }
+    }
+
+    fn key_identity(node: &Value) -> (String, Option<String>) {
+        match node["nodeType"].as_str() {
+            Some("Literal") => {
+                let kind = node["kind"].as_str().unwrap_or("");
+                let value = node["value"].as_str().unwrap_or("");
+                if kind == "number" {
+                    let value = value.replace('_', "");
+                    let parsed = if let Some(hex) = value.strip_prefix("0x") {
+                        U256::from_str_radix(hex, 16)
+                    } else {
+                        U256::from_str_radix(&value, 10)
+                    };
+                    if let Ok(parsed) = parsed {
+                        return ("fixed_literal".into(), Some(format!("number:{parsed}")));
+                    }
+                }
+                if kind == "bool" && matches!(value, "true" | "false") {
+                    return ("fixed_literal".into(), Some(format!("bool:{value}")));
+                }
+                if matches!(kind, "string" | "unicodeString" | "hexString") {
+                    if let Some(hex) = node["hexValue"].as_str() {
+                        return ("fixed_literal".into(), Some(format!("bytes:{hex}")));
+                    }
+                }
+            }
+            Some("Identifier") => {
+                if let Some(id) = node["referencedDeclaration"].as_i64().filter(|id| *id >= 0) {
+                    return (
+                        "symbolic_declaration".into(),
+                        Some(format!("declaration:{id}")),
+                    );
+                }
+            }
+            Some("MemberAccess") => {
+                if node["memberName"] == "sender" && node["expression"]["name"] == "msg" {
+                    return ("transaction_actor".into(), Some("msg.sender".into()));
+                }
+                if let Some(id) = node["referencedDeclaration"].as_i64().filter(|id| *id >= 0) {
+                    return (
+                        "symbolic_declaration".into(),
+                        Some(format!("declaration:{id}")),
+                    );
+                }
+            }
+            _ => {}
+        }
+        ("unresolved_expression".into(), None)
+    }
+
+    fn parent_key_identities(node: &Value) -> Vec<Option<String>> {
+        if node["nodeType"] != "IndexAccess" {
+            return Vec::new();
+        }
+        let mut result = Self::parent_key_identities(&node["baseExpression"]);
+        result.push(Self::key_identity(&node["indexExpression"]).1);
+        result
     }
 
     fn record_index(&mut self, node: &Value, context: &Context, access: &str) {
@@ -673,8 +963,12 @@ impl Walker<'_> {
             key_expression: self.expression(&node["indexExpression"]),
             expression: self.expression(node),
             function: context.function.clone(),
+            contract: context.contract.clone(),
             access: access.into(),
             collection_kind: kind.into(),
+            key_identity_kind: Self::key_identity(&node["indexExpression"]).0,
+            key_identity: Self::key_identity(&node["indexExpression"]).1,
+            parent_key_identities: Self::parent_key_identities(&node["baseExpression"]),
             source_span: self.node_span(node),
         });
     }
@@ -811,6 +1105,7 @@ impl Walker<'_> {
             }
             Some("FunctionCall") => {
                 self.connect_call_arguments(node, &current);
+                self.record_effect_call(node, &current);
                 let callee = node["expression"]["name"].as_str().unwrap_or("");
                 let kind = if matches!(callee, "require" | "assert") {
                     "guard_read"
@@ -823,6 +1118,10 @@ impl Walker<'_> {
                     }
                 }
                 self.walk(&node["expression"], &current, "call_target_read");
+                return;
+            }
+            Some("InlineAssembly") => {
+                self.record_assembly(node, &current);
                 return;
             }
             Some("Identifier" | "MemberAccess") => {
@@ -944,9 +1243,26 @@ impl Walker<'_> {
         self.indexed_accesses.dedup_by(|a, b| {
             a.base_ast_ids == b.base_ast_ids
                 && a.key_variable_ast_ids == b.key_variable_ast_ids
+                && a.contract == b.contract
                 && a.function == b.function
                 && a.expression == b.expression
                 && a.access == b.access
+        });
+        let (key_alias_relations, key_alias_pairs_truncated) = key_aliases(&self.indexed_accesses);
+        self.effect_boundaries.sort_by(|a, b| {
+            (&a.contract, &a.function, &a.kind, &a.expression).cmp(&(
+                &b.contract,
+                &b.function,
+                &b.kind,
+                &b.expression,
+            ))
+        });
+        self.effect_boundaries.dedup_by(|a, b| {
+            a.contract == b.contract
+                && a.function == b.function
+                && a.kind == b.kind
+                && a.expression == b.expression
+                && a.source_span == b.source_span
         });
         self.edges.sort_by(|a, b| {
             (
@@ -989,10 +1305,16 @@ impl Walker<'_> {
         let mut read_without_writer = 0;
         for (id, record) in &mut self.declarations {
             record.uses.sort_by(|a, b| {
-                (&a.kind, &a.function, &a.expression).cmp(&(&b.kind, &b.function, &b.expression))
+                (&a.kind, &a.contract, &a.function, &a.expression).cmp(&(
+                    &b.kind,
+                    &b.contract,
+                    &b.function,
+                    &b.expression,
+                ))
             });
             record.uses.dedup_by(|a, b| {
                 a.kind == b.kind
+                    && a.contract == b.contract
                     && a.function == b.function
                     && a.expression == b.expression
                     && a.source_span == b.source_span
@@ -1041,6 +1363,11 @@ impl Walker<'_> {
             }
             record.priority_score = score;
         }
+        let (state_transition_links, state_transition_links_truncated) = state_transitions(
+            &self.declarations,
+            &self.indexed_accesses,
+            &key_alias_relations,
+        );
         let observed_root_jump_sites = coverage["vault_jump_sites_observed"]
             .as_u64()
             .ok_or("local coverage lacks observed vault jump sites")?
@@ -1062,6 +1389,11 @@ impl Walker<'_> {
             cross_function_edge_count: self.edges.iter().filter(|edge| edge.relation.starts_with("internal_")).count(),
             indexed_access_count: self.indexed_accesses.len(),
             indexed_accesses: self.indexed_accesses,
+            key_alias_relations,
+            key_alias_pairs_truncated,
+            state_transition_links,
+            state_transition_links_truncated,
+            effect_boundaries: self.effect_boundaries,
             ssa_dependency_edge_count: 0,
             ssa_unmatched_declaration_operands: 0,
             ssa_report_sha256: None,
@@ -1071,6 +1403,16 @@ impl Walker<'_> {
             observed_root_branch_outcomes,
             pc_hints_with_variables: 0,
             pc_source_hints: Vec::new(),
+            source_coverage: SourceCoverageSummary {
+                runtime_static_jump_sites: 0,
+                uniquely_mapped_static_jump_sites: 0,
+                unattributed_static_jump_sites: 0,
+                observed_attributed_jump_sites: 0,
+                observed_attributed_outcomes: 0,
+                function_source_coverage: Vec::new(),
+                pc_source_origins: Vec::new(),
+                denominator_kind: "uniquely_source_mapped_static_jump_sites_not_reachable_paths".into(),
+            },
             verified_variables: Vec::new(),
             variables: self.declarations.into_values().collect(),
             edges: self.edges,
@@ -1122,11 +1464,224 @@ fn closure(start: i64, edges: &BTreeMap<i64, BTreeSet<i64>>) -> Vec<i64> {
     found.into_iter().collect()
 }
 
+fn is_fixed_key(value: &str) -> bool {
+    value.starts_with("number:") || value.starts_with("bool:") || value.starts_with("bytes:")
+}
+
+fn alias_relation(left: &IndexedAccess, right: &IndexedAccess) -> (&'static str, &'static str) {
+    let mut left_keys = left.parent_key_identities.clone();
+    left_keys.push(left.key_identity.clone());
+    let mut right_keys = right.parent_key_identities.clone();
+    right_keys.push(right.key_identity.clone());
+    if left_keys.len() != right_keys.len() {
+        return ("different_index_depth", "structural");
+    }
+    if left_keys.iter().zip(&right_keys).any(|(a, b)| {
+        matches!((a, b), (Some(a), Some(b)) if is_fixed_key(a) && is_fixed_key(b) && a != b)
+    }) {
+        return ("distinct_fixed_keys", "proven_for_normalized_literals");
+    }
+    if left_keys
+        .iter()
+        .zip(&right_keys)
+        .all(|(a, b)| matches!((a, b), (Some(a), Some(b)) if a == b && is_fixed_key(a)))
+    {
+        return ("same_fixed_key", "proven_for_normalized_literals");
+    }
+    if left_keys
+        .iter()
+        .zip(&right_keys)
+        .all(|(a, b)| matches!((a, b), (Some(a), Some(b)) if a == b))
+    {
+        return ("same_symbolic_key", "possible_same_value_only");
+    }
+    ("may_overlap", "unresolved_symbolic_values")
+}
+
+fn key_aliases(accesses: &[IndexedAccess]) -> (Vec<KeyAliasRelation>, bool) {
+    const MAX_PAIRS: usize = 20_000;
+    let mut output = Vec::new();
+    for left in 0..accesses.len() {
+        for right in left + 1..accesses.len() {
+            if accesses[left].base_ast_ids.is_empty()
+                || accesses[left].base_ast_ids != accesses[right].base_ast_ids
+            {
+                continue;
+            }
+            if output.len() == MAX_PAIRS {
+                return (output, true);
+            }
+            let (relation, confidence) = alias_relation(&accesses[left], &accesses[right]);
+            output.push(KeyAliasRelation {
+                left_access: left,
+                right_access: right,
+                base_ast_ids: accesses[left].base_ast_ids.clone(),
+                relation: relation.into(),
+                confidence: confidence.into(),
+            });
+        }
+    }
+    (output, false)
+}
+
+fn transition_key_relation(
+    id: i64,
+    writer: &VariableUse,
+    reader: &VariableUse,
+    accesses: &[IndexedAccess],
+    aliases: &[KeyAliasRelation],
+) -> String {
+    let writes: BTreeSet<usize> = accesses
+        .iter()
+        .enumerate()
+        .filter(|(_, access)| {
+            access.base_ast_ids.contains(&id)
+                && access.contract == writer.contract
+                && access.function == writer.function
+                && access.access == "write"
+        })
+        .map(|(index, _)| index)
+        .collect();
+    let reads: BTreeSet<usize> = accesses
+        .iter()
+        .enumerate()
+        .filter(|(_, access)| {
+            access.base_ast_ids.contains(&id)
+                && access.contract == reader.contract
+                && access.function == reader.function
+                && access.access != "write"
+        })
+        .map(|(index, _)| index)
+        .collect();
+    if writes.is_empty() || reads.is_empty() {
+        return "element_key_unresolved".into();
+    }
+    let mut relations = BTreeSet::new();
+    for alias in aliases {
+        if (writes.contains(&alias.left_access) && reads.contains(&alias.right_access))
+            || (writes.contains(&alias.right_access) && reads.contains(&alias.left_access))
+        {
+            relations.insert(alias.relation.as_str());
+        }
+    }
+    if relations.contains("same_fixed_key") {
+        "same_fixed_key".into()
+    } else if relations.contains("same_symbolic_key") {
+        "same_symbolic_key_possible".into()
+    } else if relations.len() == 1 && relations.contains("distinct_fixed_keys") {
+        "distinct_fixed_keys".into()
+    } else {
+        "element_key_may_overlap".into()
+    }
+}
+
+fn state_transitions(
+    declarations: &BTreeMap<i64, VariableRecord>,
+    accesses: &[IndexedAccess],
+    aliases: &[KeyAliasRelation],
+) -> (Vec<StateTransitionLink>, bool) {
+    const MAX_LINKS: usize = 10_000;
+    let mut output = Vec::new();
+    let mut unique = BTreeSet::new();
+    for (id, record) in declarations {
+        if record.category != "persistent_state" {
+            continue;
+        }
+        let writers: Vec<_> = record
+            .uses
+            .iter()
+            .filter(|item| item.kind == "write" && !item.function.is_empty())
+            .collect();
+        let readers: Vec<_> = record
+            .uses
+            .iter()
+            .filter(|item| item.kind != "write" && !item.function.is_empty())
+            .collect();
+        for writer in &writers {
+            for reader in &readers {
+                let key_relation =
+                    if record.type_name.contains("mapping(") || record.type_name.contains('[') {
+                        transition_key_relation(*id, writer, reader, accesses, aliases)
+                    } else {
+                        "same_state_variable".into()
+                    };
+                let key = (
+                    *id,
+                    writer.contract.clone(),
+                    writer.function.clone(),
+                    reader.contract.clone(),
+                    reader.function.clone(),
+                    key_relation.clone(),
+                );
+                if !unique.insert(key) {
+                    continue;
+                }
+                if output.len() == MAX_LINKS {
+                    return (output, true);
+                }
+                output.push(StateTransitionLink {
+                    state_variable_ast_id: *id,
+                    writer_contract: writer.contract.clone(),
+                    writer_function: writer.function.clone(),
+                    reader_contract: reader.contract.clone(),
+                    reader_function: reader.function.clone(),
+                    key_relation,
+                    confidence: "possible_transaction_order_from_source".into(),
+                });
+            }
+        }
+    }
+    (output, false)
+}
+
 #[derive(Clone, Copy)]
 struct SourceRange {
     start: usize,
     end: usize,
     file_id: i64,
+}
+
+struct VerifiedFunctionRange {
+    ast_id: i64,
+    source_file: String,
+    contract: String,
+    function: String,
+    kind: String,
+    range: SourceRange,
+}
+
+fn verified_function_ranges(
+    node: &Value,
+    parent: &Context,
+    files: &BTreeMap<i64, String>,
+    output: &mut Vec<VerifiedFunctionRange>,
+) {
+    let current = Walker::context(node, parent);
+    if matches!(
+        node["nodeType"].as_str(),
+        Some("FunctionDefinition" | "ModifierDefinition")
+    ) {
+        if let (Some(ast_id), Some(range)) = (node["id"].as_i64(), raw_range(node)) {
+            if let Some(source_file) = files.get(&range.file_id) {
+                output.push(VerifiedFunctionRange {
+                    ast_id,
+                    source_file: source_file.clone(),
+                    contract: current.contract.clone(),
+                    function: current.function.clone(),
+                    kind: if node["nodeType"] == "ModifierDefinition" {
+                        "modifier"
+                    } else {
+                        "function"
+                    }
+                    .into(),
+                    range,
+                });
+            }
+        }
+    }
+    for child in Walker::children(node) {
+        verified_function_ranges(child, &current, files, output);
+    }
 }
 
 fn raw_range(node: &Value) -> Option<SourceRange> {
@@ -1236,7 +1791,14 @@ fn pc_hints(
     comparison: &Value,
     coverage: &Value,
     runtime_bytes: &[u8],
-) -> Result<(Vec<PcSourceHint>, Vec<VerifiedVariable>), String> {
+) -> Result<
+    (
+        Vec<PcSourceHint>,
+        Vec<VerifiedVariable>,
+        SourceCoverageSummary,
+    ),
+    String,
+> {
     let deployed = &comparison["contracts"][&manifest.comparison_source_name]
         [&manifest.contract_name]["evm"]["deployedBytecode"];
     let compiled_hex = deployed["object"]
@@ -1275,7 +1837,9 @@ fn pc_hints(
         contract: String::new(),
         function: String::new(),
     };
+    let mut function_ranges = Vec::new();
     for entry in source_entries.values() {
+        verified_function_ranges(&entry["ast"], &root, &files, &mut function_ranges);
         verified_references(
             &entry["ast"],
             &root,
@@ -1342,5 +1906,88 @@ fn pc_hints(
             .into(),
         });
     }
-    Ok((hints, declarations.into_values().collect()))
+    let observed_by_pc: BTreeMap<usize, Vec<String>> = observations
+        .iter()
+        .filter_map(|item| {
+            Some((
+                item["pc"].as_u64()? as usize,
+                item["outcomes"]
+                    .as_array()?
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect(),
+            ))
+        })
+        .collect();
+    let static_pcs: Vec<usize> = onchain_pcs
+        .into_iter()
+        .filter(|pc| runtime_bytes.get(*pc) == Some(&0x57))
+        .collect();
+    let mut origins = Vec::new();
+    let mut by_function: BTreeMap<i64, FunctionSourceCoverage> = BTreeMap::new();
+    for pc in &static_pcs {
+        let Some(range) = map_by_pc.get(pc).copied().flatten() else {
+            continue;
+        };
+        if range.end.saturating_sub(range.start) > 256 {
+            continue;
+        }
+        let candidates: Vec<_> = function_ranges
+            .iter()
+            .filter(|function| {
+                function.range.file_id == range.file_id
+                    && range.start >= function.range.start
+                    && range.end <= function.range.end
+            })
+            .collect();
+        let [function] = candidates.as_slice() else {
+            continue;
+        };
+        let outcomes = observed_by_pc.get(pc).cloned().unwrap_or_default();
+        origins.push(PcSourceOrigin {
+            pc: *pc,
+            source_file: function.source_file.clone(),
+            declaring_contract: function.contract.clone(),
+            function: function.function.clone(),
+            function_ast_id: function.ast_id,
+            origin_kind: function.kind.clone(),
+            observed_outcomes: outcomes.clone(),
+            confidence: "verified_source_origin_not_runtime_caller".into(),
+        });
+        let entry = by_function
+            .entry(function.ast_id)
+            .or_insert_with(|| FunctionSourceCoverage {
+                source_file: function.source_file.clone(),
+                declaring_contract: function.contract.clone(),
+                function: function.function.clone(),
+                function_ast_id: function.ast_id,
+                origin_kind: function.kind.clone(),
+                mapped_static_jump_sites: 0,
+                observed_jump_sites: 0,
+                observed_outcomes: 0,
+                sites_with_both_outcomes: 0,
+            });
+        entry.mapped_static_jump_sites += 1;
+        entry.observed_jump_sites += usize::from(!outcomes.is_empty());
+        entry.observed_outcomes += outcomes.len();
+        entry.sites_with_both_outcomes += usize::from(outcomes.len() == 2);
+    }
+    let source_coverage = SourceCoverageSummary {
+        runtime_static_jump_sites: static_pcs.len(),
+        uniquely_mapped_static_jump_sites: origins.len(),
+        unattributed_static_jump_sites: static_pcs.len() - origins.len(),
+        observed_attributed_jump_sites: origins
+            .iter()
+            .filter(|origin| !origin.observed_outcomes.is_empty())
+            .count(),
+        observed_attributed_outcomes: origins
+            .iter()
+            .map(|origin| origin.observed_outcomes.len())
+            .sum(),
+        function_source_coverage: by_function.into_values().collect(),
+        pc_source_origins: origins,
+        denominator_kind: "uniquely_source_mapped_static_jump_sites_not_reachable_paths".into(),
+    };
+    Ok((hints, declarations.into_values().collect(), source_coverage))
 }
