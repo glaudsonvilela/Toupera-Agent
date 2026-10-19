@@ -24,3 +24,5 @@ A cobertura de branches por ramo é parcial porque o outro valor de `faultyPrevi
 O `--context-package` analisou a fixture, mas o `--llm-plan` retornou **zero** candidatos M4/M5. Por isso, os casos do piloto foram preparados manualmente no diretório privado com o mesmo esquema M7; o piloto valida o juiz, a rejeição e os executores, **não** a seleção M4 nem a preparação M5→M6→M7. A lacuna de detecção de arredondamento nessa fórmula permanece no backlog M4. Os gates `harness.json` e `rejection-review.json` dependem de revisão semântica verdadeira; seus booleanos não a comprovam.
 
 Artefatos brutos, incluindo JSON, traces, LCOV, revisão e contraexemplo Halmos, permanecem no VPS em `/srv/toupera-agent/private-output/m7-pilot-v2/` com acesso restrito. O piloto não gerou relatório de vulnerabilidade real nem `REPORT_READY`.
+
+O empacotador M8 foi acionado apenas para conferir a transição de estados: o pacote positivo ficou `PENDING_HUMAN_REVIEW` com 11 artefatos, e o pacote negativo ficou `REJECTED` com 13 artefatos. `--evidence-finalize` recusou o pacote rejeitado. Não foi preenchida revisão humana de relatório nem gerado `REPORT_READY`.
