@@ -150,8 +150,13 @@ pub fn plan_wcop_focus(engine: &Value, map: &Value, base: &Value, extra: Option<
                 }
             }
         }
-        let open_count = open_links.iter().filter(|(from, _)| {
+        let open_count_all = open_links.iter().filter(|(from, _)| {
             pc_of(from).ok().and_then(|pc| block_for.get(&pc)).is_some_and(|block| reached.contains(block))
+        }).count();
+        let open_count = open_links.iter().filter(|(from, to)| {
+            let (Ok(from_pc), Ok(to_pc)) = (pc_of(from), pc_of(to)) else { return false; };
+            from_pc <= map_end && to_pc <= map_end
+                && block_for.get(&from_pc).is_some_and(|block| reached.contains(block))
         }).count();
         let score = (unseen_source.min(500) as f64).sqrt()
             + (unseen_main.min(100) as f64).sqrt() * 2.0
@@ -159,7 +164,8 @@ pub fn plan_wcop_focus(engine: &Value, map: &Value, base: &Value, extra: Option<
             + (open_count.min(30) as f64).sqrt() * 3.0;
         selector_focus.insert(selector.to_owned(), json!({"score": (score * 100.0).round()/100.0,
             "unseen_source_pcs": unseen_source, "unseen_main_pcs": unseen_main,
-            "unseen_generated_pcs": unseen_generated, "open_links": open_count}));
+            "unseen_generated_pcs": unseen_generated, "open_links": open_count,
+            "open_links_all": open_count_all}));
     }
     Ok(json!({"format": 1, "contract": address, "block": block,
         "engine_code_sha256": code_hash, "observed_pcs": seen.len(),

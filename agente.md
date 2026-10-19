@@ -460,7 +460,7 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 
 ## Etapa: limite do mapa na escolha Rust (2026-10-19)
 
-- O Rust agora valida o fim do mapa do compilador e separa as posições posteriores do orçamento que orienta as escolhas. O executor mantém ganhos totais e ganhos dentro do intervalo do mapa em campos diferentes; posições finais continuam visíveis no relatório.
+- O Rust agora valida o fim do mapa do compilador e separa as posições e ligações posteriores do orçamento que orienta as escolhas. O executor mantém ganhos totais e ganhos dentro do intervalo do mapa em campos diferentes; posições finais continuam visíveis no relatório.
 - Conferência offline no VPS com o trabalho `7d78331aa23a4592`: PC final 8499, 37 posições posteriores e zero observadas. Ao marcar todos os PCs dentro do intervalo do mapa como vistos em um estado temporário, o orçamento de PCs dentro do intervalo do mapa ficou zero; as 37 posições permaneceram separadas.
 - `py_compile`, `cargo check --offline` e `cargo build --release --offline` passaram no VPS. A primeira compilação release como toupera encontrou um artefato de root sem permissão; a repetição como root concluiu.
 - Arquivos alterados: `wcop_focus.rs`, `adaptive_cycle.rs`, `wcop_adaptive.py`, este arquivo, `codex/agent.md`, checklist e `docs/WCOP-FOCO-MAPA-2026-10-19.md`.

@@ -2,7 +2,7 @@
 
 ## Alteração
 
-- O Rust confere o último PC coberto pelo mapa do compilador contra as instruções e as duas leituras locais. Também confere as contagens de posições posteriores ao mapa.
+- O Rust confere o último PC coberto pelo mapa do compilador contra as instruções e as duas leituras locais. Também confere as contagens de posições posteriores ao mapa. Ligações posteriores permanecem no relatório, mas não entram na prioridade por entrada.
 - O executor passa esse limite ao planejador Rust. Ganhos em PCs, ligações e posições incertas até o limite orientam a próxima escolha, a detecção de platô e as novas combinações.
 - Posições posteriores continuam no total observado e aparecem separadas como `new_tail_pcs`; elas não aumentam a prioridade de outra escolha. As posições sem linha dentro do intervalo do mapa continuam uma lacuna própria.
 - O trabalho continua em uma cópia local do bloco. Esta etapa não fez nova leitura do contrato nem chamou IA.
