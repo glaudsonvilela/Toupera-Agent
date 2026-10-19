@@ -173,6 +173,16 @@ pub struct FunctionSourceCoverage {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct PcAttributionGap {
+    pub pc: usize,
+    pub reason: String,
+    pub verified_source_file: Option<String>,
+    pub source_start_byte: Option<usize>,
+    pub source_end_byte: Option<usize>,
+    pub observed_outcomes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct SourceCoverageSummary {
     pub runtime_static_jump_sites: usize,
     pub uniquely_mapped_static_jump_sites: usize,
@@ -180,6 +190,8 @@ pub struct SourceCoverageSummary {
     pub unattributed_static_jump_sites: usize,
     pub observed_attributed_jump_sites: usize,
     pub observed_attributed_outcomes: usize,
+    pub observed_unattributed_jump_sites: usize,
+    pub attribution_gaps: Vec<PcAttributionGap>,
     pub function_source_coverage: Vec<FunctionSourceCoverage>,
     pub pc_source_origins: Vec<PcSourceOrigin>,
     pub denominator_kind: String,
@@ -1411,6 +1423,8 @@ impl Walker<'_> {
                 unattributed_static_jump_sites: 0,
                 observed_attributed_jump_sites: 0,
                 observed_attributed_outcomes: 0,
+                observed_unattributed_jump_sites: 0,
+                attribution_gaps: Vec::new(),
                 function_source_coverage: Vec::new(),
                 pc_source_origins: Vec::new(),
                 denominator_kind: "uniquely_source_mapped_static_jump_sites_not_reachable_paths".into(),
@@ -1927,9 +1941,19 @@ fn pc_hints(
         .filter(|pc| runtime_bytes.get(*pc) == Some(&0x57))
         .collect();
     let mut origins = Vec::new();
+    let mut gaps = Vec::new();
     let mut by_function: BTreeMap<i64, FunctionSourceCoverage> = BTreeMap::new();
     for pc in &static_pcs {
-        let Some(range) = map_by_pc.get(pc).copied().flatten() else {
+        let range = map_by_pc.get(pc).copied().flatten();
+        let Some(range) = range else {
+            gaps.push(PcAttributionGap {
+                pc: *pc,
+                reason: "no_source_map_range".into(),
+                verified_source_file: None,
+                source_start_byte: None,
+                source_end_byte: None,
+                observed_outcomes: observed_by_pc.get(pc).cloned().unwrap_or_default(),
+            });
             continue;
         };
         let candidates: Vec<_> = function_ranges
@@ -1941,6 +1965,19 @@ fn pc_hints(
             })
             .collect();
         let [function] = candidates.as_slice() else {
+            gaps.push(PcAttributionGap {
+                pc: *pc,
+                reason: if candidates.is_empty() {
+                    "outside_verified_function_or_modifier"
+                } else {
+                    "multiple_source_origins"
+                }
+                .into(),
+                verified_source_file: files.get(&range.file_id).cloned(),
+                source_start_byte: Some(range.start),
+                source_end_byte: Some(range.end),
+                observed_outcomes: observed_by_pc.get(pc).cloned().unwrap_or_default(),
+            });
             continue;
         };
         let outcomes = observed_by_pc.get(pc).cloned().unwrap_or_default();
@@ -1993,6 +2030,11 @@ fn pc_hints(
             .iter()
             .map(|origin| origin.observed_outcomes.len())
             .sum(),
+        observed_unattributed_jump_sites: gaps
+            .iter()
+            .filter(|gap| !gap.observed_outcomes.is_empty())
+            .count(),
+        attribution_gaps: gaps,
         function_source_coverage: by_function.into_values().collect(),
         pc_source_origins: origins,
         denominator_kind: "uniquely_source_mapped_static_jump_sites_not_reachable_paths".into(),
