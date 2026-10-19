@@ -13,6 +13,12 @@ O usuário rejeitou tratar o mapa atual como auditoria forense completa. O motor
 
 Registrar progresso em `docs/ROADMAP-CHECKLIST.md` e neste arquivo a cada etapa. Não marcar como concluídos replay de execução de transações, rastros internos, fuzzing ou cobertura total enquanto não houver execução e evidência. Artefatos de alvo seguem privados. Preservar `web/` não rastreado. Instrução atual do usuário: executar simulações somente no VPS, em processo autônomo, e verificar se ele consegue; não simular no ambiente local desta sessão.
 
+## Etapa atual — resumo de caminhos e pesquisa da cadeia de variáveis
+
+- `--local-coverage` resume por operação, PC e grupo de entrada os rastros já existentes. `local-coverage-v2.json` foi gerado no VPS a partir de `local-scenarios-v7/report.json`, sem novo fork/RPC: 24 casos, 110 PCs `JUMPI` estáticos, 50 vistos, 58 resultados; quatro entradas zero já cobrem 56 resultados, 16 positivos comuns não acrescentam nenhum e dois casos acima dos limites acrescentam dois.
+- A conclusão vale apenas para o estado e a grade observados. A correspondência PC→função Solidity, alcance dos 60 PCs não vistos e cobertura de estados ainda não foram medidos. Não tratar o resumo como aprovação do contrato.
+- Nova proposta pesquisada em fontes primárias: [segunda leitura por variável](docs/VARIABLE-LENS.md). Inventariar cada declaração e seguir origem→transformação→guarda→escrita/efeito com AST/layout, SlithIR SSA e source maps; Gigahorse é apoio tentativo quando source não corresponde. O motor ainda não executa a cadeia completa. Próximo recorte: inventário com proveniência, depois ligação a PCs e geração de estados no VPS. Atualizar `codex/agent.md` após cada etapa.
+
 ## Etapa mais recente — cronologia forense automática (2026-10-18)
 
 - `forensic_probe.rs` usa `alloy-primitives::U256`, busca logs desde o deploy quando o RPC fornece arquivo, seleciona endpoint pela profundidade histórica depois de confirmar identidade, agrega mint/burn e transferências do asset, lê transações/recibos, tenta rastros internos, confere snapshots de estado nos blocos com eventos, propaga divergências à quarentena e emite métricas `coverage`.

@@ -14,6 +14,11 @@
 - Pedido vigente: executar simulações somente no VPS, em processo autônomo, e verificar o resultado. Não simular no ambiente local desta sessão nem confundir leitura histórica ou `eth_call` com replay de execução.
 - Preferência de comunicação vigente: usar termos simples e neutros com o usuário, como “cenários locais”, “checagem”, “mapa” e “diferença observada”, preservando precisão técnica sem linguagem alarmista.
 
+## Resumo de caminhos e segunda leitura por variável
+
+- O Rust `--local-coverage` já roda no VPS sobre `private-output/real-targets/yield-vault/local-scenarios-v7/report.json`, sem novo cenário/RPC. `local-coverage-v2.json`: 24 casos, 110 PCs `JUMPI` estáticos, 50 observados, 58 resultados; zero em quatro chamadas já observa 56, 16 positivos comuns não acrescentam resultado, dois casos acima de limite acrescentam dois. Atribuição por operação é pelo nome da chamada principal, sem PC→função comprovado.
+- Leia `docs/VARIABLE-LENS.md` antes de implementar a nova leitura: fontes oficiais Solidity/Slither, SAILFISH e Gigahorse, grafo de variáveis e fatias nos dois sentidos. O documento é proposta pesquisada, não execução do motor. Próximos gates: inventário completo AST/layout/SSA com proveniência; PC/source map; estados, atores e ordens derivados de limiares, simulados somente no VPS. Preservar `web/` não rastreado e atualizar este arquivo e `agente.md` em cada etapa.
+
 ## Etapa histórica concluída, 2026-10-18
 
 - O motor Rust usa `alloy-primitives::U256`; seleciona RPC com maior histórico após validar chain/bloco/runtime; varre logs do vault e transferências do asset desde o deploy em lotes, com erros e alcance explícitos; cruza transações/recibos, eventos, cap, owner, supply e balanço por bloco. Tenta `debug_traceTransaction`, registrando a lacuna quando não há acesso. Divergências observadas chegam à quarentena e ao mapa refeito; a saída inclui `coverage`.

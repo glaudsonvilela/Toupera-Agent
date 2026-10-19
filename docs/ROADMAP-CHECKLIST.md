@@ -137,6 +137,10 @@ Dados e limites do piloto: [YieldVault na Sepolia](REAL-EVM-PILOT.md). Zero cand
 - [x] Reaproveitar uma coleta histórica completa por hash/identidade para reavaliar todos os hotspots sem consultar novamente o RPC, com proveniência explícita.
 - [x] Separar pontos `JUMPI` do frame raiz do vault e compará-los com os PCs `JUMPI` do runtime verificado; tratar o denominador como estático, não como prova de alcance.
 - [x] Gerar casos de valor zero e um acima de `maxWithdraw`/`maxRedeem` quando disponíveis no fork local, registrando reversão ou conclusão sem inferência automática.
+- [x] Resumir resultados de decisão por operação e grupo de entrada a partir dos rastros existentes, sem novo RPC; `local-coverage-v2` no VPS mostra 56/58 resultados já vistos com entradas zero.
+- [x] Pesquisar e documentar o desenho da segunda leitura por variável, com AST/layout, SlithIR SSA, source map e fatias de dependência; ver [cadeia de variáveis](VARIABLE-LENS.md).
+- [ ] Implementar inventário de todas as declarações e cadeias por variável com proveniência, incluindo parâmetros/locais, storage, transient e membros de estruturas/mappings.
+- [ ] Ligar cadeias do source a PCs do runtime com confiança explícita e usar limiares/estado/ator/ordem para gerar novos cenários no VPS; medir ganho de resultados observados.
 - [ ] Medir cobertura por função/ramo do vault com denominador confiável e ampliar sequências conforme lacunas observadas.
 - [x] Refazer o mapa inicial com as evidências da quarentena; encaminhar ao M5 apenas hipóteses `UNVERIFIED` vinculadas à identidade do alvo.
 - [x] Publicar métricas de cobertura de blocos, eventos, transações, estados e chamadas de borda, com lacunas de rastro/bytecode explícitas.
