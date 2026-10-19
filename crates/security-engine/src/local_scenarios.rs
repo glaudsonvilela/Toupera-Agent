@@ -109,6 +109,8 @@ pub struct GuidedScenarioEvidence {
     pub prior_root_outcome_count: usize,
     pub focus_variable_ast_ids: Vec<i64>,
     pub selected_families: Vec<String>,
+    pub target_source_pcs: Vec<usize>,
+    pub target_source_functions: Vec<String>,
     pub selection_basis: String,
     pub executed_sequences: Vec<String>,
     pub new_root_outcomes: Vec<String>,
@@ -772,13 +774,48 @@ fn run_scenarios(
                 families.insert("asset_state_change".to_owned());
             }
         }
+        let mut target_pcs = BTreeSet::new();
+        let mut target_functions = BTreeSet::new();
+        if let Some(origins) = lens["source_coverage"]["pc_source_origins"].as_array() {
+            for origin in origins {
+                let function = origin["function"].as_str().unwrap_or("");
+                let observed = origin["observed_outcomes"].as_array().map_or(0, Vec::len);
+                if observed < 2
+                    && matches!(
+                        function,
+                        "deposit"
+                            | "mint"
+                            | "withdraw"
+                            | "redeem"
+                            | "maxDeposit"
+                            | "maxMint"
+                            | "maxWithdraw"
+                            | "maxRedeem"
+                    )
+                {
+                    if let Some(pc) = origin["pc"].as_u64() {
+                        target_pcs.insert(pc as usize);
+                        target_functions.insert(function.to_owned());
+                    }
+                }
+            }
+        }
+        if !target_functions.is_empty()
+            && lens["state_transition_links"]
+                .as_array()
+                .is_some_and(|items| !items.is_empty())
+        {
+            families.insert("ordered_state".into());
+        }
         (Some(GuidedScenarioEvidence {
             variable_lens_sha256: hex::encode(Sha256::digest(&lens_bytes)),
             prior_coverage_sha256: coverage_sha,
             prior_root_outcome_count: prior_outcomes.len(),
             focus_variable_ast_ids: ids.into_iter().collect(),
             selected_families: families.into_iter().collect(),
-            selection_basis: "Source variable names and types select bounded local families; they do not establish path reachability".into(),
+            target_source_pcs: target_pcs.into_iter().collect(),
+            target_source_functions: target_functions.into_iter().collect(),
+            selection_basis: "Source variable names/types and one-sided or unobserved source-origin PCs select bounded local families; neither proves path reachability".into(),
             executed_sequences: Vec::new(),
             new_root_outcomes: Vec::new(),
             new_root_jump_sites: Vec::new(),
@@ -1268,31 +1305,110 @@ fn run_scenarios(
             );
             match send_local(&local, &identity.actor, &identity.asset, &donation) {
                 Ok((_, receipt)) if receipt["status"] == "0x1" => {
-                    let case = run_case(
+                    let deposit = run_case(
                         &local,
                         &identity.vault,
                         &identity.asset,
                         &identity.actor,
                         Operation::Deposit,
                         asset_unit,
-                        "guided_asset_state:deposit".into(),
+                        "guided_asset_state:deposit_then_redeem".into(),
                         1,
                         "state_comparison",
                     );
+                    let minted = deposit
+                        .before
+                        .as_ref()
+                        .zip(deposit.after.as_ref())
+                        .and_then(|(before, after)| {
+                            signed_delta(&before.actor_share_balance, &after.actor_share_balance)
+                                .ok()
+                        })
+                        .and_then(|value| value.parse::<U256>().ok());
                     append_guided_case(
                         &mut cases,
                         &mut all_jumps,
                         &mut all_outcomes,
                         &mut trace_limitations,
                         focus,
-                        case,
+                        deposit,
                     );
+                    if let Some(minted) = minted.filter(|value| *value > U256::ZERO) {
+                        let redeem = run_case(
+                            &local,
+                            &identity.vault,
+                            &identity.asset,
+                            &identity.actor,
+                            Operation::Redeem,
+                            minted,
+                            "guided_asset_state:deposit_then_redeem".into(),
+                            2,
+                            "state_comparison",
+                        );
+                        append_guided_case(
+                            &mut cases,
+                            &mut all_jumps,
+                            &mut all_outcomes,
+                            &mut trace_limitations,
+                            focus,
+                            redeem,
+                        );
+                    }
                 }
                 Ok(_) => {
                     scenario_limitations.push("local asset balance change did not complete".into())
                 }
                 Err(error) => scenario_limitations
                     .push(format!("local asset balance change unavailable: {error}")),
+            }
+            revert_snapshot(&local, &id)?;
+        }
+        if focus
+            .selected_families
+            .iter()
+            .any(|family| family == "ordered_state")
+        {
+            let id = snapshot(&local)?;
+            let withdraw = run_case(
+                &local,
+                &identity.vault,
+                &identity.asset,
+                &identity.actor,
+                Operation::Withdraw,
+                asset_unit,
+                "guided_order:withdraw_then_deposit".into(),
+                1,
+                "state_comparison",
+            );
+            let completed = withdraw.status == "completed";
+            append_guided_case(
+                &mut cases,
+                &mut all_jumps,
+                &mut all_outcomes,
+                &mut trace_limitations,
+                focus,
+                withdraw,
+            );
+            if completed {
+                let deposit = run_case(
+                    &local,
+                    &identity.vault,
+                    &identity.asset,
+                    &identity.actor,
+                    Operation::Deposit,
+                    asset_unit,
+                    "guided_order:withdraw_then_deposit".into(),
+                    2,
+                    "state_comparison",
+                );
+                append_guided_case(
+                    &mut cases,
+                    &mut all_jumps,
+                    &mut all_outcomes,
+                    &mut trace_limitations,
+                    focus,
+                    deposit,
+                );
             }
             revert_snapshot(&local, &id)?;
         }
