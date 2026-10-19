@@ -18,6 +18,7 @@ mod llm_review;
 mod local_coverage;
 mod local_scenarios;
 mod source;
+mod variable_lens;
 
 use serde::Serialize;
 
@@ -73,6 +74,7 @@ pub use source::{
     compile_source_ast_file, compile_source_ast_text, compile_source_ast_text_with_evm_version,
     reconstruct_from_ast_json, reconstruct_source_file,
 };
+pub use variable_lens::{VariableLensReport, build_variable_lens};
 
 /// Stable identity of a contract in an analysis target.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]

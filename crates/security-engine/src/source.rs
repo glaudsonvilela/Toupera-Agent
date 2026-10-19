@@ -64,7 +64,8 @@ pub fn compile_source_ast_text_with_evm_version(
 ) -> Result<String, String> {
     let mut sources = Map::new();
     sources.insert(source_name.to_owned(), json!({ "content": source }));
-    let mut settings = json!({ "outputSelection": { "*": { "": ["ast"] } } });
+    let mut settings =
+        json!({ "outputSelection": { "*": { "": ["ast"], "*": ["storageLayout"] } } });
     if let Some(version) = evm_version {
         if version.is_empty() || !version.bytes().all(|byte| byte.is_ascii_alphabetic()) {
             return Err("EVM version must be a nonempty alphabetic solc identifier".into());
