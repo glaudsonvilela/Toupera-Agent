@@ -60,3 +60,10 @@ O trabalho `2d97ca57278541bc` fixou o bloco `26227913`. A leitura v2 do explorad
 A cobertura local passou de 19/213 para 38/213 ramos no conjunto compilado; nos 18 arquivos com linhas executadas, 38/77 ramos. Os denominadores incluem bibliotecas genéricas, e o recorte de arquivos executados depende da rodada. O relatório `docs/WCOP-COBERTURA-ETAPA2-2026-10-19.md` lista primeiro lacunas em arquivos com passagem. Estes números não medem diretamente os ramos do runtime publicado nem demonstram ausência de falhas.
 
 O leitor de histórico usa páginas v2 do Blockscout e conserva a API anterior como alternativa. Respostas temporárias recebem tentativas limitadas. Uma execução anterior teve limite 429 e registrou o histórico incompleto; o trabalho acima concluiu a leitura completa. Arquivos detalhados seguem privados no VPS.
+
+
+## Caminhos observados no runtime
+
+O trabalho `154aa11a5aa144ed` executou automaticamente `tools/wcop_trace.py` após a leitura do histórico e dos papéis. O script iniciou Anvil somente em loopback, fixou o bloco `26227976`, conferiu slot e código da implementação, fez 24 chamadas isoladas e uma sequência de 12 chamadas locais. Dez passos da sequência mudaram apenas a cópia local. O comando Rust `--wcop-trace` conferiu o hash do código normalizado e ligou PCs e transições ao mapa existente.
+
+Foram observados 2470/5377 PCs desmontados e 241/559 blocos, em 36 chamadas sem erro de leitura. Das 296 transições distintas observadas, 235 constam no CFG estático e 61 ainda precisam de reconciliação. O motor marcou 202 dúvidas em PCs visitados para revisão. Essas contagens não medem todos os estados nem probabilidade de falha. O relatório público de método está em `docs/WCOP-CAMINHOS-RUNTIME-2026-10-19.md`; `trace.json` e `trace-reconcile.json` permanecem privados no VPS. Nenhuma transação foi enviada à rede pública por esta etapa.

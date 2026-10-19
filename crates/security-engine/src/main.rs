@@ -9,7 +9,7 @@ use security_engine::{
     build_variable_lens, compare_with_solc_contract, empty_review_report, filter_evidence,
     finalize_evidence_bundle, gate_review_plan, import_gigahorse_tac, import_heimdall_abi,
     judge_foundry_case, load_or_build_context_package_with_forensic, prepare_evidence_bundle,
-    prepare_foundry_cases, prepare_review_plan, reassess_cached_map, reconstruct_bytecode_hex,
+    prepare_foundry_cases, prepare_review_plan, reassess_cached_map, reconcile_trace, reconstruct_bytecode_hex,
     reconstruct_source_file, reject_foundry_case, run_forensic_probe, run_guided_scenarios,
     run_local_scenarios, run_review,
 };
@@ -18,10 +18,34 @@ fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --forensic-probe <manifest.json> | --forensic-plan <manifest.json> <forensic.json> <lens.json> <scenarios.json> <coverage.json> | --source-benchmark <solc> <source1.sol> [source2.sol ...] | --variable-lens <manifest.json> <forensic-report.json> <local-coverage.json> [slither-ssa.json] | --local-scenarios <forensic-report.json> <fork-rpc-url> <anvil-bin> | --guided-scenarios <forensic-report.json> <variable-lens.json> <prior-coverage.json> <fork-rpc-url> <anvil-bin> [previous-scenarios.json] | --local-coverage <local-scenarios.json> | --evidence-filter <forensic.json> <lens.json> <scenarios.json> <coverage.json> <m5-context.json> | --cached-reassessment <forensic-report.json> <local-scenarios.json> | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>] [--forensic <report.json>] | --llm-plan <context.json> --evidence-filter <filter.json> | --llm-review <context.json> --evidence-filter <filter.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --foundry-reject <case-dir> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
+            "usage: security-engine <source.sol> [solc-path] | --forensic-probe <manifest.json> | --forensic-plan <manifest.json> <forensic.json> <lens.json> <scenarios.json> <coverage.json> | --source-benchmark <solc> <source1.sol> [source2.sol ...] | --variable-lens <manifest.json> <forensic-report.json> <local-coverage.json> [slither-ssa.json] | --local-scenarios <forensic-report.json> <fork-rpc-url> <anvil-bin> | --guided-scenarios <forensic-report.json> <variable-lens.json> <prior-coverage.json> <fork-rpc-url> <anvil-bin> [previous-scenarios.json] | --local-coverage <local-scenarios.json> | --evidence-filter <forensic.json> <lens.json> <scenarios.json> <coverage.json> <m5-context.json> | --cached-reassessment <forensic-report.json> <local-scenarios.json> | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>] [--forensic <report.json>] | --llm-plan <context.json> --evidence-filter <filter.json> | --llm-review <context.json> --evidence-filter <filter.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --foundry-reject <case-dir> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name> | --wcop-sift <engine.json> <history.json> | --wcop-trace <engine.json> <trace.json>"
         );
         return ExitCode::FAILURE;
     };
+    if source == "--wcop-trace" {
+        let arguments: Vec<_> = args.collect();
+        if arguments.len() != 2 {
+            eprintln!("usage: security-engine --wcop-trace <engine.json> <trace.json>");
+            return ExitCode::FAILURE;
+        }
+        let result = (|| -> Result<serde_json::Value, String> {
+            let engine: serde_json::Value = serde_json::from_slice(&fs::read(&arguments[0]).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            let trace: serde_json::Value = serde_json::from_slice(&fs::read(&arguments[1]).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            reconcile_trace(&engine, &trace)
+        })();
+        return match result {
+            Ok(value) => {
+                if let Err(error) = serde_json::to_writer(std::io::stdout(), &value) {
+                    eprintln!("cannot write trace reconciliation: {error}");
+                    return ExitCode::FAILURE;
+                }
+                println!(); ExitCode::SUCCESS
+            }
+            Err(error) => { eprintln!("{error}"); ExitCode::FAILURE }
+        };
+    }
     if source == "--wcop-sift" {
         let arguments: Vec<_> = args.collect();
         if arguments.len() != 2 {

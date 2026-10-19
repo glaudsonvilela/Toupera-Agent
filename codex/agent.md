@@ -287,3 +287,19 @@ A última execução automática wCOP é `private-output/site-jobs/ba5146dd978d4
 - A recompilação de 34 fontes continuou compatível com o runtime após mascarar somente as três posições imutáveis declaradas. A troca local preservou saldo, autorização, nonce, domínio de assinatura, papel e pausa nos casos executados.
 - Cobertura local passou de 19/213 para 38/213 ramos no conjunto compilado. Nos 18 arquivos com linhas executadas houve 38/77 ramos; o arquivo próprio ficou em 22/22 linhas. As 136 ramificações nos arquivos sem linha executada não devem ser interpretadas automaticamente como alcançáveis ou inalcançáveis.
 - `docs/WCOP-COBERTURA-ETAPA2-2026-10-19.md` traz a nova medição e as lacunas ativas. Continua sem medição de ramos do bytecode publicado, sem prova de todos os estados e sem confirmação de falha.
+
+
+## Etapa de caminhos do runtime wCOP (2026-10-19)
+
+- `tools/wcop_trace.py` cria uma cópia Anvil do bloco fixado, confere o slot EIP-1967 e o runtime da implementação contra `implementation.hex`, executa chamadas isoladas e uma sequência local com estado, e registra PCs, blocos e transições da implementação. A cópia escuta somente em `127.0.0.1`; não envia transações à rede pública.
+- `security-engine --wcop-trace` confere o hash do código normalizado, valida que os PCs e blocos observados pertencem ao mapa, separa ligações observadas fora do CFG estático e ordena dúvidas situadas em PCs visitados. Essa ordem não indica falha confirmada.
+- Ensaio isolado sobre o trabalho `2d97ca57278541bc`: 36 chamadas, das quais 12 em sequência; 10 passos gravados apenas na cópia; 0 erros e 0 divergências de resultado esperado. Foram observados 2470/5377 PCs e 241/559 blocos; 61 transições observadas ainda não constam do CFG estático. Esses denominadores não são prova de alcance total.
+- O pipeline do painel foi ampliado para registrar a leitura automaticamente quando houver histórico, papéis e implementação. Conferir a rodada integrada antes de publicar o documento `docs/WCOP-CAMINHOS-RUNTIME-2026-10-19.md` no Git privado.
+
+
+### Resultado integrado dos caminhos do runtime (2026-10-19)
+
+- Trabalho `154aa11a5aa144ed`, bloco `26227976`: histórico 236 eventos e oferta reconciliada; 18/18 cenários Foundry no bloco, 14/14 na fonte local, 3/3 propriedades Halmos limitadas.
+- A etapa automática `Caminhos` concluiu 36 chamadas locais, incluindo 12 numa sequência com 10 passos gravados apenas na cópia. Não houve erro de leitura nem divergência de resultado esperado.
+- O Rust conferiu a identidade do código e registrou 2470/5377 PCs e 241/559 blocos observados; 235 transições coincidem com arestas estáticas e 61 transições observadas ainda não constam do mapa. Havia 202 dúvidas do motor em PCs visitados; nenhuma é falha confirmada por isso.
+- `docs/WCOP-CAMINHOS-RUNTIME-2026-10-19.md` resume casos, números, limites e próximos passos. Logs, PCs completos e ligação detalhada ficam no VPS privado. A medição não é cobertura total de estados ou de instruções alcançáveis.

@@ -16,6 +16,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from wcop_history import collect as collect_history
 from wcop_scope import compile_repro, inventory, namespace_slots, parse_lcov, roles_at_block
+from wcop_trace import trace_job
 
 ROOT = Path("/srv/toupera-agent")
 WORK = ROOT / "private-output" / "site-jobs"
@@ -518,6 +519,19 @@ def worker(job_id):
                          (history.get("funded_holder") or {}).get("address") if history else None,
                          roles, implementation)
         deep = deep_review(job, impl_source, impl_runtime, impl_engine if impl_summary else None, roles)
+        trace_review = None
+        if history and roles and impl_summary:
+            stage(job, "Caminhos", "Lendo PCs da implementação em cópia local do bloco.")
+            try:
+                trace_job(job_id)
+                trace_code = command([str(ENGINE), "--wcop-trace", str(job / "engine-impl.json"),
+                                      str(job / "trace.json")], job / "trace-reconcile.json", 45)
+                if trace_code == 0:
+                    trace_review = jread(job / "trace-reconcile.json")
+                else:
+                    save(job / "trace-error.txt", "motor não concluiu a ligação dos caminhos\n")
+            except (OSError, ValueError, KeyError, RuntimeError, subprocess.TimeoutExpired) as error:
+                save(job / "trace-error.txt", type(error).__name__ + ": " + str(error)[:160] + "\n")
         for item in rows:
             if item["name"] in ("Echidna", "Medusa"):
                 state = (deep.get("fuzzers") or {}).get(item["name"])
@@ -588,6 +602,17 @@ def worker(job_id):
         if deep.get("formal"):
             final += ("- Halmos: " + deep["formal"]["state"] + "; " +
                       (deep["formal"]["reason"] or str(deep["formal"].get("properties_passed", 0)) + " propriedades locais concluídas") + ".\n")
+        if trace_review:
+            final += ("- Bytecode na cópia local: " + str(trace_review["observed_instruction_pcs"]) +
+                      "/" + str(trace_review["disassembled_instruction_pcs"]) +
+                      " PCs percorridos em " + str(trace_review["calls"]) + " chamadas locais; " +
+                      str(trace_review["observed_blocks"]) + "/" + str(trace_review["engine_blocks"]) +
+                      " blocos do mapa visitados.\n")
+            final += ("- Ligações entre blocos: " + str(trace_review["matched_static_edges"]) +
+                      " presentes no mapa; " + str(trace_review["unmatched_transitions"]) +
+                      " transições observadas ainda fora do mapa estático. Dúvidas em PCs visitados: " +
+                      str(trace_review["observed_uncertainties"]) + ".\n")
+            final += ("- A leitura reúne chamadas isoladas e uma sequência local; PCs restantes podem aparecer em outros estados.\n")
         for error in deep.get("errors") or []:
             final += "- Limite: " + error + ".\n"
         final += ("- Ainda sem cobertura total de caminhos e estados; uma função exercitada uma vez pode ter "

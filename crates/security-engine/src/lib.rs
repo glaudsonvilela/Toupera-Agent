@@ -21,6 +21,7 @@ mod llm_review;
 mod local_coverage;
 mod local_scenarios;
 mod source;
+mod trace_reconcile;
 mod variable_lens;
 
 use serde::Serialize;
@@ -40,6 +41,7 @@ pub use bytecode_evmole::{
     EvmoleControlEdgeEvidence, EvmoleReport, EvmoleSelectorEvidence, EvmoleStorageEvidence,
 };
 pub use cached_reassessment::reassess_cached_map;
+pub use trace_reconcile::reconcile_trace;
 pub use context_package::{
     ArtifactDigests, CachedContextPackage, ContextPackage, ContextSlice, EvidenceExcerpt,
     FunctionDigest, FunctionExcerpt, build_context_package, load_or_build_context_package,
