@@ -258,30 +258,25 @@ fn expected_deltas(operation: Operation, amount: U256, preview: U256) -> [String
         Operation::Withdraw => (amount, preview),
         Operation::Redeem => (preview, amount),
     };
+    let negative = |value: U256| {
+        if value == U256::ZERO {
+            "0".into()
+        } else {
+            format!("-{value}")
+        }
+    };
     match operation {
         Operation::Deposit | Operation::Mint => [
             assets.to_string(),
             shares.to_string(),
-            format!("-{assets}"),
+            negative(assets),
             shares.to_string(),
         ],
         Operation::Withdraw | Operation::Redeem => [
-            if assets == U256::ZERO {
-                "0".into()
-            } else {
-                format!("-{assets}")
-            },
-            if shares == U256::ZERO {
-                "0".into()
-            } else {
-                format!("-{shares}")
-            },
+            negative(assets),
+            negative(shares),
             assets.to_string(),
-            if shares == U256::ZERO {
-                "0".into()
-            } else {
-                format!("-{shares}")
-            },
+            negative(shares),
         ],
     }
 }
