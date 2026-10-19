@@ -5,18 +5,19 @@ use std::process::ExitCode;
 
 use security_engine::{
     CachingProvider, CompanionAnalysis, DeepSeekProvider, ForensicInput, RateCard,
-    analyze_economic_functions, compare_with_solc_contract, empty_review_report,
-    finalize_evidence_bundle, import_gigahorse_tac, import_heimdall_abi, judge_foundry_case,
-    load_or_build_context_package_with_forensic, prepare_evidence_bundle, prepare_foundry_cases,
-    prepare_review_plan, reassess_cached_map, reconstruct_bytecode_hex, reconstruct_source_file,
-    reject_foundry_case, run_forensic_probe, run_local_scenarios, run_review,
+    analyze_economic_functions, analyze_recorded_scenarios, compare_with_solc_contract,
+    empty_review_report, finalize_evidence_bundle, import_gigahorse_tac, import_heimdall_abi,
+    judge_foundry_case, load_or_build_context_package_with_forensic, prepare_evidence_bundle,
+    prepare_foundry_cases, prepare_review_plan, reassess_cached_map, reconstruct_bytecode_hex,
+    reconstruct_source_file, reject_foundry_case, run_forensic_probe, run_local_scenarios,
+    run_review,
 };
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(source) = args.next() else {
         eprintln!(
-            "usage: security-engine <source.sol> [solc-path] | --forensic-probe <manifest.json> | --local-scenarios <forensic-report.json> <fork-rpc-url> <anvil-bin> | --cached-reassessment <forensic-report.json> <local-scenarios.json> | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>] [--forensic <report.json>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --foundry-reject <case-dir> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
+            "usage: security-engine <source.sol> [solc-path] | --forensic-probe <manifest.json> | --local-scenarios <forensic-report.json> <fork-rpc-url> <anvil-bin> | --local-coverage <local-scenarios.json> | --cached-reassessment <forensic-report.json> <local-scenarios.json> | --economic-candidates <source.sol> [solc-path] [slither.json] | --context-package <source.sol> <private-cache-dir> <solc-path> [--slither <json>] [--bytecode <runtime.hex>] [--evm-version <solc-evm-version>] [--forensic <report.json>] | --llm-plan <context.json> | --llm-review <context.json> --provider deepseek --allow-external --review-cache <private-dir> [--model <name>] [--max-candidates <n>] [--rate-card <json>] | --foundry-plan <context.json> <review.json> <source.sol> <private-output-dir> | --foundry-run <case-dir> <forge-bin> <solc-bin> | --foundry-reject <case-dir> | --evidence-plan <case-dir> <private-output-dir> | --evidence-finalize <bundle-dir> | --bytecode <runtime.hex> | --bytecode-companions <runtime.hex> <heimdall-abi.json> <gigahorse-contract.tac> | --compare-bytecode <runtime.hex> <solc.json> <source-name> <contract-name>"
         );
         return ExitCode::FAILURE;
     };
@@ -64,6 +65,27 @@ fn main() -> ExitCode {
             Ok(report) => {
                 if let Err(error) = serde_json::to_writer(std::io::stdout(), &report) {
                     eprintln!("cannot write local scenario report: {error}");
+                    return ExitCode::FAILURE;
+                }
+                println!();
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if source == "--local-coverage" {
+        let arguments: Vec<_> = args.collect();
+        if arguments.len() != 1 {
+            eprintln!("usage: security-engine --local-coverage <local-scenarios.json>");
+            return ExitCode::FAILURE;
+        }
+        return match analyze_recorded_scenarios(Path::new(&arguments[0])) {
+            Ok(report) => {
+                if let Err(error) = serde_json::to_writer(std::io::stdout(), &report) {
+                    eprintln!("cannot write local coverage report: {error}");
                     return ExitCode::FAILURE;
                 }
                 println!();

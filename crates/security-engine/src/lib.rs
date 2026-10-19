@@ -15,6 +15,7 @@ mod forensic_probe;
 mod foundry_judge;
 mod ir;
 mod llm_review;
+mod local_coverage;
 mod local_scenarios;
 mod source;
 
@@ -66,6 +67,7 @@ pub use llm_review::{
     ProviderReply, RateCard, ReviewItem, ReviewMetrics, ReviewPlan, ReviewReport, TokenUsage,
     empty_review_report, prepare_review_plan, run_review,
 };
+pub use local_coverage::{LocalCoverageReport, analyze_recorded_scenarios};
 pub use local_scenarios::{LocalScenarioReport, run_local_scenarios};
 pub use source::{
     compile_source_ast_file, compile_source_ast_text, compile_source_ast_text_with_evm_version,
