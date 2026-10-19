@@ -358,3 +358,14 @@ Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode 
 - [x] Pontuar individualmente 236 registros, 40 escolhas, 30 dúvidas do Rust e 114 sinais do Slither em arquivo novo no Git privado.
 - [x] Distinguir prioridades de revisão de falhas confirmadas; nenhuma falha confirmada nesta rodada.
 - [ ] Ampliar estados e ligar novas saídas do bytecode a uma medição atualizada dos ramos da fonte.
+
+### Continuação: mapa de linhas e permissões (2026-10-19)
+
+- [x] Ligar PCs das duas leituras locais a arquivo/linha pelo mapa do compilador, com vínculo de runtime e campos imutáveis.
+- [x] Registrar posições sem linha, dados depois do mapa e ligações observadas fora do mapa estático.
+- [x] Integrar o mapa ao trabalho do painel e à conferência de identidade do Rust.
+- [x] Refazer a sequência de permissões por eventos e comparar as contas vistas com o estado no bloco.
+- [ ] Demonstrar que todas as contas possíveis foram descobertas; atualizações e gravações sem evento ainda limitam essa afirmação.
+- [ ] Separar código e dados embutidos no denominador de posições e medir caminhos alcançáveis por função.
+
+Ver `docs/WCOP-MAPA-LINHAS-2026-10-19.md`.

@@ -287,6 +287,7 @@ pub fn guard_wcop_job(job: &Path) -> Result<Value, String> {
         "adaptive-state.json",
         "adaptive-trace.json",
         "adaptive-reconcile.json",
+        "path-map.json",
     ];
     let mut reasons = Vec::<String>::new();
     let mut intact = HashSet::new();
@@ -502,6 +503,38 @@ pub fn guard_wcop_job(job: &Path) -> Result<Value, String> {
                 "identidade ou leitura dos caminhos não confere"
             },
             &["trace.json", "trace-reconcile.json", engine_name],
+        ));
+    }
+    if intact.contains("path-map.json") {
+        let map = json_at(job, "path-map.json", 5_000_000)?;
+        let code_hash = engine.as_ref()
+            .and_then(|value| value["normalized_hex"].as_str())
+            .and_then(|value| code_bytes(value).ok())
+            .map(|value| digest(&value));
+        let compiler_hash = bytes_at(job, "compiler-input.json", 15_000_000)
+            .ok().map(|value| digest(&value));
+        let source_relation_ok = match binding.as_str() {
+            "exact" => map["source_relation"] == "idêntico",
+            "masked_immutables" => map["source_relation"] == "confere sem campos imutáveis",
+            _ => false,
+        };
+        let valid = identity_ok && linked && source_relation_ok
+            && map["compiler_input_sha256"].as_str() == compiler_hash.as_deref()
+            && map["contract"].as_str() == Some(address)
+            && map["block"].as_u64() == Some(block)
+            && map["implementation"].as_str() == implementation
+            && map["engine_code_sha256"].as_str() == code_hash.as_deref()
+            && map["all_pcs"].as_u64() == engine.as_ref()
+                .and_then(|value| value["instructions"].as_array())
+                .map(|items| items.len() as u64)
+            && map["observed_pcs"].as_u64().is_some_and(|count|
+                count <= map["all_pcs"].as_u64().unwrap_or(0));
+        claims.push(claim(
+            "source_map", "Linhas ligadas ao runtime",
+            if valid { "OBSERVADO" } else { "INCONCLUSIVO" },
+            if valid { "locais do compilador ligados ao código e bloco fixados, com lacunas explícitas" }
+            else { "vínculo do mapa incompleto" },
+            &["path-map.json", "compiler-input.json", engine_name],
         ));
     }
     if intact.contains("scope.json") {

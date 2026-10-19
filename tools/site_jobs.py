@@ -404,7 +404,7 @@ def snapshot_manifest(job, address, block_number, block_hash, implementation, sl
              "scope.json", "history.json", "roles.json", "tools.json",
              "trace.json", "trace-reconcile.json", "scenarios.json", "coverage.json",
              "adaptive.json", "adaptive-state.json", "adaptive-trace.json",
-             "adaptive-reconcile.json")
+             "adaptive-reconcile.json", "path-map.json")
     artifacts = {}
     for name in names:
         path = job / name
@@ -607,6 +607,15 @@ def worker(job_id):
             else:
                 save(job / "adaptive-error.txt", "ciclo local não concluiu; saída " +
                      str(adaptive_code) + "\n")
+        path_map = None
+        if trace_review and impl_source and impl_summary:
+            stage(job, "Mapa da fonte", "Ligando posições observadas às linhas da fonte recompilada.")
+            map_code = command([sys.executable, str(ROOT / "tools/wcop_path_map.py"), job_id],
+                               job / "tools/path-map.log", 150)
+            if map_code == 0 and (job / "path-map.json").is_file():
+                path_map = jread(job / "path-map.json")
+            else:
+                save(job / "path-map-error.txt", "mapa de linhas incompleto; saída " + str(map_code) + "\n")
         for item in rows:
             if item["name"] in ("Echidna", "Medusa"):
                 state = (deep.get("fuzzers") or {}).get(item["name"])
@@ -664,6 +673,10 @@ def worker(job_id):
         final += "- Compilador: " + str(compiler.get("compiler") or "indisponível") + "; EVM: " + str(compiler.get("evm_version") or "indisponível") + ".\n"
         final += "- Espaços de dados nomeados na fonte: " + str(len(deep.get("storage_namespaces") or [])) + "; posições distintas: " + ("sim" if deep.get("storage_slots_unique") else "não confirmado") + ".\n"
         if roles:
+            final += ("- Sequência dos papéis vista nos eventos: " + str(roles.get("role_event_count", 0)) +
+                      " registros; comparação com o bloco: " +
+                      ("confere" if roles.get("event_replay_matches_current") else "exige revisão") +
+                      "; descoberta de todas as contas: não comprovada.\n")
             final += "- Contas com papel ativo entre as vistas no histórico: " + ", ".join(
                 name + "=" + str(len(accounts)) for name, accounts in
                 roles.get("active_accounts_from_events", {}).items()) + ".\n"
@@ -678,6 +691,13 @@ def worker(job_id):
             missing = [item["signature"] for item in inv["functions"] if item["status"] != "cenário local"]
             final += "- Entradas sem cenário local: " + (", ".join(missing) if missing else "nenhuma na ABI") + ".\n"
             final += "- Lista por função: function-map.json privado do trabalho.\n"
+        if path_map and linked_source:
+            final += ("- Linhas ligadas pelo compilador: " + str(path_map["observed_source_assigned_pcs"]) +
+                      "/" + str(path_map["observed_pcs"]) +
+                      " posições observadas com local de fonte; " +
+                      str(path_map["observed_links_outside_static_map"]) +
+                      " ligações observadas aguardam ajuste do mapa estático.\n")
+            final += "- Detalhes por arquivo e posição: path-map.json privado do trabalho.\n"
         cov = deep.get("coverage") or {}
         if cov:
             totals = cov["totals"]

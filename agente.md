@@ -411,3 +411,10 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 - O motor Rust e o ciclo local ligaram 3048/5377 PCs; 40 escolhas acrescentaram 578 PCs, 50 ligações e 38 blocos. A fonte recompilada mediu 38/213 ramos; é outra medida e não foi atualizada pelo ciclo do bytecode.
 - Todos os 236 registros da rede, 40 escolhas locais, 30 dúvidas selecionadas do Rust e 114 sinais brutos do Slither receberam pontos de atenção no relatório. Pontos altos são ordem de revisão, não falha confirmada. Não houve diferença registrada nas verificações de estado; Foundry 18/18, Echidna 2/2, Medusa 2/2, Halmos 3/3 sob seus limites.
 - A ligação com o VPS foi feita por SSH com verificação estrita da chave e cifra `chacha20-poly1305@openssh.com`. Arquivos de trabalho continuam privados no VPS; código e relatório foram destinados ao Git privado.
+
+## Mapa de linhas e permissões — 2026-10-19
+
+- O compilador fornece source map do runtime; `tools/wcop_path_map.py` confere vínculo e liga PCs das duas leituras a arquivo/linha. O painel inclui o mapa no manifesto; o verificador Rust valida identidade e hash.
+- Em aplicação retrospectiva ao trabalho `7011fcd042db41e5`, 1945/3048 PCs observados receberam local de fonte; 74 ligações observadas ficaram fora do mapa estático combinado. O mapa termina no PC 8499 e 37 posições desmontadas depois dele não foram observadas.
+- Registros de papéis (15, cinco contas) foram refeitos offline e coincidiram com a consulta de estado guardada para quatro papéis. A descoberta de todas as contas permanece não comprovada.
+- Ver `docs/WCOP-MAPA-LINHAS-2026-10-19.md`. Nenhum novo trabalho completo foi executado nesta etapa. Continuar a atualizar este arquivo, `codex/agent.md` e o checklist após cada etapa.

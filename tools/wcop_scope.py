@@ -36,7 +36,7 @@ def sources_and_settings(info):
         raise ValueError("conjunto de fontes fora dos limites")
     settings = dict(raw.get("compiler_settings") or {})
     settings["outputSelection"] = {"*": {"": ["ast"]}, raw["file_path"]: {raw["name"]: [
-        "abi", "evm.deployedBytecode.object", "evm.deployedBytecode.immutableReferences",
+        "abi", "evm.deployedBytecode.object", "evm.deployedBytecode.sourceMap", "evm.deployedBytecode.immutableReferences",
         "evm.methodIdentifiers", "storageLayout"]}}
     return {"language": "Solidity", "sources": sources, "settings": settings}
 
@@ -166,19 +166,38 @@ def roles_at_block(history, proxy, block, rpc):
         role = rpc("eth_call", [{"to": proxy, "data": selector}, hex(block)])
         roles[name.split("(")[0]] = role.lower()
     has_role = cast_sig("hasRole(bytes32,address)")
-    candidates = {entry.get("account") for entry in history.get("timeline", [])
-                  if entry.get("kind") in ("role_granted", "role_revoked") and isinstance(entry.get("account"), str)}
+    events = sorted((entry for entry in history.get("timeline", [])
+                     if entry.get("kind") in ("role_granted", "role_revoked")
+                     and isinstance(entry.get("account"), str)
+                     and isinstance(entry.get("role"), str)),
+                    key=lambda entry: (entry["block"], entry["log_index"]))
+    candidates = {entry["account"] for entry in events}
+    event_state = {}
+    for entry in events:
+        pair = (entry["role"].lower(), entry["account"].lower())
+        event_state[pair] = entry["kind"] == "role_granted"
     active = {}
+    comparisons = []
     for name, role in roles.items():
         active[name] = []
         for account in sorted(candidates):
             data = has_role + role.removeprefix("0x").rjust(64, "0") + account.removeprefix("0x").rjust(64, "0")
             answer = rpc("eth_call", [{"to": proxy, "data": data}, hex(block)])
-            if int(answer, 16):
+            current = int(answer, 16) != 0
+            expected = event_state.get((role, account), False)
+            comparisons.append({"role": name, "account": account,
+                                "from_events": expected, "at_block": current,
+                                "matches": expected == current})
+            if current:
                 active[name].append(account)
+    complete_events = history.get("complete_event_range") is True
     return {"role_hashes": roles, "active_accounts_from_events": active,
-            "candidate_count": len(candidates), "complete_account_discovery": False}
-
+            "candidate_count": len(candidates),
+            "role_event_count": len(events), "event_replay_pairs": len(comparisons),
+            "event_replay_matches_current": complete_events and all(x["matches"] for x in comparisons),
+            "event_replay_differences": [x for x in comparisons if not x["matches"]],
+            "event_replay_limit": "Só contas presentes em eventos; mudanças de implementação ou escrita sem evento podem deixar outras contas fora.",
+            "complete_account_discovery": False}
 
 def namespace_slots(info):
     raw = info.get("source") or {}
