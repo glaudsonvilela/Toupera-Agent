@@ -305,3 +305,26 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 - Echidna e Medusa concluíram duas regras locais de conservação em sequências curtas. Halmos permaneceu inconclusivo por limite no preparo do proxy; não registrar prova formal. Certora e Kontrol continuam sem prova neste fluxo.
 - Cobertura local: `LatamStable.sol` 22/22 linhas, 7/7 funções, 0/0 ramos mensuráveis; conjunto de fonte e bibliotecas 286/1126 linhas, 19/213 ramos. Muitas rotinas genéricas importadas podem ser inalcançáveis pelo token; a soma não representa porcentagem do runtime publicado.
 - `docs/WCOP-COBERTURA-2026-10-19.md` foi gerado a partir do JSON privado, com mapa por função e lacunas. Antes de publicar no Git, conferir que não contém credenciais nem dados da pasta privada.
+
+
+## Segunda etapa de caminhos wCOP (2026-10-19)
+
+- A compilação local desativou `dynamic_test_linking` no Foundry para que Halmos processe o proxy. Três propriedades limitadas de oferta, transferência e pausa concluíram; não são prova de todos os estados.
+- Foram acrescentados casos locais de valores inválidos, permissões, assinatura vencida, allowance máximo e troca válida de implementação. A medição intermediária chegou a 12/12 casos e 37/213 ramos no conjunto compilado, contra 19/213 na rodada anterior.
+- `tools/wcop_scope.py` agora informa separadamente arquivos com linhas executadas. Esse recorte depende dos casos executados e não representa todos os caminhos possíveis.
+- A etapa seguinte mede também preservação de pausa, allowance, nonce, domínio, papéis e saldos após troca local. Confirmar números no novo trabalho antes da publicação.
+
+
+### Continuidade do histórico (2026-10-19)
+
+- Uma rodada recebeu limite 429 na API antiga de eventos do explorador; o resultado ficou com histórico incompleto e um conjunto reduzido de casos no bloco. Esse resultado não substitui a rodada completa.
+- `tools/wcop_history.py` agora consulta primeiro as páginas v2 do mesmo explorador, normaliza os registros e mantém a API antiga como alternativa. Em leitura isolada no VPS, v2 trouxe 236 eventos em 5 páginas e a oferta conferiu com a rede.
+- `tools/site_jobs.py` faz tentativas limitadas em respostas temporárias e calcula a quantidade esperada de casos a partir do arquivo Foundry, corrigindo a contagem do conjunto reduzido.
+
+
+### Resultado final da segunda etapa (2026-10-19)
+
+- Trabalho completo `2d97ca57278541bc`, bloco `26227913`: 236 eventos, reconciliação da oferta, 33/33 entradas ABI mapeadas, 18/18 cenários no bloco, 14/14 na fonte local, duas regras Echidna, duas Medusa e três propriedades Halmos limitadas.
+- A recompilação de 34 fontes continuou compatível com o runtime após mascarar somente as três posições imutáveis declaradas. A troca local preservou saldo, autorização, nonce, domínio de assinatura, papel e pausa nos casos executados.
+- Cobertura local passou de 19/213 para 38/213 ramos no conjunto compilado. Nos 18 arquivos com linhas executadas houve 38/77 ramos; o arquivo próprio ficou em 22/22 linhas. As 136 ramificações nos arquivos sem linha executada não devem ser interpretadas automaticamente como alcançáveis ou inalcançáveis.
+- `docs/WCOP-COBERTURA-ETAPA2-2026-10-19.md` traz a nova medição e as lacunas ativas. Continua sem medição de ramos do bytecode publicado, sem prova de todos os estados e sem confirmação de falha.

@@ -204,11 +204,21 @@ def parse_lcov(path):
     totals = {key: sum(row.get(key, 0) for row in source_rows)
               for key in ("LF", "LH", "BRF", "BRH", "FNF", "FNH")}
     main = next((row for row in source_rows if row["file"].endswith("/LatamStable.sol")), None)
+    active_rows = [row for row in source_rows if row.get("LH", 0) > 0]
+    active_totals = {key: sum(row.get(key, 0) for row in active_rows)
+                     for key in ("LF", "LH", "BRF", "BRH", "FNF", "FNH")}
     gaps = sorted(
         [{"file": row["file"], "lines_not_hit": row.get("LF",0)-row.get("LH",0),
           "branches_not_hit": row.get("BRF",0)-row.get("BRH",0)}
          for row in source_rows if row.get("LF",0)>row.get("LH",0) or row.get("BRF",0)>row.get("BRH",0)],
         key=lambda row: (-row["branches_not_hit"],-row["lines_not_hit"],row["file"]))
+    active_gaps = sorted(
+        [{"file": row["file"], "lines_not_hit": row.get("LF", 0)-row.get("LH", 0),
+          "branches_not_hit": row.get("BRF", 0)-row.get("BRH", 0)}
+         for row in active_rows if row.get("LF", 0)>row.get("LH", 0) or row.get("BRF", 0)>row.get("BRH", 0)],
+        key=lambda row: (-row["branches_not_hit"], -row["lines_not_hit"], row["file"]))
     return {"measurement": "recompilação local da fonte, não o bytecode do bloco",
-            "source_files": len(source_rows), "totals": totals, "main_file": main,
-            "largest_gaps": gaps[:12], "all_files": source_rows}
+            "source_files": len(source_rows), "active_files": len(active_rows),
+            "active_totals": active_totals, "totals": totals, "main_file": main,
+            "largest_gaps": gaps[:12], "largest_active_gaps": active_gaps[:12],
+            "all_files": source_rows}

@@ -23,15 +23,7 @@ def addr(topic):
         raise ValueError("endereço de evento inválido")
     return "0x" + topic[-40:].lower()
 
-def collect(address, block, request_json, rpc):
-    metadata = request_json(EXPLORER + "/api/v2/addresses/" + address)
-    creation_tx = metadata.get("creation_transaction_hash")
-    if not creation_tx:
-        raise ValueError("transação de criação indisponível")
-    creation = request_json(EXPLORER + "/api/v2/transactions/" + creation_tx)
-    first = number(creation["block_number"])
-    if first > block:
-        raise ValueError("criação posterior ao bloco fixado")
+def collect_logs_v1(address, first, block, request_json):
     events = []
     seen = set()
     pages = 0
@@ -54,6 +46,54 @@ def collect(address, block, request_json, rpc):
             break
     else:
         raise ValueError("limite de páginas do histórico atingido")
+    return events, pages
+
+def collect_logs_v2(address, first, block, request_json):
+    base = EXPLORER + "/api/v2/addresses/" + address + "/logs"
+    params = None
+    events = []
+    seen = set()
+    for page in range(1, 31):
+        url = base + ("?" + urlencode(params) if params else "")
+        response = request_json(url)
+        raw = response.get("items")
+        if not isinstance(raw, list):
+            raise ValueError("consulta v2 de eventos incompleta na página " + str(page))
+        for item in raw:
+            n = number(item["block_number"])
+            if n > block:
+                continue
+            if n < first:
+                raise ValueError("evento anterior à criação")
+            location = item.get("address") or {}
+            logged_address = location.get("hash") if isinstance(location, dict) else location
+            key = (item.get("transaction_hash"), number(item["index"]))
+            if not isinstance(logged_address, str) or logged_address.lower() != address or key in seen:
+                raise ValueError("sequência v2 de eventos inconsistente")
+            seen.add(key)
+            events.append({"transactionHash": key[0], "logIndex": key[1],
+                           "blockNumber": n, "address": address,
+                           "topics": item.get("topics") or [], "data": item.get("data")})
+        params = response.get("next_page_params")
+        if params is None:
+            return events, page
+        if not isinstance(params, dict) or not params:
+            raise ValueError("cursor v2 de eventos inválido")
+    raise ValueError("limite de páginas v2 do histórico atingido")
+
+def collect(address, block, request_json, rpc):
+    metadata = request_json(EXPLORER + "/api/v2/addresses/" + address)
+    creation_tx = metadata.get("creation_transaction_hash")
+    if not creation_tx:
+        raise ValueError("transação de criação indisponível")
+    creation = request_json(EXPLORER + "/api/v2/transactions/" + creation_tx)
+    first = number(creation["block_number"])
+    if first > block:
+        raise ValueError("criação posterior ao bloco fixado")
+    try:
+        events, pages = collect_logs_v2(address, first, block, request_json)
+    except (KeyError, ValueError, TypeError, OSError):
+        events, pages = collect_logs_v1(address, first, block, request_json)
     events.sort(key=lambda row: (number(row["blockNumber"]), number(row["logIndex"])))
     counts = Counter()
     minted = burned = transfer_volume = 0

@@ -51,3 +51,12 @@ O fluxo ampliado do VPS compara a fonte verificada recompilada com o runtime, l�
 A medição local marcou 22/22 linhas de `LatamStable.sol` e, no conjunto de fonte e bibliotecas, 286/1126 linhas e 19/213 ramos. A soma inclui rotinas genéricas que podem ser inalcançáveis pelo token; não é porcentagem de cobertura do runtime publicado. Echidna e Medusa concluíram duas regras de conservação em sequências curtas. A tentativa Halmos não gerou prova por limite ao preparar o proxy. Detalhes e limites estão em `docs/WCOP-COBERTURA-2026-10-19.md`; entradas completas e logs ficam privados no VPS.
 
 A execução de Echidna no VPS usa `crytic-compile` 0.4.2 instalado no ambiente do usuário `toupera`; `forge`, `solc-0.8.27`, Echidna e Medusa devem permanecer no PATH do serviço. O binário do compilador e os corpus privados não entram no Git.
+
+
+## Segunda medição de caminhos
+
+O trabalho `2d97ca57278541bc` fixou o bloco `26227913`. A leitura v2 do explorador reuniu 236 eventos em cinco páginas e a oferta conferiu com a rede. O Foundry passou 18/18 cenários no bloco e 14/14 na fonte recompilada. Na cópia local, uma troca válida manteve saldos, pausa, allowance, nonce, domínio e papéis nos casos ensaiados. Echidna e Medusa concluíram duas regras cada; Halmos concluiu três propriedades locais limitadas após desativar `dynamic_test_linking` na compilação Foundry.
+
+A cobertura local passou de 19/213 para 38/213 ramos no conjunto compilado; nos 18 arquivos com linhas executadas, 38/77 ramos. Os denominadores incluem bibliotecas genéricas, e o recorte de arquivos executados depende da rodada. O relatório `docs/WCOP-COBERTURA-ETAPA2-2026-10-19.md` lista primeiro lacunas em arquivos com passagem. Estes números não medem diretamente os ramos do runtime publicado nem demonstram ausência de falhas.
+
+O leitor de histórico usa páginas v2 do Blockscout e conserva a API anterior como alternativa. Respostas temporárias recebem tentativas limitadas. Uma execução anterior teve limite 429 e registrou o histórico incompleto; o trabalho acima concluiu a leitura completa. Arquivos detalhados seguem privados no VPS.

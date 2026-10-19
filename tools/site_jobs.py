@@ -47,8 +47,15 @@ def request_json(url, payload=None):
         headers["Content-Type"] = "application/json"
         payload = json.dumps(payload).encode()
     req = urllib.request.Request(url, payload, headers)
-    with urllib.request.urlopen(req, timeout=30) as response:
-        data = response.read(10_000_001)
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                data = response.read(10_000_001)
+            break
+        except urllib.error.HTTPError as error:
+            if error.code not in (429, 502, 503, 504) or attempt == 4:
+                raise
+            time.sleep(min(16, 2 ** (attempt + 1)))
     if len(data) > 10_000_000:
         raise ValueError("resposta excede limite")
     return json.loads(data)
@@ -218,9 +225,11 @@ def run_tools(job, source, runtime_path, block_number, holder=None, role_actors=
                 ("DEFAULT_ADMIN_ROLE", "MINTER_ROLE", "PAUSER_ROLE", "UPGRADER_ROLE")))
     forge_args = ["/home/toupera/.foundry/bin/forge", "test", "--root", str(foundry),
                   "--fork-url", RPC, "--fork-block-number", str(block_number), "-vv"]
+    selected_tests = None
     if not full:
-        forge_args.extend(["--match-test", "testUnauthorized|testApproval|testTransferRoundTrip|testAllowanceSpendAndReset"
-                            if holder else "testUnauthorized|testApproval"])
+        selected_tests = ("testUnauthorized|testApproval|testTransferRoundTrip|testAllowanceSpendAndReset"
+                          if holder else "testUnauthorized|testApproval")
+        forge_args.extend(["--match-test", selected_tests])
     env_extra = {"WCOP_HOLDER": holder} if holder else {}
     if full:
         env_extra.update({"WCOP_ADMIN": actors["DEFAULT_ADMIN_ROLE"][0],
@@ -234,7 +243,9 @@ def run_tools(job, source, runtime_path, block_number, holder=None, role_actors=
     forge_text = forge_log.read_text(encoding="utf-8", errors="replace")
     passed = re.search(r"(\d+) tests passed, (\d+) failed", forge_text)
     passed_names = sorted(set(re.findall(r"\[PASS\] (\w+)\(", forge_text)))
-    expected = 18 if full else (5 if holder else 3)
+    available_tests = re.findall(r"\bfunction\s+(test[A-Za-z0-9_]+)\s*\(",
+                                 (foundry / "test/Wcop.t.sol").read_text())
+    expected = sum(bool(re.search(selected_tests, name)) for name in available_tests) if selected_tests else len(available_tests)
     jwrite(job / "scenarios.json", {"block": block_number, "full_role_context": full,
                                     "passed_names": passed_names, "expected": expected,
                                     "exit_code": forge_code})
@@ -298,6 +309,7 @@ def deep_review(job, source, runtime, engine, roles):
              'auto_detect_remappings = false\n'
              'remappings = ["@openzeppelin/contracts/=./@openzeppelin/contracts/", '
              '"@openzeppelin/contracts-upgradeable/=./@openzeppelin/contracts-upgradeable/"]\n'
+             'dynamic_test_linking = false\n'
              '[fuzz]\nruns = 32\n')
         lcov = project / "coverage.info"
         log = job / "tools/coverage.log"
@@ -341,13 +353,13 @@ def deep_review(job, source, runtime, engine, roles):
         shutil.copyfile(ROOT / "tools/wcop_formal.t.sol", project / "test/WcopFormal.t.sol")
         halmos_log = job / "tools/halmos.log"
         halmos_code = command(["/home/toupera/.local/bin/halmos", "--root", str(project),
-                               "--contract", "WCOPFormal", "--function", "check_MintBurnRestoresSupply",
+                               "--contract", "WCOPFormal", "--function", "check_",
                                "--solver-timeout-branching", "10000", "--solver-timeout-assertion", "10000"],
                               halmos_log, 45, cwd=project)
         halmos_text = halmos_log.read_text(encoding="utf-8", errors="replace")
-        halmos_ok = halmos_code == 0 and re.search(r"Symbolic test result: 1 passed; 0 failed", halmos_text)
+        halmos_ok = halmos_code == 0 and re.search(r"Symbolic test result: 3 passed; 0 failed", halmos_text)
         summary["formal"] = {"state": "concluído" if halmos_ok else "inconclusivo",
-                             "exit_code": halmos_code,
+                             "exit_code": halmos_code, "properties_passed": 3 if halmos_ok else 0,
                              "reason": "" if halmos_ok else
                              ("limite do executor no preparo local" if "Unsupported cheat code" in halmos_text
                               else "prova não concluída no tempo ou com este harness")}
@@ -515,7 +527,7 @@ def worker(job_id):
                                       "saída " + str(state["exit_code"]))
             if item["name"] == "Halmos" and deep.get("formal"):
                 item["state"] = deep["formal"]["state"]
-                item["detail"] = "propriedade local de emissão/retirada: " + (
+                item["detail"] = "três propriedades locais de oferta, transferência e pausa: " + (
                     "concluída" if deep["formal"]["state"] == "concluído" else deep["formal"]["reason"])
         jwrite(job / "tools.json", rows)
         final = result.replace("# Resultado do motor Rust", "# Resultado do contrato", 1)
@@ -552,24 +564,35 @@ def worker(job_id):
             final += ("- Fonte principal e bibliotecas usadas na compilação: " +
                       str(totals["LH"]) + "/" + str(totals["LF"]) + " linhas; " +
                       str(totals["BRH"]) + "/" + str(totals["BRF"]) + " ramos medidos.\n")
+            active = cov.get("active_totals") or {}
+            if active:
+                final += ("- Arquivos com linhas executadas nesta rodada (" + str(cov.get("active_files", 0)) +
+                          "): " + str(active["LH"]) + "/" + str(active["LF"]) +
+                          " linhas; " + str(active["BRH"]) + "/" + str(active["BRF"]) +
+                          " ramos. Esta seleção depende dos cenários, não define todos os caminhos alcançáveis.\n")
             final += ("- A soma das bibliotecas inclui caminhos que podem não ser alcançáveis por este token; "
                       "ela não é uma porcentagem do runtime publicado.\n")
             final += ("- Ensaios sobre a fonte recompilada: " + str(cov.get("local_tests_passed", 0)) +
                       " concluídos; esta medição local não mede diretamente o bytecode do bloco.\n")
-            for gap in cov["largest_gaps"][:6]:
-                final += ("- Lacuna: " + gap["file"] + " — " + str(gap["lines_not_hit"]) +
-                          " linhas e " + str(gap["branches_not_hit"]) + " ramos sem passagem.\n")
+            for gap in (cov.get("largest_active_gaps") or [])[:6]:
+                final += ("- Caminho ativo com lacuna: " + gap["file"] + " — " +
+                          str(gap["lines_not_hit"]) + " linhas e " +
+                          str(gap["branches_not_hit"]) + " ramos sem passagem.\n")
+            for gap in cov["largest_gaps"][:3]:
+                final += ("- Arquivo incluído com lacuna: " + gap["file"] + " — " +
+                          str(gap["lines_not_hit"]) + " linhas e " +
+                          str(gap["branches_not_hit"]) + " ramos sem passagem.\n")
         for name, item in (deep.get("fuzzers") or {}).items():
             final += ("- " + name + ": " + item["state"] + "; regras concluídas " +
                       str(item["properties_passed"]) + "/2 em campanha local limitada.\n")
         if deep.get("formal"):
             final += ("- Halmos: " + deep["formal"]["state"] + "; " +
-                      (deep["formal"]["reason"] or "propriedade local concluída") + ".\n")
+                      (deep["formal"]["reason"] or str(deep["formal"].get("properties_passed", 0)) + " propriedades locais concluídas") + ".\n")
         for error in deep.get("errors") or []:
             final += "- Limite: " + error + ".\n"
         final += ("- Ainda sem cobertura total de caminhos e estados; uma função exercitada uma vez pode ter "
                   "outros resultados em condições diferentes.\n"
-                  "- Troca válida de implementação, compatibilidade com versões futuras e relações com outros "
+                  "- A troca local de implementação foi ensaiada; compatibilidade com versões futuras e relações com outros "
                   "contratos seguem fora desta medição.\n")
         final += ("\n## Interpretação\n\n"
                   "- Estes números descrevem a estrutura observada; não demonstram uma falha.\n"
