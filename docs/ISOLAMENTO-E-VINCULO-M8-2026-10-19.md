@@ -9,6 +9,8 @@
 5. Casos M8 sem um trabalho ligado permanecem permitidos, mas carregam uma limitação explícita. Um vínculo com campos imutáveis mascarados também é indicado como ressalva.
 6. A execução Foundry no painel passa a repetir somente quando o provedor RPC devolve erro transitório 429/502/503/504; logs das tentativas anteriores ficam no trabalho privado.
 
+7. Cada ferramenta chamada por `command()` roda em `bubblewrap` com montagem, PID, IPC e host separados. O trabalho atual é o único visível sob `private-output`; o restante do sistema é somente para leitura. Mythril usa cópia privada de cache, e o processo local de caminhos passa pelo mesmo executor. O pacote `bubblewrap` é uma dependência do serviço.
+
 ## Conferências no VPS
 
 - `cargo build --release -p security-engine`: concluído.
@@ -19,6 +21,10 @@
 - Pacote de integração M8 privado: `PENDING_REPRODUCTION`, três arquivos `guard/` presentes; trabalho antigo com binário diferente foi recusado como decisão desatualizada.
 - Trabalho posterior `d59cb58cee084b10`: completo no bloco 26228205, identidade válida, fonte `masked_immutables`; os 18/18 cenários Foundry locais passaram, sem necessidade de repetição. Os resultados permanecem no VPS privado.
 
+- Trabalho `3fdf10704a64482c`, bloco 26228247: rodada completa sob isolamento por execução, guardião com identidade válida e `masked_immutables`; Slither, Mythril, Foundry (18/18), Echidna, Medusa e Halmos concluíram suas fatias; leitura local de caminhos e reconciliação disponíveis. Securify2/Manticore seguem não aplicáveis a este runtime; Certora não possui chave; Kontrol segue pendente de propriedade e premissas.
+- A visão isolada foi conferida: escrita no trabalho atual permitida; outro trabalho oculto sob `private-output`. `--evidence-plan` ligado ao trabalho final criou pacote `PENDING_REPRODUCTION` com os três artefatos de guardião; nenhum resultado real M7 foi promovido.
+- O endpoint público respondeu HTTP 200 após a mudança. Logs completos e caches privados permanecem no VPS.
+
 ## Limites
 
-O VPS não oferece isolamento de namespaces de usuário para cada ferramenta. O serviço e seus processos filhos compartilham o mesmo usuário e alguns caches permitidos; a política do systemd e as permissões de arquivo reduzem o alcance de escrita, mas não são uma partição formal de confiança. O M8 ligado não prova que o contrato é seguro: exige reprodução local, revisão humana e premissas explícitas. A comparação com campos imutáveis mascarados não confere seus valores individualmente.
+Bubblewrap cria namespaces por execução e oculta os outros trabalhos, mas todos os subprocessos ainda executam com o usuário `toupera` e compartilham a rede para leituras RPC. O processo coordenador do painel enxerga os trabalhos. A política reduz o alcance de leitura e escrita das ferramentas, mas não constitui uma partição formal de confiança. O M8 ligado não prova que o contrato é seguro: exige reprodução local, revisão humana e premissas explícitas. A comparação com campos imutáveis mascarados não confere seus valores individualmente.

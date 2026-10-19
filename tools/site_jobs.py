@@ -16,7 +16,6 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from wcop_history import collect as collect_history
 from wcop_scope import compile_repro, inventory, namespace_slots, parse_lcov, roles_at_block
-from wcop_trace import trace_job
 
 ROOT = Path("/srv/toupera-agent")
 WORK = ROOT / "private-output" / "site-jobs"
@@ -102,9 +101,31 @@ def command(args, path, timeout=90, cwd=None, env_extra=None):
     env["PATH"] = "/home/toupera/.local/bin:/home/toupera/.foundry/bin:/usr/local/bin:/usr/bin:/bin"
     if env_extra:
         env.update(env_extra)
+    log_path = Path(path).resolve()
+    job = next((parent for parent in log_path.parents if parent.parent == WORK), None)
+    if job is None or not Path("/usr/bin/bwrap").is_file():
+        raise RuntimeError("isolamento do executor indisponível")
+    extra_mounts = []
+    if Path(args[0]).name == "myth":
+        scratch = job / "sandbox"
+        mythril_cache = scratch / "mythril"
+        if not mythril_cache.exists():
+            shutil.copytree("/home/toupera/.mythril", mythril_cache)
+        mpl_cache = scratch / "matplotlib"
+        mpl_cache.mkdir(parents=True, exist_ok=True, mode=0o700)
+        env["MPLCONFIGDIR"] = str(mpl_cache)
+        extra_mounts = ["--bind", str(mythril_cache), "/home/toupera/.mythril"]
+    isolated_args = ["/usr/bin/bwrap", "--ro-bind", "/", "/",
+                     "--tmpfs", str(ROOT / "private-output"),
+                     "--dir", str(WORK), "--dir", str(job),
+                     "--bind", str(job), str(job),
+                     "--dev-bind", "/dev", "/dev",
+                     "--tmpfs", "/tmp",
+                     "--unshare-pid", "--unshare-ipc", "--unshare-uts",
+                     "--die-with-parent"] + extra_mounts + ["--"] + list(args)
     with open(path, "w", encoding="utf-8") as out:
         try:
-            result = subprocess.run(args, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+            result = subprocess.run(isolated_args, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                                     stdout=out, stderr=subprocess.STDOUT, timeout=timeout)
             return result.returncode
         except subprocess.TimeoutExpired:
@@ -553,7 +574,10 @@ def worker(job_id):
         if history and roles and impl_summary:
             stage(job, "Caminhos", "Lendo PCs da implementação em cópia local do bloco.")
             try:
-                trace_job(job_id)
+                local_trace_code = command([sys.executable, str(ROOT / "tools/wcop_trace.py"), job_id],
+                                           job / "tools/trace.log", 180)
+                if local_trace_code != 0 or not (job / "trace.json").exists():
+                    raise RuntimeError("leitura local dos caminhos não concluiu")
                 trace_code = command([str(ENGINE), "--wcop-trace", str(job / "engine-impl.json"),
                                       str(job / "trace.json")], job / "trace-reconcile.json", 45)
                 if trace_code == 0:

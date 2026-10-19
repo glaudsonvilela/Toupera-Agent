@@ -367,7 +367,7 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 
 - O serviço do painel usa ProtectSystem=strict, PrivateTmp, sem capacidades adicionais e com gravação limitada a private-output e caches necessários. Código, scripts, binário e diretórios do projeto pertencem ao root e ficam somente para leitura do usuário toupera.
 - Os três arquivos Markdown da raiz continuam acessíveis por links para private-output/root-files; as escritas atômicas preservam esses links. Um processo de ferramenta não consegue alterar site_jobs.py ou security-engine pelo usuário do serviço.
-- A política foi aplicada e o serviço reiniciado. systemd-analyze security passou de 9.0 UNSAFE para 4.8 OK. Isolamento individual por namespace não está disponível neste VPS; ferramentas ainda compartilham o mesmo usuário e caches permitidos. Não declarar isolamento completo.
+- A política foi aplicada e o serviço reiniciado. systemd-analyze security passou de 9.0 UNSAFE para 4.8 OK. Nesta etapa ainda não havia isolamento individual; a etapa 5 acrescenta namespaces por execução. Não declarar isolamento formal completo.
 
 
 ## Etapa 4: vínculo do guardião com M8 (2026-10-19)
@@ -379,3 +379,12 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 - A primeira rodada após o isolamento teve 17/18 cenários Foundry por HTTP 502 do RPC. O trabalhador agora repete somente respostas transitórias e preserva os logs no VPS.
 
 - Rodada posterior `d59cb58cee084b10`: 18/18 cenários Foundry locais, decisão vinculada à fonte com ressalva dos campos imutáveis e serviço restrito ativo. Ver `docs/ISOLAMENTO-E-VINCULO-M8-2026-10-19.md`.
+
+
+## Etapa 5: executor por trabalho (2026-10-19)
+
+- `command()` executa ferramentas por `bubblewrap`: raiz somente para leitura, área privada do trabalho atual gravável, `/tmp` temporário e namespaces separados de montagem, PID, IPC e host. Os demais trabalhos são ocultos na visão do subprocesso.
+- Mythril recebe cópia privada de seu cache no trabalho; o diretório do provedor não é gravável pela ferramenta. `wcop_trace.py` e Anvil local também passam pelo executor. O serviço exige `/usr/bin/bwrap` no início.
+- A rede continua compartilhada para leituras RPC e consulta de fonte. Não há isolamento de rede por ferramenta nem garantia formal; o processo coordenador do painel mantém acesso aos trabalhos para reunir resultados.
+
+- Rodada final `3fdf10704a64482c`: isolamento por execução ativo, outro trabalho oculto, seis ferramentas aplicáveis concluídas, 18/18 cenários locais, caminhos reconciliados e decisão Rust vinculada com ressalva. Pacote M8 ligado permanece `PENDING_REPRODUCTION`. Ver `docs/ISOLAMENTO-E-VINCULO-M8-2026-10-19.md`.

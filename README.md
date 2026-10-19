@@ -56,6 +56,9 @@ A [real Sepolia pilot](docs/REAL-EVM-PILOT.md) connected verified multi-file sou
 
 The Rust forensic cycle now runs automatically from one manifest. It verifies a fixed-block runtime, scores source/bytecode hotspots, scans vault and asset event history from the detected deployment block when the RPC permits, reconciles 256-bit ledger values with selected receipts and historical state, quarantines selected variables for deeper crosschecks and read-only boundary probes, then rebuilds the map. Coverage and missing RPC traces are explicit. Only observed anomalies tied to the same source and runtime may become `UNVERIFIED` M5 candidates. The Sepolia read-only run reconciled the available event history and found no observed anomaly in those checks; an autonomous VPS job locally replayed three published transactions, and a bounded Anvil fork run completed vault operation scenarios without broadcasting transactions. This is not a security clearance. Broader path coverage and the positive candidate path remain pending.
 
+
+The VPS site runner now uses a read-only service filesystem and per-tool Bubblewrap mounts. Each tool sees one private job directory; the Rust guardian can attach a verified job decision to an M8 bundle with `--evidence-plan <case> <output> --guard-job <job>`. See [isolation and M8 binding](docs/ISOLAMENTO-E-VINCULO-M8-2026-10-19.md) for the exact boundary, checks, and limits.
+
 ## Development
 
 ```sh

@@ -330,3 +330,7 @@ Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode 
 - [x] Repetir Foundry apenas em erro transitório do RPC, guardando logs das tentativas no VPS.
 
 - Rodada de fechamento `d59cb58cee084b10`: serviço restrito ativo, guardião vinculado e 18/18 cenários Foundry locais. Ver `docs/ISOLAMENTO-E-VINCULO-M8-2026-10-19.md`.
+
+- [x] Separar cada ferramenta por namespaces de montagem/PID/IPC/host, com um único trabalho visível e gravável; Mythril usa cache privado. A rede permanece compartilhada para leituras.
+
+- Rodada final `3fdf10704a64482c`: trabalho privado isolado, seis ferramentas aplicáveis concluídas, 18/18 cenários Foundry e vínculo M8 em `PENDING_REPRODUCTION`. Resultado documentado em `docs/ISOLAMENTO-E-VINCULO-M8-2026-10-19.md`.

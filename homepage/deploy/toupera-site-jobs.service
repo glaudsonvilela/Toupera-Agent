@@ -8,6 +8,7 @@ Type=simple
 User=toupera
 Group=toupera
 WorkingDirectory=/srv/toupera-agent
+ExecStartPre=/usr/bin/test -x /usr/bin/bwrap
 ExecStart=/usr/bin/python3 /srv/toupera-agent/tools/site_jobs.py serve
 Restart=always
 RestartSec=3
