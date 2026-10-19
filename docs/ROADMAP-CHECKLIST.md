@@ -388,7 +388,11 @@ Ver `docs/WCOP-MAPA-LINHAS-2026-10-19.md`.
 - [x] Conferir no Rust o fim do mapa contra runtime e leituras.
 - [x] Separar os PCs posteriores do ganho que orienta a próxima escolha, preservando as contagens totais.
 - [x] Conferir offline no VPS: 37 PCs após o mapa, zero observados no trabalho `7d78331aa23a4592`.
-- [ ] Classificar posições sem linha dentro do mapa e ligar novas passagens do runtime à medição de ramos da fonte.
+- [x] Classificar os 536 PCs observados sem linha: todos têm `file_id = -1` no mapa do compilador; ver `docs/WCOP-FORENSE-MAPA-2026-10-19.md`.
+- [x] Cruzar, somente por arquivo e linha, PCs observados e registros de ramo LCOV, sem equiparar as duas coberturas.
+- [x] Classificar o opcode terminal das 74 ligações fora do grafo: todas são `JUMP`; 68 têm marca de saída de função e seis de salto comum. Todas as 143 ligações observadas com `JUMPI` terminal constam no grafo estático.
+- [x] Repetir os casos locais com condição, destino e próximo PC de cada `JUMPI` por caso; 36 casos iniciais e 38 escolhas do Rust reproduziram os resumos salvos, e 65 candidatos restantes foram medidos. Ver `resumo.md`.
+- [ ] Ligar os resultados de `JUMPI` a um identificador de ramo LCOV com alinhamento semântico; 58 PCs `JUMPI` seguem não observados e a possibilidade de alcançá-los não foi demonstrada.
 - [x] Medir uma nova rodada local: trabalho `92273047cbf7439c`, 38 escolhas e zero PCs após o mapa; total observado igual ao trabalho anterior. Não há ganho de cobertura demonstrado.
 
 Ver `docs/WCOP-FOCO-MAPA-2026-10-19.md`.

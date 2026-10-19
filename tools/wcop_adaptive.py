@@ -252,7 +252,7 @@ def grow_candidates(state, item, new_pcs, new_edges, deviation):
 
 
 
-def evaluate_item(url, item, instructions, block_for):
+def evaluate_item(url, item, instructions, block_for, capture_stack=False):
     setup = item.get("setup") or []
     outer_snapshot = rpc(url, "evm_snapshot", []) if setup else None
     setup_ok = True
@@ -266,7 +266,7 @@ def evaluate_item(url, item, instructions, block_for):
         if setup_ok:
             trace = rpc(url, "debug_traceCall", [{"from": item["sender"], "to": TOKEN,
                         "data": item["data"]}, "latest",
-                        {"disableStorage": True, "disableMemory": True, "disableStack": True}])
+                        {"disableStorage": True, "disableMemory": True, "disableStack": not capture_stack}])
         else:
             trace = {"failed": True, "structLogs": []}
         logs = trace.get("structLogs") or []

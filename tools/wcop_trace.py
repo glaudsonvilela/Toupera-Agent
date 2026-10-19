@@ -61,7 +61,7 @@ def available_port():
         return sock.getsockname()[1]
 
 
-def trace_job(job_id):
+def trace_job(job_id, capture_stack=False, on_trace=None, write_summary=True):
     if len(job_id) != 16 or any(c not in "0123456789abcdef" for c in job_id):
         raise ValueError("identificador inválido")
     job = WORK / job_id
@@ -135,7 +135,7 @@ def trace_job(job_id):
                 try:
                     trace = rpc(url, "debug_traceCall", [{"from": sender, "to": TOKEN, "data": data},
                                                          "latest", {"disableStorage": True, "disableMemory": True,
-                                                                    "disableStack": True}])
+                                                                    "disableStack": not capture_stack}])
                     logs = trace.get("structLogs") or []
                     pcs = [int(item["pc"]) for item in logs if item.get("depth") == 2]
                     known = {pc for pc in pcs if pc in instructions}
@@ -151,6 +151,8 @@ def trace_job(job_id):
                     if expected_failure is not None:
                         row["expected_outcome_matches"] = failed == expected_failure
                     results.append(row)
+                    if on_trace is not None:
+                        on_trace(name, group, data[:10], logs, failed, row)
                     return failed
                 except (OSError, ValueError, KeyError, TypeError) as error:
                     results.append({"case": name, "group": group, "selector": data[:10],
@@ -218,7 +220,8 @@ def trace_job(job_id):
                "observed_transitions": [list(edge) for edge in sorted(observed_edges)],
                "unmatched_transitions": len(observed_edges - static_edges),
                "limitation": "Não mede todos os estados, nem prova que os PCs restantes sejam alcançáveis."}
-    private_write(job / "trace.json", summary)
+    if write_summary:
+        private_write(job / "trace.json", summary)
     return summary
 
 

@@ -426,3 +426,13 @@ A última execução automática wCOP é `private-output/site-jobs/ba5146dd978d4
 
 - Leia `docs/WCOP-RODADA-92273047cbf7439c.md`: 38 escolhas, 544 PCs novos dentro do intervalo do mapa, zero depois dele, sem diferença local repetida. A contagem total repetiu a rodada anterior em outro bloco; não alegar maior cobertura.
 - O próximo recorte é classificar posições sem linha dentro do intervalo e comparar passagens do runtime com ramos da fonte, sem misturar denominadores.
+
+## Reconciliação forense offline do mapa — 2026-10-19
+
+- Leia `docs/WCOP-FORENSE-MAPA-2026-10-19.md`. Os 536 PCs observados sem local vêm de `file_id = -1` do compilador. As 74 ligações ausentes do grafo estático foram classificadas por origem/destino; seus nós são entradas de blocos. Os 74 blocos de origem terminam em `JUMP` (68 marcas de saída de função, seis de salto comum); os 143 vínculos observados com `JUMPI` final constam no grafo estático.
+- A comparação com os ramos LCOV é somente por arquivo e linha entre fonte recompilada e runtime do bloco. Não declare cobertura de ramo do contrato publicado nem falha confirmada a partir desse cruzamento. Os JSON detalhados ficam privados no VPS.
+
+## Rastro por caso e ponto de retomada — 2026-10-19
+
+- Leia `resumo.md` antes de ampliar os cenários. Os replays no Anvil reproduziram 36 casos iniciais e 38 escolhas do Rust; 65 candidatos restantes adicionaram dois resultados de `JUMPI` sem novo PC e sem divergência local. Dos 169 PCs `JUMPI` estáticos, 111 foram vistos (34 em ambos os sentidos), 58 permanecem não observados. Os JSONs por caso estão em `private-output` e não devem entrar no Git.
+- A publicação usa checkout autorizado e `git archive`; o VPS não contém `.git` nem credenciais Git.

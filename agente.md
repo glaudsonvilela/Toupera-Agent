@@ -473,3 +473,14 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 - Fonte recompilada 38/213 ramos, 74 ligações observadas fora do mapa estático, filtro `local_review` com zero itens externos e zero diferenças locais repetidas. Estado histórico antigo permanece indisponível.
 - As contagens coincidem com a rodada anterior em bloco distinto; não há ganho de cobertura demonstrado. Os três Markdown e logs do trabalho permanecem privados no VPS. Código e documentação foram publicados no Git privado.
 - Ver `docs/WCOP-RODADA-92273047cbf7439c.md`. Próximo passo: posições sem linha dentro do mapa e vínculo entre runtime e ramos da fonte.
+
+## Reconciliação forense offline do mapa (2026-10-19)
+
+- `tools/wcop_forensic_map.py` classificou os dados já guardados dos trabalhos `92273047cbf7439c` e `7d78331aa23a4592`, sem consultar o contrato nem iniciar rodada nova. Os 536 PCs observados sem local têm `file_id = -1` no mapa do compilador; zero dos 37 PCs posteriores ao mapa foram observados.
+- Das 74 ligações observadas ausentes do grafo estático, 54 ligam locais de fonte, oito ligam código gerado e doze vão de código gerado a fonte. As ligações salvas usam entradas de blocos. O opcode final recuperado é `JUMP` nas 74; o mapa do compilador marca 68 como saída de função e seis como salto comum. Nenhuma das 143 ligações com origem terminada em `JUMPI` falta no grafo estático.
+- Os 34 arquivos da entrada do compilador coincidem com as cópias da medição de cobertura. O alinhamento por linha cruza 28 das 179 linhas de ramo LCOV com PCs observados, mas não mede a execução dos ramos do runtime publicado. A medição de fonte segue 38/213. Ver `docs/WCOP-FORENSE-MAPA-2026-10-19.md`.
+
+## Rastro por caso e ponto de retomada (2026-10-19)
+
+- Leia `resumo.md` antes de ampliar os cenários. Os replays no Anvil reproduziram 36 casos iniciais e 38 escolhas do Rust; 65 candidatos restantes adicionaram dois resultados de `JUMPI` sem novo PC e sem divergência local. Dos 169 PCs `JUMPI` estáticos, 111 foram vistos (34 em ambos os sentidos), 58 permanecem não observados. Os JSONs por caso estão em `private-output` e não devem entrar no Git.
+- A publicação usa checkout autorizado e `git archive`; o VPS não contém `.git` nem credenciais Git.
