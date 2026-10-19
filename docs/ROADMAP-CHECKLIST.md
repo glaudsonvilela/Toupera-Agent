@@ -228,3 +228,5 @@ Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode 
 - [x] Execução real do wCOP no VPS: proxy, implementação, Rust, Slither e Mythril com resultado e limitações explícitas.
 - [x] Remover configuração de deploy da raiz pública e manter hash ativo apenas no Caddy do VPS.
 - [x] Validar o fluxo final pela API autenticada e recuperar trabalhos interrompidos.
+- [x] Integrar três regras Foundry em fork local do bloco fixado para o wCOP, sem transmissão de transações.
+- [x] Validar integração automática de Slither, Mythril e Foundry no wCOP, com painel final autenticado.

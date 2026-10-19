@@ -224,3 +224,5 @@ Rodada precision-chip-v1 no VPS: serviço toupera-adaptive-chip-20261019.service
 O formulário do site aceita somente wCOP na Ethereum. `tools/site_jobs.py` roda no VPS sob `toupera`, com API protegida no Caddy, três Markdown na raiz do projeto e histórico privado. Atualizar `agente.md`, este arquivo e o checklist após mudanças nesta etapa. Ver `docs/SITE-WCOP.md`.
 O último trabalho wCOP está em `private-output/site-jobs/356a04b350144dc6/`. A fonte no Git não deve incluir credencial/hash ativo do Caddy; publicar apenas arquivos web permitidos, sem `deploy/`.
 A execução final autenticada está em `private-output/site-jobs/b0a86a00d5664e97/`. O trabalhador lê `smart.md`; o status trata morte do processo e prazo prolongado.
+O painel wCOP inclui `tools/wcop_readonly.t.sol` e roda três regras Foundry no fork local do bloco fixado. Os outros executores permanecem condicionados a propriedades/compatibilidade.
+A última execução automática wCOP é `private-output/site-jobs/ba5146dd978d45e2/`: três ferramentas executadas, Foundry 3/3, relatório no painel.

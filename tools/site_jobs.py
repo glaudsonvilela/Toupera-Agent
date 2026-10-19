@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -154,7 +155,7 @@ def prepare_source(job, info):
 def tool_line(name, state, detail):
     return {"name": name, "state": state, "detail": detail}
 
-def run_tools(job, source, runtime_path):
+def run_tools(job, source, runtime_path, block_number):
     rows = []
     logs = job / "tools"
     logs.mkdir(mode=0o700)
@@ -201,7 +202,25 @@ def run_tools(job, source, runtime_path):
     rows.extend([
         tool_line("Securify2", "não aplicável", "executor legado usa Solidity 0.5.12"),
         tool_line("Manticore", "não aplicável", "executor legado sem validação para este runtime"),
-        tool_line("Foundry", "pendente", "exige cenário e propriedade local específicos"),
+    ])
+    stage(job, "Foundry", "Executando três regras básicas em cópia local do bloco.")
+    foundry = job / "foundry"
+    (foundry / "test").mkdir(parents=True, mode=0o700)
+    shutil.copyfile(ROOT / "tools/wcop_readonly.t.sol", foundry / "test/Wcop.t.sol")
+    save(foundry / "foundry.toml", '[profile.default]\nsolc = "/usr/local/bin/solc"\ntest = "test"\noptimizer = true\n')
+    forge_log = logs / "foundry.log"
+    forge_code = command(["/home/toupera/.foundry/bin/forge", "test", "--root", str(foundry),
+                          "--fork-url", RPC, "--fork-block-number", str(block_number), "-vv"],
+                         forge_log, 120)
+    forge_text = forge_log.read_text(encoding="utf-8", errors="replace")
+    passed = re.search(r"(\d+) tests passed, (\d+) failed", forge_text)
+    if forge_code == 0 and passed and passed.group(1) == "3" and passed.group(2) == "0":
+        rows.append(tool_line("Foundry", "executado", "3 regras locais passaram no bloco " + str(block_number) +
+                              ": aprovação, emissão não autorizada e pausa não autorizada; isso não cobre outros caminhos"))
+    else:
+        rows.append(tool_line("Foundry", "limite" if forge_code == 124 else "falhou",
+                              "regras locais não concluídas; saída " + str(forge_code)))
+    rows.extend([
         tool_line("Echidna", "pendente", "exige propriedade e harness de sequência"),
         tool_line("Medusa", "pendente", "exige propriedade e harness de sequência"),
         tool_line("Certora", "indisponível", "CLI sem chave; serviço externo não acionado"),
@@ -295,7 +314,7 @@ def worker(job_id):
         stage(job, "Ferramentas", "Executando leituras compatíveis e registrando as demais.")
         selected_source = impl_source if impl_source and impl_source.get("source") else source
         selected_runtime = impl_runtime_path or runtime_path
-        rows = run_tools(job, selected_source, selected_runtime)
+        rows = run_tools(job, selected_source, selected_runtime, block_number)
         final = result.replace("# Resultado do motor Rust", "# Resultado do contrato", 1)
         final += "\n## Ferramentas\n\n"
         for item in rows:
