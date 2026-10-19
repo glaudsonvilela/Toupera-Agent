@@ -42,3 +42,12 @@ A peneira do Rust separou 372 avisos dependentes da versão da rede entre 475 d�
 Slither e Foundry usam `tools/solc-0.8.27` no VPS, versão `0.8.27+commit.40a35a09`, SHA-256 `b9977d500c17cba6f0032ca939ef98c4decf6363f19f386d05fb02f708115264`. O binário vem de `https://binaries.soliditylang.org/linux-amd64/solc-linux-amd64-v0.8.27+commit.40a35a09`; verifique o hash ao reinstalar. Ele não entra no Git.
 
 O JavaScript do painel foi corrigido e publicado em uma nova versão do site. A API requer a chave; `/api/smart/latest` sem autenticação responde 401. A interface mostra o relatório Markdown como texto.
+
+
+## Mapa e cobertura por função
+
+O fluxo ampliado do VPS compara a fonte verificada recompilada com o runtime, lê seis espaços de dados nomeados e confronta os 33 seletores da ABI com o mapa Rust. O trabalho `ac1f94183eeb4c5e` concluiu 18 cenários no bloco fixado e seis testes na fonte local. Todas as 33 entradas da ABI foram chamadas por ao menos um cenário; isso não mede todos os seus ramos.
+
+A medição local marcou 22/22 linhas de `LatamStable.sol` e, no conjunto de fonte e bibliotecas, 286/1126 linhas e 19/213 ramos. A soma inclui rotinas genéricas que podem ser inalcançáveis pelo token; não é porcentagem de cobertura do runtime publicado. Echidna e Medusa concluíram duas regras de conservação em sequências curtas. A tentativa Halmos não gerou prova por limite ao preparar o proxy. Detalhes e limites estão em `docs/WCOP-COBERTURA-2026-10-19.md`; entradas completas e logs ficam privados no VPS.
+
+A execução de Echidna no VPS usa `crytic-compile` 0.4.2 instalado no ambiente do usuário `toupera`; `forge`, `solc-0.8.27`, Echidna e Medusa devem permanecer no PATH do serviço. O binário do compilador e os corpus privados não entram no Git.

@@ -251,3 +251,20 @@ Plano local concluído nesta etapa: [x] registrar classes de origem no bytecode 
 - Slither com solc 0.8.27 retornou saída estruturada e código 0; o único sinal no arquivo principal é informativo sobre pragma. Foundry concluiu 5/5 cenários locais. Mythril registrou um sinal bruto ainda sem confirmação.
 - O JavaScript do painel estava inválido. O formulário e o terminal foram refeitos no VPS; o arquivo corrigido foi publicado em `/var/www/toupeiraagente/current`. Site e arquivo JS respondem 200; API sem credencial responde 401.
 - Arquivos detalhados continuam privados no VPS. Código e documentos devem ser enviados ao repositório privado; não incluir o binário solc, credenciais, relatórios privados nem dados da pasta `private-output`.
+
+
+## Etapa de mapa e medição do wCOP (2026-10-19)
+
+- `tools/wcop_scope.py` recompila as 34 fontes verificadas com Solidity 0.8.27 e configurações publicadas; compara runtime ignorando apenas posições imutáveis declaradas pelo compilador. A comparação inicial conferiu sem esses três campos.
+- O mapa da ABI confronta cada seletor com o Rust e liga funções somente a cenários que passaram. Na rodada inicial, 33/33 seletores coincidiram; 18 cenários locais passaram, incluindo papéis ativos, autorização, assinatura, emissão/retirada e sequências variáveis.
+- `tools/wcop_coverage.t.sol` mede cobertura da fonte recompilada em um proxy local. A primeira leitura mostrou 22/22 linhas próprias e 286/1126 linhas, 19/213 ramos no conjunto fonte e bibliotecas. Esta medida não é cobertura direta do bytecode no bloco.
+- `tools/wcop_properties.sol` fornece duas regras de conservação para sequências locais; Echidna e Medusa passaram em campanhas curtas no VPS. `tools/wcop_formal.t.sol` existe para prova limitada; Halmos não concluiu porque o preparo do proxy usa uma operação não suportada no executor atual. Relatar como inconclusivo.
+- O fluxo do site precisa publicar os números reais e as lacunas, sem anunciar certeza de 100%. Gravar detalhes somente em `private-output`. Depois da rodada final, criar novo documento Markdown no Git com os resultados e limites.
+
+
+### Resultado integrado do mapa (2026-10-19)
+
+- Trabalho `ac1f94183eeb4c5e`: 33/33 seletores da ABI reconhecidos pelo Rust, 33/33 entradas com ao menos um cenário local passado, Foundry 18/18 no bloco, fonte local 6/6. A recompilação com 34 fontes conferiu após mascarar três posições imutáveis declaradas pelo compilador.
+- Echidna e Medusa concluíram duas regras locais de conservação em sequências curtas. Halmos permaneceu inconclusivo por limite no preparo do proxy; não registrar prova formal. Certora e Kontrol continuam sem prova neste fluxo.
+- Cobertura local: `LatamStable.sol` 22/22 linhas, 7/7 funções, 0/0 ramos mensuráveis; conjunto de fonte e bibliotecas 286/1126 linhas, 19/213 ramos. Muitas rotinas genéricas importadas podem ser inalcançáveis pelo token; a soma não representa porcentagem do runtime publicado.
+- `docs/WCOP-COBERTURA-2026-10-19.md` foi gerado a partir do JSON privado, com mapa por função e lacunas. Antes de publicar no Git, conferir que não contém credenciais nem dados da pasta privada.

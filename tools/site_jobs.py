@@ -15,6 +15,7 @@ import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from wcop_history import collect as collect_history
+from wcop_scope import compile_repro, inventory, namespace_slots, parse_lcov, roles_at_block
 
 ROOT = Path("/srv/toupera-agent")
 WORK = ROOT / "private-output" / "site-jobs"
@@ -158,7 +159,7 @@ def prepare_source(job, info):
 def tool_line(name, state, detail):
     return {"name": name, "state": state, "detail": detail}
 
-def run_tools(job, source, runtime_path, block_number, holder=None):
+def run_tools(job, source, runtime_path, block_number, holder=None, role_actors=None, implementation=None):
     rows = []
     logs = job / "tools"
     logs.mkdir(mode=0o700)
@@ -212,22 +213,39 @@ def run_tools(job, source, runtime_path, block_number, holder=None):
     shutil.copyfile(ROOT / "tools/wcop_readonly.t.sol", foundry / "test/Wcop.t.sol")
     save(foundry / "foundry.toml", '[profile.default]\nsolc = "/srv/toupera-agent/tools/solc-0.8.27"\ntest = "test"\noptimizer = true\n')
     forge_log = logs / "foundry.log"
+    actors = (role_actors or {}).get("active_accounts_from_events") or {}
+    full = bool(holder and implementation and all(actors.get(name) for name in
+                ("DEFAULT_ADMIN_ROLE", "MINTER_ROLE", "PAUSER_ROLE", "UPGRADER_ROLE")))
     forge_args = ["/home/toupera/.foundry/bin/forge", "test", "--root", str(foundry),
                   "--fork-url", RPC, "--fork-block-number", str(block_number), "-vv"]
-    if not holder:
-        forge_args.extend(["--match-test", "testUnauthorized|testApproval"])
-    forge_code = command(forge_args, forge_log, 150,
-                         env_extra={"WCOP_HOLDER": holder} if holder else None)
+    if not full:
+        forge_args.extend(["--match-test", "testUnauthorized|testApproval|testTransferRoundTrip|testAllowanceSpendAndReset"
+                            if holder else "testUnauthorized|testApproval"])
+    env_extra = {"WCOP_HOLDER": holder} if holder else {}
+    if full:
+        env_extra.update({"WCOP_ADMIN": actors["DEFAULT_ADMIN_ROLE"][0],
+                          "WCOP_MINTER": actors["MINTER_ROLE"][0],
+                          "WCOP_PAUSER": actors["PAUSER_ROLE"][0],
+                          "WCOP_UPGRADER": actors["UPGRADER_ROLE"][0],
+                          "WCOP_IMPL": implementation})
+    config = foundry / "foundry.toml"
+    save(config, config.read_text() + "[fuzz]\nruns = 32\n")
+    forge_code = command(forge_args, forge_log, 180, env_extra=env_extra)
     forge_text = forge_log.read_text(encoding="utf-8", errors="replace")
     passed = re.search(r"(\d+) tests passed, (\d+) failed", forge_text)
-    expected = 5 if holder else 3
+    passed_names = sorted(set(re.findall(r"\[PASS\] (\w+)\(", forge_text)))
+    expected = 18 if full else (5 if holder else 3)
+    jwrite(job / "scenarios.json", {"block": block_number, "full_role_context": full,
+                                    "passed_names": passed_names, "expected": expected,
+                                    "exit_code": forge_code})
     if forge_code == 0 and passed and int(passed.group(1)) == expected and passed.group(2) == "0":
-        rows.append(tool_line("Foundry", "executado", str(expected) + " cenários locais passaram no bloco " + str(block_number) +
-                              ": aprovação, emissão e pausa sem permissão" +
-                              (", ida e volta de saldo, gasto de autorização" if holder else "") + "; cópia local"))
+        rows.append(tool_line("Foundry", "executado", str(expected) + " cenários locais passaram no bloco " +
+                              str(block_number) + "; " +
+                              ("papéis ativos, saldos, emissão, pausa, assinatura e sequências com 32 entradas"
+                               if full else "escopo reduzido porque faltou um papel ativo") + "; cópia local"))
     else:
         rows.append(tool_line("Foundry", "limite" if forge_code == 124 else "falhou",
-                              "regras locais não concluídas; saída " + str(forge_code)))
+                              "cenários locais não concluídos; saída " + str(forge_code)))
     rows.extend([
         tool_line("Echidna", "pendente", "exige propriedade e harness de sequência"),
         tool_line("Medusa", "pendente", "exige propriedade e harness de sequência"),
@@ -237,6 +255,104 @@ def run_tools(job, source, runtime_path, block_number, holder=None):
     ])
     jwrite(job / "tools.json", rows)
     return rows
+
+def deep_review(job, source, runtime, engine, roles):
+    summary = {"compiler": None, "inventory": None, "coverage": None,
+               "storage_namespaces": [], "errors": []}
+    if not source or not source.get("source") or not runtime or not engine:
+        summary["errors"].append("fonte, runtime ou mapa do motor indisponível")
+        jwrite(job / "scope.json", summary)
+        return summary
+    stage(job, "Comparação", "Recompilando a fonte com as mesmas configurações.")
+    contract = None
+    try:
+        comparison, contract = compile_repro(job, source, runtime)
+        summary["compiler"] = comparison
+    except (ValueError, KeyError, OSError, subprocess.TimeoutExpired) as error:
+        summary["errors"].append("comparação: " + type(error).__name__ + ": " + str(error)[:120])
+    summary["storage_namespaces"] = namespace_slots(source)
+    slots = [item["slot"] for item in summary["storage_namespaces"]]
+    summary["storage_slots_unique"] = len(slots) == len(set(slots))
+    scenarios = jread(job / "scenarios.json") if (job / "scenarios.json").exists() else {}
+    stage(job, "Mapa", "Ligando entradas públicas aos cenários concluídos.")
+    try:
+        abi = contract.get("abi") if contract else (source.get("source") or {}).get("abi")
+        if abi:
+            summary["inventory"] = inventory(abi, engine, set(scenarios.get("passed_names") or []))
+            jwrite(job / "function-map.json", summary["inventory"])
+    except (ValueError, OSError, KeyError) as error:
+        summary["errors"].append("mapa: " + type(error).__name__ + ": " + str(error)[:120])
+    if (job / "source/src/LatamStable.sol").is_file():
+        stage(job, "Cobertura", "Medindo linhas e caminhos na recompilação local.")
+        project = job / "coverage"
+        project.mkdir(mode=0o700)
+        for folder in ("src", "lib", "@openzeppelin"):
+            origin = job / "source" / folder
+            if origin.is_dir():
+                shutil.copytree(origin, project / folder)
+        (project / "test").mkdir(mode=0o700)
+        shutil.copyfile(ROOT / "tools/wcop_coverage.t.sol", project / "test/WcopCoverage.t.sol")
+        save(project / "foundry.toml",
+             '[profile.default]\nsrc = "src"\ntest = "test"\n'
+             'solc = "/srv/toupera-agent/tools/solc-0.8.27"\n'
+             'auto_detect_remappings = false\n'
+             'remappings = ["@openzeppelin/contracts/=./@openzeppelin/contracts/", '
+             '"@openzeppelin/contracts-upgradeable/=./@openzeppelin/contracts-upgradeable/"]\n'
+             '[fuzz]\nruns = 32\n')
+        lcov = project / "coverage.info"
+        log = job / "tools/coverage.log"
+        code = command(["/home/toupera/.foundry/bin/forge", "coverage", "--root", str(project),
+                        "--report", "lcov", "--report-file", str(lcov)], log, 180)
+        if code == 0 and lcov.is_file():
+            summary["coverage"] = parse_lcov(lcov)
+            summary["coverage"]["local_tests_passed"] = len(re.findall(
+                r"\[PASS\]", log.read_text(encoding="utf-8", errors="replace")))
+            jwrite(job / "coverage.json", summary["coverage"])
+        else:
+            summary["errors"].append("cobertura local não concluiu; saída " + str(code))
+    if (job / "coverage/src/LatamStable.sol").is_file():
+        stage(job, "Sequências", "Rodando duas campanhas curtas na cópia local.")
+        project = job / "coverage"
+        shutil.copyfile(ROOT / "tools/wcop_properties.sol", project / "src/WcopProperties.sol")
+        echidna_log = job / "tools/echidna.log"
+        echidna_code = command(["/usr/local/bin/echidna", ".", "--contract", "WCOPProperties",
+                                "--crytic-args", "--foundry-compile-all", "--workers", "2",
+                                "--test-limit", "200", "--seq-len", "20", "--timeout", "30",
+                                "--format", "text", "--disable-slither"], echidna_log, 60, cwd=project)
+        echidna_text = echidna_log.read_text(encoding="utf-8", errors="replace")
+        echidna_ok = (echidna_code == 0 and
+                      "echidna_supply_matches: passing" in echidna_text and
+                      "echidna_balances_match: passing" in echidna_text)
+        medusa_log = job / "tools/medusa.log"
+        medusa_code = command(["/usr/local/bin/medusa", "fuzz", "--compilation-target", ".",
+                               "--target-contracts", "WCOPProperties", "--timeout", "20",
+                               "--test-limit", "200", "--seq-len", "20", "--workers", "2",
+                               "--no-color"], medusa_log, 55, cwd=project)
+        medusa_text = medusa_log.read_text(encoding="utf-8", errors="replace")
+        medusa_ok = (medusa_code == 0 and
+                     "[PASSED] Assertion Test: WCOPProperties.echidna_supply_matches()" in medusa_text and
+                     "[PASSED] Assertion Test: WCOPProperties.echidna_balances_match()" in medusa_text and
+                     "0 test(s) failed" in medusa_text)
+        summary["fuzzers"] = {"Echidna": {"state": "executado" if echidna_ok else "incompleto",
+                                          "exit_code": echidna_code, "properties_passed": 2 if echidna_ok else 0},
+                              "Medusa": {"state": "executado" if medusa_ok else "incompleto",
+                                         "exit_code": medusa_code, "properties_passed": 2 if medusa_ok else 0}}
+        stage(job, "Prova", "Tentando uma propriedade limitada na cópia local.")
+        shutil.copyfile(ROOT / "tools/wcop_formal.t.sol", project / "test/WcopFormal.t.sol")
+        halmos_log = job / "tools/halmos.log"
+        halmos_code = command(["/home/toupera/.local/bin/halmos", "--root", str(project),
+                               "--contract", "WCOPFormal", "--function", "check_MintBurnRestoresSupply",
+                               "--solver-timeout-branching", "10000", "--solver-timeout-assertion", "10000"],
+                              halmos_log, 45, cwd=project)
+        halmos_text = halmos_log.read_text(encoding="utf-8", errors="replace")
+        halmos_ok = halmos_code == 0 and re.search(r"Symbolic test result: 1 passed; 0 failed", halmos_text)
+        summary["formal"] = {"state": "concluído" if halmos_ok else "inconclusivo",
+                             "exit_code": halmos_code,
+                             "reason": "" if halmos_ok else
+                             ("limite do executor no preparo local" if "Unsupported cheat code" in halmos_text
+                              else "prova não concluída no tempo ou com este harness")}
+    jwrite(job / "scope.json", summary)
+    return summary
 
 def worker(job_id):
     job = WORK / job_id
@@ -378,12 +494,83 @@ def worker(job_id):
         stage(job, "Ferramentas", "Executando leituras compatíveis e registrando as demais.")
         selected_source = impl_source if impl_source and impl_source.get("source") else source
         selected_runtime = impl_runtime_path or runtime_path
+        roles = None
+        if history:
+            stage(job, "Papéis", "Conferindo no bloco as contas vistas no histórico.")
+            try:
+                roles = roles_at_block(history, address, block_number, rpc)
+                jwrite(job / "roles.json", roles)
+            except (ValueError, OSError, urllib.error.URLError) as error:
+                save(job / "roles-error.txt", type(error).__name__ + ": " + str(error)[:120] + "\n")
         rows = run_tools(job, selected_source, selected_runtime, block_number,
-                         (history.get("funded_holder") or {}).get("address") if history else None)
+                         (history.get("funded_holder") or {}).get("address") if history else None,
+                         roles, implementation)
+        deep = deep_review(job, impl_source, impl_runtime, impl_engine if impl_summary else None, roles)
+        for item in rows:
+            if item["name"] in ("Echidna", "Medusa"):
+                state = (deep.get("fuzzers") or {}).get(item["name"])
+                if state:
+                    item["state"] = state["state"]
+                    item["detail"] = ("duas regras de oferta/saldos em sequências locais, alvo de 200 chamadas; "
+                                      "saída " + str(state["exit_code"]))
+            if item["name"] == "Halmos" and deep.get("formal"):
+                item["state"] = deep["formal"]["state"]
+                item["detail"] = "propriedade local de emissão/retirada: " + (
+                    "concluída" if deep["formal"]["state"] == "concluído" else deep["formal"]["reason"])
+        jwrite(job / "tools.json", rows)
         final = result.replace("# Resultado do motor Rust", "# Resultado do contrato", 1)
         final += "\n## Ferramentas\n\n"
         for item in rows:
             final += "- " + item["name"] + " — " + item["state"] + ": " + item["detail"] + ".\n"
+        final += "\n## Mapa e medição\n\n"
+        compiler = deep.get("compiler") or {}
+        final += "- Comparação da fonte compilada: " + str(compiler.get("state") or "incompleta") + ".\n"
+        final += "- Compilador: " + str(compiler.get("compiler") or "indisponível") + "; EVM: " + str(compiler.get("evm_version") or "indisponível") + ".\n"
+        final += "- Espaços de dados nomeados na fonte: " + str(len(deep.get("storage_namespaces") or [])) + "; posições distintas: " + ("sim" if deep.get("storage_slots_unique") else "não confirmado") + ".\n"
+        if roles:
+            final += "- Contas com papel ativo entre as vistas no histórico: " + ", ".join(
+                name + "=" + str(len(accounts)) for name, accounts in
+                roles.get("active_accounts_from_events", {}).items()) + ".\n"
+        inv = deep.get("inventory") or {}
+        if inv:
+            final += ("- Funções públicas na ABI: " + str(inv["abi_functions"]) +
+                      "; entradas identificadas pelo Rust: " + str(inv["engine_selectors"]) +
+                      "; funções com ao menos um cenário local concluído: " +
+                      str(inv["scenario_functions"]) + ".\n")
+            if inv["selectors_missing_in_engine"] or inv["engine_only_selectors"]:
+                final += "- Divergências de seletores: ABI sem motor " + str(inv["selectors_missing_in_engine"]) + "; motor sem ABI " + str(inv["engine_only_selectors"]) + ".\n"
+            missing = [item["signature"] for item in inv["functions"] if item["status"] != "cenário local"]
+            final += "- Entradas sem cenário local: " + (", ".join(missing) if missing else "nenhuma na ABI") + ".\n"
+            final += "- Lista por função: function-map.json privado do trabalho.\n"
+        cov = deep.get("coverage") or {}
+        if cov:
+            totals = cov["totals"]
+            main = cov.get("main_file") or {}
+            final += ("- Fonte principal, medição local: " + str(main.get("LH", 0)) + "/" +
+                      str(main.get("LF", 0)) + " linhas; " + str(main.get("BRH", 0)) + "/" +
+                      str(main.get("BRF", 0)) + " ramos medidos.\n")
+            final += ("- Fonte principal e bibliotecas usadas na compilação: " +
+                      str(totals["LH"]) + "/" + str(totals["LF"]) + " linhas; " +
+                      str(totals["BRH"]) + "/" + str(totals["BRF"]) + " ramos medidos.\n")
+            final += ("- A soma das bibliotecas inclui caminhos que podem não ser alcançáveis por este token; "
+                      "ela não é uma porcentagem do runtime publicado.\n")
+            final += ("- Ensaios sobre a fonte recompilada: " + str(cov.get("local_tests_passed", 0)) +
+                      " concluídos; esta medição local não mede diretamente o bytecode do bloco.\n")
+            for gap in cov["largest_gaps"][:6]:
+                final += ("- Lacuna: " + gap["file"] + " — " + str(gap["lines_not_hit"]) +
+                          " linhas e " + str(gap["branches_not_hit"]) + " ramos sem passagem.\n")
+        for name, item in (deep.get("fuzzers") or {}).items():
+            final += ("- " + name + ": " + item["state"] + "; regras concluídas " +
+                      str(item["properties_passed"]) + "/2 em campanha local limitada.\n")
+        if deep.get("formal"):
+            final += ("- Halmos: " + deep["formal"]["state"] + "; " +
+                      (deep["formal"]["reason"] or "propriedade local concluída") + ".\n")
+        for error in deep.get("errors") or []:
+            final += "- Limite: " + error + ".\n"
+        final += ("- Ainda sem cobertura total de caminhos e estados; uma função exercitada uma vez pode ter "
+                  "outros resultados em condições diferentes.\n"
+                  "- Troca válida de implementação, compatibilidade com versões futuras e relações com outros "
+                  "contratos seguem fora desta medição.\n")
         final += ("\n## Interpretação\n\n"
                   "- Estes números descrevem a estrutura observada; não demonstram uma falha.\n"
                   "- Sinais brutos precisam de reprodução local e revisão para sustentar uma conclusão.\n"
