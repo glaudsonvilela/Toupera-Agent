@@ -168,6 +168,8 @@ pub fn analyze_recorded_scenarios(path: &Path) -> Result<LocalCoverageReport, St
             "guided_source"
         } else if case.sequence.starts_with("guided_feedback:") {
             "guided_feedback"
+        } else if case.sequence.starts_with("guided_preview:") {
+            "guided_preview"
         } else if case.sequence.starts_with("guided_cycle:") {
             "guided_cycle"
         } else if case.sequence.starts_with("guided_order:") {

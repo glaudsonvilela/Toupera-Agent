@@ -138,6 +138,8 @@ pub struct GuidedScenarioEvidence {
     pub feedback_cases_executed: usize,
     pub feedback_stop_reason: Option<String>,
     pub source_boundary_cases: usize,
+    pub preview_boundary_cases: usize,
+    pub preview_boundary_queries: usize,
     pub state_order_sequences_executed: usize,
     pub state_order_sequence_budget: usize,
     pub state_order_stop_reason: Option<String>,
@@ -301,6 +303,53 @@ fn view_u256(rpc: &Rpc, address: &str, data: &str) -> Result<U256, String> {
     let raw = rpc.call("eth_call", json!([{"to":address,"data":data},"latest"]))?;
     let raw = raw.as_str().ok_or("eth_call result is not hex")?;
     hex_u256(raw)
+}
+
+fn preview_change_boundary(
+    rpc: &Rpc,
+    vault: &str,
+    operation: Operation,
+    pivot: U256,
+    window: U256,
+) -> Result<(Option<U256>, usize), String> {
+    if window == U256::ZERO {
+        return Ok((None, 0));
+    }
+    let mut queries = 0_usize;
+    let preview = |amount| {
+        view_u256(
+            rpc,
+            vault,
+            &calldata(operation.preview(), Some(amount), &[]),
+        )
+    };
+    let base = preview(pivot)?;
+    queries += 1;
+    let upper = pivot.saturating_add(window);
+    let upper_value = preview(upper)?;
+    queries += 1;
+    if upper_value <= base {
+        return Ok((None, queries));
+    }
+    let mut low = pivot + U256::from(1);
+    let mut high = upper;
+    while low < high && queries < 40 {
+        let mid = low + (high - low) / U256::from(2);
+        let value = preview(mid)?;
+        queries += 1;
+        if value > base {
+            high = mid;
+        } else {
+            low = mid + U256::from(1);
+        }
+    }
+    if low != high {
+        return Ok((None, queries));
+    }
+    let prior = preview(low - U256::from(1))?;
+    let at = preview(low)?;
+    queries += 2;
+    Ok(((prior == base && at > base).then_some(low), queries))
 }
 
 fn read_state(rpc: &Rpc, vault: &str, asset: &str, actor: &str) -> Result<ScenarioState, String> {
@@ -966,6 +1015,8 @@ fn run_scenarios(
             feedback_cases_executed: 0,
             feedback_stop_reason: None,
             source_boundary_cases: 0,
+            preview_boundary_cases: 0,
+            preview_boundary_queries: 0,
             state_order_sequences_executed: 0,
             state_order_sequence_budget: 8,
             state_order_stop_reason: None,
@@ -1625,6 +1676,68 @@ fn run_scenarios(
                 } else {
                     plateau + 1
                 };
+        }
+        for operation in [Operation::Mint, Operation::Redeem] {
+            if focus.feedback_cases_executed >= focus.feedback_case_budget || plateau >= 8 {
+                break;
+            }
+            let pivot = share_scale;
+            let window = (share_scale / U256::from(1000)).max(U256::from(2));
+            match preview_change_boundary(&local, &identity.vault, operation, pivot, window) {
+                Ok((Some(boundary), queries)) => {
+                    focus.preview_boundary_queries += queries;
+                    for amount in [boundary - U256::from(1), boundary, boundary + U256::from(1)] {
+                        if focus.feedback_cases_executed >= focus.feedback_case_budget
+                            || plateau >= 8
+                        {
+                            break;
+                        }
+                        let id = snapshot(&local)?;
+                        let before_count =
+                            observed_root_outcomes(&all_outcomes, &focus.target_source_pcs);
+                        let case = run_case(
+                            &local,
+                            &identity.vault,
+                            &identity.asset,
+                            &identity.actor,
+                            operation,
+                            amount,
+                            format!("guided_preview:{}:{amount}", operation.name()),
+                            1,
+                            "state_comparison",
+                        );
+                        append_guided_case(
+                            &mut cases,
+                            &mut all_jumps,
+                            &mut all_outcomes,
+                            &mut trace_limitations,
+                            focus,
+                            case,
+                        );
+                        focus.feedback_cases_executed += 1;
+                        focus.preview_boundary_cases += 1;
+                        revert_snapshot(&local, &id)?;
+                        plateau = if observed_root_outcomes(&all_outcomes, &focus.target_source_pcs)
+                            > before_count
+                        {
+                            0
+                        } else {
+                            plateau + 1
+                        };
+                    }
+                }
+                Ok((None, queries)) => {
+                    focus.preview_boundary_queries += queries;
+                    scenario_limitations.push(format!(
+                        "{} preview change not located in bounded local window",
+                        operation.name()
+                    ));
+                }
+                Err(error) => scenario_limitations.push(format!(
+                    "{} preview observation unavailable: {error}",
+                    operation.name()
+                )),
+            }
         }
         'feedback: for index in 0..4 {
             for (operation, amount) in [

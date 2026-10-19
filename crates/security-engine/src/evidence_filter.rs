@@ -48,6 +48,8 @@ pub struct MappingRelationCheck {
 pub struct CallObservation {
     pub target_address: String,
     pub cases: usize,
+    pub cases_with_child_trace: usize,
+    pub cases_with_asset_balance_change: usize,
     pub target_kind: String,
     pub source_boundary_status: String,
 }
@@ -469,7 +471,7 @@ pub fn filter_evidence(
             });
         }
     }
-    let mut target_cases = BTreeMap::<String, usize>::new();
+    let mut target_cases = BTreeMap::<String, (usize, usize, usize)>::new();
     for case in scenarios["cases"]
         .as_array()
         .ok_or("scenario cases missing")?
@@ -482,24 +484,40 @@ pub fn filter_evidence(
             .filter_map(Value::as_str)
         {
             if seen.insert(target) {
-                *target_cases.entry(target.into()).or_default() += 1;
+                let entry = target_cases.entry(target.into()).or_default();
+                entry.0 += 1;
+                entry.1 += usize::from(case["child_trace_steps"].as_u64().unwrap_or(0) > 0);
+                let changed = case["before"].is_object()
+                    && case["after"].is_object()
+                    && (case["before"]["vault_asset_balance"]
+                        != case["after"]["vault_asset_balance"]
+                        || case["before"]["actor_asset_balance"]
+                            != case["after"]["actor_asset_balance"]);
+                entry.2 += usize::from(changed);
             }
         }
     }
     let asset = scenarios["identity"]["asset"].as_str().unwrap_or("");
     let call_observations = target_cases
         .into_iter()
-        .map(|(target_address, cases)| CallObservation {
-            target_kind: if target_address.eq_ignore_ascii_case(asset) {
-                "recorded_asset"
-            } else {
-                "other_or_unknown"
-            }
-            .into(),
-            target_address,
-            cases,
-            source_boundary_status: "runtime_target_observed_source_callsite_unresolved".into(),
-        })
+        .map(
+            |(target_address, (cases, cases_with_child_trace, cases_with_asset_balance_change))| {
+                CallObservation {
+                    target_kind: if target_address.eq_ignore_ascii_case(asset) {
+                        "recorded_asset"
+                    } else {
+                        "other_or_unknown"
+                    }
+                    .into(),
+                    target_address,
+                    cases,
+                    cases_with_child_trace,
+                    cases_with_asset_balance_change,
+                    source_boundary_status:
+                        "target_and_state_co_observed_not_causal_source_attribution".into(),
+                }
+            },
+        )
         .collect();
 
     // A single differing case is an observation, never a reproducible result.
